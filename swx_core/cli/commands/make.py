@@ -23,12 +23,13 @@ from swx_core.cli.commands.security_validation import (
 
 from swx_core.cli.commands.resource_templates import (
     TEMPLATES,
+    BASE_TEMPLATES,  # New base class templates
+    LEGACY_TEMPLATES,
     METHOD_TEMPLATE,
     CONTROLLER_METHOD_TEMPLATE,
     REPOSITORY_METHOD_TEMPLATE,
     ROUTE_METHOD_TEMPLATE,
 )
-
 
 # ===================== CLI Commands =====================
 
@@ -672,7 +673,34 @@ def migration(model_name, existing, new):
     is_flag=True,
     help="Generate migration for an existing model (autogenerate changes).",
 )
-def resource(resource_name, module, columns, migration, existing):
+@click.option(
+    "--base",
+    is_flag=True,
+    help="Use base classes (BaseController/BaseService/BaseRepository). Recommended for new projects.",
+)
+def resource(resource_name, module, columns, migration, existing, base):
+    """
+    Generate a full resource scaffold including:
+      - Model file (CRUD style)
+      - Controller
+      - Service
+      - Repository
+      - Route
+      - (Optionally) Alembic migration file
+
+    Use --base flag to generate using BaseController/BaseService/BaseRepository patterns
+    which reduces boilerplate by 80% and provides automatic CRUD, pagination, search.
+
+    Examples:
+      swx make resource Product --columns "name:str, price:float, description:str" --migration --existing
+      swx make resource Product --base  # Use base class patterns (recommended)
+    """
+    # Select template set based on --base flag
+    templates = BASE_TEMPLATES if base else LEGACY_TEMPLATES
+    template_type = "base classes" if base else "legacy"
+    click.secho(f"📝 Generating resource using {template_type} patterns...", fg="cyan")
+    
+
     """
     Generate a full resource scaffold including:
       - Model file (CRUD style)

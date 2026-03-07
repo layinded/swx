@@ -451,3 +451,58 @@ def set_app_info(version: str, environment: str, extra: dict = None):
         if extra:
             info.update(extra)
         metrics.app_info.info(info)
+
+
+def set_app_info(version: str, environment: str, extra: dict = None):
+    """Set application information."""
+    metrics = get_metrics()
+    if metrics:
+        info = {"version": version, "environment": environment}
+        if extra:
+            info.update(extra)
+        metrics.app_info.info(info)
+
+
+def apply_middleware(app):
+    """
+    Apply Prometheus metrics middleware (called by dynamic middleware loader).
+    
+    This function is called automatically by swx_core.utils.loader.load_middleware().
+    It initializes metrics and adds the MetricsMiddleware to the FastAPI app.
+    
+    Args:
+        app: The FastAPI application instance.
+    
+    Usage:
+        The middleware is automatically applied when swx_core starts.
+        To enable Prometheus metrics, ensure prometheus_client is installed:
+        
+        pip install prometheus_client
+        
+        Metrics will be available at /metrics endpoint if you add:
+        
+        @app.get("/metrics")
+        async def metrics_endpoint():
+            from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+            metrics = get_metrics()
+            if metrics:
+                return Response(
+                    content=generate_latest(metrics.registry),
+                    media_type=CONTENT_TYPE_LATEST
+                )
+            return {"error": "Metrics not initialized"}
+    """
+    # Skip if Prometheus is not available
+    if not PROMETHEUS_AVAILABLE:
+        logger.warning(
+            "prometheus_client not installed. Metrics middleware disabled. "
+            "Install with: pip install prometheus_client"
+        )
+        return
+    
+    # Initialize metrics with default config
+    metrics = init_metrics()
+    
+    if metrics:
+        app.add_middleware(MetricsMiddleware, metrics=metrics)
+        logger.info("Prometheus metrics middleware enabled")

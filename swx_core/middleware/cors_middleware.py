@@ -9,6 +9,7 @@ Features:
 
 Functions:
 - `setup_cors_middleware(app)`: Applies CORS settings to the FastAPI app.
+- `apply_middleware(app)`: Called by dynamic middleware loader.
 """
 
 from starlette.middleware.cors import CORSMiddleware
@@ -35,3 +36,15 @@ def setup_cors_middleware(app):
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+
+def apply_middleware(app):
+    """
+    Apply CORS middleware (called by dynamic middleware loader).
+    
+    This function is called automatically by swx_core.utils.loader.load_middleware().
+    
+    Args:
+        app: The FastAPI application instance.
+    """
+    setup_cors_middleware(app)

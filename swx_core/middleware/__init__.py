@@ -8,14 +8,24 @@ Provides middleware for:
 - Audit logging
 - Request logging
 - Metrics collection
+- Sentry error tracking
 """
 
-from swx_core.middleware.cors_middleware import *
-from swx_core.middleware.session_middleware import *
-from swx_core.middleware.rate_limit_middleware import *
-from swx_core.middleware.audit_middleware import *
-from swx_core.middleware.logging_middleware import *
-from swx_core.middleware.sentry_middleware import *
+from swx_core.middleware.cors_middleware import (
+    setup_cors_middleware,
+    apply_middleware as apply_cors_middleware,
+)
+from swx_core.middleware.session_middleware import (
+    SessionMiddleware,
+    setup_session_middleware,
+)
+from swx_core.middleware.rate_limit_middleware import RateLimitMiddleware
+from swx_core.middleware.audit_middleware import AuditMiddleware, apply_middleware as apply_audit_middleware
+from swx_core.middleware.logging_middleware import logger
+from swx_core.middleware.sentry_middleware import (
+    setup_sentry_middleware,
+    apply_middleware as apply_sentry_middleware,
+)
 
 try:
     from swx_core.middleware.metrics_middleware import (
@@ -31,6 +41,7 @@ try:
         record_auth_failure,
         record_business_operation,
         set_app_info,
+        apply_middleware as apply_metrics_middleware,
         PROMETHEUS_AVAILABLE
     )
 except ImportError:
@@ -38,22 +49,39 @@ except ImportError:
     MetricsMiddleware = None
     PrometheusMetrics = None
     MetricsConfig = None
+    apply_metrics_middleware = None
+    init_metrics = None
+    get_metrics = None
+    record_db_query = None
+    record_cache_hit = None
+    record_cache_miss = None
+    record_auth_attempt = None
+    record_auth_failure = None
+    record_business_operation = None
+    set_app_info = None
 
 __all__ = [
     # CORS
-    "CORS_MIDDLEWARE",
+    "setup_cors_middleware",
+    "apply_cors_middleware",
     
     # Session
     "SessionMiddleware",
+    "setup_session_middleware",
     
     # Rate Limiting
     "RateLimitMiddleware",
     
     # Audit
     "AuditMiddleware",
+    "apply_audit_middleware",
     
     # Logging
     "logger",
+    
+    # Sentry
+    "setup_sentry_middleware",
+    "apply_sentry_middleware",
     
     # Metrics (optional)
     "MetricsMiddleware",
@@ -68,5 +96,6 @@ __all__ = [
     "record_auth_failure",
     "record_business_operation",
     "set_app_info",
+    "apply_metrics_middleware",
     "PROMETHEUS_AVAILABLE",
 ]

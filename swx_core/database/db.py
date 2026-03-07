@@ -27,11 +27,16 @@ from swx_core.config.settings import settings
 from swx_core.middleware.logging_middleware import logger
 
 # Create the async database engine with connection pooling
+# Includes resilience features:
+# - pool_pre_ping: Checks connection health before use (detects stale connections)
+# - pool_recycle: Recycles connections after 1 hour (prevents MySQL "gone away" errors)
 async_engine = create_async_engine(
     str(settings.ASYNC_SQLALCHEMY_DATABASE_URI),
     echo=False,  # Disables verbose SQL logging for performance
     pool_size=20,  # Maintain up to 20 active connections
     max_overflow=10,  # Allow up to 10 extra connections when needed
+    pool_pre_ping=True,  # Enable connection health checks (detect stale connections)
+    pool_recycle=3600,  # Recycle connections after 1 hour (prevent stale connections)
 )
 
 # Async session factory for creating new database sessions
@@ -40,11 +45,14 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 # Create the sync database engine (for background tasks/migrations if needed)
+# Same resilience features as async engine
 engine = create_engine(
     str(settings.SQLALCHEMY_DATABASE_URI),
     echo=False,
     pool_size=5,
     max_overflow=5,
+    pool_pre_ping=True,  # Enable connection health checks
+    pool_recycle=3600,  # Recycle connections after 1 hour
 )
 
 # Sync session factory (legacy/isolated usage only)
@@ -92,3 +100,7 @@ def log_sql_execute(conn, cursor, statement, parameters, context, executemany):
 # FastAPI Dependency Injection for session usage in routes
 SessionDep = Annotated[AsyncSession, Depends(get_async_db)]
 SyncSessionDep = Annotated[Session, Depends(get_db)]
+
+# Convenience aliases for backward compatibility
+# These match the pattern used throughout the framework
+get_session = get_async_db  # Alias for common usage pattern

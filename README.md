@@ -11,7 +11,7 @@
 
 > Built with ❤️ for developers who value flexibility, security, and structure.
 
-**🎉 Framework Status: Production Ready v1.0.0**
+**🎉 Framework Status: Production Ready v2.0.0**
 
 ---
 
@@ -42,7 +42,7 @@
 - ✅ **Rate Limiting** - Plan-based rate limits with burst protection
 - ✅ **Redis Caching** - In-memory caching for improved performance
 - ✅ **Background Jobs** - Asynchronous job processing with retries
-- ✅ **Connection Pooling** - Optimized database connections
+- ✅ **Connection Pooling** - Optimized database connections with health checks
 
 ### 📊 Operations & Monitoring
 - ✅ **Audit Logging** - Immutable security and business event logs
@@ -53,12 +53,64 @@
 
 ### 🛠️ Developer Experience
 - ✅ **Modular Architecture** - Clean separation of core and app code
+- ✅ **Base Classes Pattern** - BaseController, BaseService, BaseRepository for rapid development (v2.0)
 - ✅ **SQLModel ORM** - Type-safe database models
 - ✅ **Alembic Migrations** - Database version control
-- ✅ **CLI Tools** - `swx` command for scaffolding and automation
-- ✅ **Comprehensive Documentation** - 43+ documentation files
+- ✅ **CLI Tools** - `swx` command for scaffolding with `--base` flag for modern patterns
+- ✅ **Comprehensive Documentation** - 50+ documentation files
 - ✅ **Testing Tools** - Unit tests, integration tests, acceptance tests
 - ✅ **Docker Ready** - Complete Docker Compose setup
+
+---
+
+## 🆕 What's New in v2.0
+
+### BaseController / BaseService / BaseRepository
+
+**Reduce boilerplate by 80%** with the new base classes pattern:
+
+```python
+# v2.0 - Modern pattern (recommended)
+from swx_core.controllers.base import BaseController
+from swx_core.services.base import BaseService
+from swx_core.repositories.base import BaseRepository
+
+class ProductRepository(BaseRepository[Product]):
+    def __init__(self):
+        super().__init__(model=Product)
+    # Automatic: find_by_id, find_all, create, update, delete, search, paginate...
+
+class ProductService(BaseService[Product, ProductRepository]):
+    def __init__(self):
+        super().__init__(repository=ProductRepository())
+    # Automatic: get, create, update, delete with events and validation hooks...
+
+class ProductController(BaseController[Product, Create, Update, Public]):
+    def __init__(self):
+        super().__init__(model=Product, ...)
+        self.register_routes()
+    # Automatic: GET, POST, PUT, DELETE endpoints...
+```
+
+### New Utilities
+
+- **Unit of Work** - Transaction management with automatic commit/rollback
+- **Filter Builder** - Fluent query filtering and sorting
+- **Caching Decorators** - `@cached`, `@memoize` for Redis operations
+- **Rate Limiting** - `@rate_limit_by_ip`, `@rate_limit_by_user`
+- **Testing Utilities** - ModelFactory, TestClientWithDB, assertions
+
+### CLI Improvements
+
+```bash
+# Generate resources with base classes (recommended)
+swx make:resource Product --base
+
+# Generate legacy patterns
+swx make:resource Product
+```
+
+**See [Migration Guide](docs/07-extending/MIGRATION_GUIDE.md) for upgrading from v1.x.**
 
 ---
 
@@ -70,6 +122,9 @@ swx-api-latest-backend/
 │   ├── auth/              # Authentication (admin, user, system)
 │   ├── cli/               # CLI commands
 │   ├── config/            # Configuration
+│   ├── controllers/       # BaseController (v2.0)
+│   ├── services/          # BaseService (v2.0)
+│   ├── repositories/      # BaseRepository (v2.0)
 │   ├── database/          # Database setup and utilities
 │   ├── middleware/        # Middleware (CORS, logging, rate limiting)
 │   ├── models/            # Framework models (User, Role, Permission, etc.)
@@ -77,7 +132,7 @@ swx-api-latest-backend/
 │   ├── routes/            # Framework routes (admin, user, utils)
 │   ├── security/          # Security utilities
 │   ├── services/          # Framework services (billing, jobs, alerts, etc.)
-│   └── utils/             # Utility functions
+│   └── utils/             # Utility functions (pagination, caching, filters...)
 ├── swx_app/               # Application code (your features)
 │   ├── controllers/       # Application controllers
 │   ├── models/            # Application models
@@ -86,21 +141,13 @@ swx-api-latest-backend/
 │   └── services/          # Application services
 ├── migrations/            # Alembic migrations
 ├── docs/                  # Comprehensive documentation
-│   ├── 01-overview/       # Framework overview
-│   ├── 02-getting-started/# Getting started guide
-│   ├── 03-architecture/  # Architecture documentation
-│   ├── 04-core-concepts/  # Core concepts (9 subsystems)
-│   ├── 05-security/       # Security documentation
-│   ├── 06-api-usage/      # API usage guides
-│   ├── 07-extending/      # Extension guides
-│   ├── 08-operations/     # Operations and deployment
-│   ├── 09-testing/        # Testing guides
-│   ├── 10-troubleshooting/# Troubleshooting
-│   └── 11-reference/      # Reference materials
+│   ├── 04-core-concepts/
+│   │   ├── BASE_CLASSES.md      # BaseController/BaseService/BaseRepository (NEW)
+│   │   ├── UTILITIES.md         # All utility modules (NEW)
+│   │   └── USAGE_EXAMPLES.md    # Complete usage examples (NEW)
+│   └── 07-extending/
+│       └── MIGRATION_GUIDE.md   # v1.x to v2.0 migration (NEW)
 ├── scripts/               # Utility scripts
-│   ├── seed_system.py     # System seeding
-│   ├── full_user_simulation.py # Acceptance tests
-│   └── ...
 ├── Dockerfile             # Docker configuration
 ├── docker-compose.yml     # Docker Compose (development)
 └── docker-compose.production.yml # Docker Compose (production)
@@ -194,57 +241,27 @@ SwX-API includes **comprehensive documentation** covering all aspects of the fra
 - **[Overview](docs/01-overview/OVERVIEW.md)** - Framework introduction
 - **[Architecture](docs/03-architecture/ARCHITECTURE.md)** - System design
 
-### Core Concepts
+### Core Concepts (v2.0)
+- **[Base Classes](docs/04-core-concepts/BASE_CLASSES.md)** - Controller/Service/Repository pattern
+- **[Utilities](docs/04-core-concepts/UTILITIES.md)** - All utility modules
+- **[Usage Examples](docs/04-core-concepts/USAGE_EXAMPLES.md)** - Complete code examples
 - **[Authentication](docs/04-core-concepts/AUTHENTICATION.md)** - Auth flows and token security
 - **[RBAC](docs/04-core-concepts/RBAC.md)** - Role-based access control
 - **[Policy Engine](docs/04-core-concepts/POLICY_ENGINE.md)** - Attribute-based access control
 - **[Billing](docs/04-core-concepts/BILLING.md)** - Billing and entitlements
 - **[Rate Limiting](docs/04-core-concepts/RATE_LIMITING.md)** - Abuse protection
 - **[Audit Logs](docs/04-core-concepts/AUDIT_LOGS.md)** - Logging system
-- **[Alerting](docs/04-core-concepts/ALERTING.md)** - Multi-channel alerts
 - **[Background Jobs](docs/04-core-concepts/BACKGROUND_JOBS.md)** - Async job processing
-- **[Async Model](docs/04-core-concepts/ASYNC_MODEL.md)** - Performance patterns
-- **[Settings](docs/04-core-concepts/SETTINGS.md)** - Runtime configuration
 
 ### Security
 - **[Security Model](docs/05-security/SECURITY_MODEL.md)** - Overall security architecture
 - **[Token Security](docs/05-security/TOKEN_SECURITY.md)** - JWT token security
 - **[Secrets Management](docs/05-security/SECRETS_MANAGEMENT.md)** - Secure secrets handling
-- **[Security Best Practices](docs/05-security/SECURITY_BEST_PRACTICES.md)** - Security guidelines
-
-### Operations
-- **[Operations Guide](docs/08-operations/OPERATIONS.md)** - Day-to-day operations
-- **[Deployment Guide](docs/08-operations/DEPLOYMENT.md)** - Production deployment
-- **[Monitoring](docs/08-operations/MONITORING.md)** - Monitoring and observability
-- **[Production Checklist](docs/08-operations/PRODUCTION_CHECKLIST.md)** - Production readiness
-
-### API Usage
-- **[API Usage Guide](docs/06-api-usage/API_USAGE.md)** - General API patterns
-- **[API Reference](docs/06-api-usage/API_REFERENCE.md)** - Complete endpoint reference
-- **[Error Handling](docs/06-api-usage/ERROR_HANDLING.md)** - Error responses
-- **[Pagination & Filtering](docs/06-api-usage/PAGINATION_FILTERING.md)** - Query patterns
 
 ### Extending
 - **[Extending Guide](docs/07-extending/EXTENDING_SWX.md)** - Extension patterns
 - **[Adding Features](docs/07-extending/ADDING_FEATURES.md)** - Feature development
-- **[Adding Entitlements](docs/07-extending/ADDING_ENTITLEMENTS.md)** - Billing integration
-- **[Adding Policies](docs/07-extending/ADDING_POLICIES.md)** - Policy creation
-- **[Custom Models](docs/07-extending/CUSTOM_MODELS.md)** - Model patterns
-
-### Testing
-- **[Testing Guide](docs/09-testing/TESTING_GUIDE.md)** - Testing patterns
-- **[Seeding & Simulation](docs/09-testing/SEEDING_AND_SIMULATION.md)** - Test data setup
-- **[Acceptance Testing](docs/09-testing/ACCEPTANCE_TESTING.md)** - Acceptance tests
-
-### Troubleshooting
-- **[Troubleshooting Guide](docs/10-troubleshooting/TROUBLESHOOTING.md)** - Common issues
-- **[FAQ](docs/10-troubleshooting/FAQ.md)** - Frequently asked questions
-- **[Debugging Guide](docs/10-troubleshooting/DEBUGGING.md)** - Debugging techniques
-
-### Reference
-- **[Glossary](docs/11-reference/GLOSSARY.md)** - Terms and definitions
-- **[Migration Guide](docs/11-reference/MIGRATION_GUIDE.md)** - Upgrade procedures
-- **[Changelog](docs/11-reference/CHANGELOG.md)** - Version history
+- **[Migration Guide](docs/07-extending/MIGRATION_GUIDE.md)** - v1.x to v2.0 migration
 
 **📖 See [Documentation Index](docs/DOCUMENTATION_STATUS.md) for complete documentation structure.**
 
@@ -252,24 +269,18 @@ SwX-API includes **comprehensive documentation** covering all aspects of the fra
 
 ## 🛠️ Development
 
-### Development Setup
-
-See **[Development Guide](development.md)** for:
-- Local development setup
-- Running tests
-- Code formatting and linting
-- CLI commands
-- Hot reloading
-
 ### CLI Commands
 
 ```bash
+# Generate resources with base classes (v2.0 - recommended)
+swx make:resource Product --base
+
+# Generate resources with legacy patterns
+swx make:resource Product
+
 # Database migrations
 swx db migrate
 swx db revision -m "description"
-
-# Code generation
-swx make:resource blog
 
 # Code quality
 swx format      # Format code
@@ -281,51 +292,51 @@ swx tinker
 
 ---
 
-## 🚀 Deployment
-
-### Production Deployment
-
-See **[Deployment Guide](deployment.md)** for:
-- Docker deployment
-- Production configuration
-- Environment setup
-- Post-deployment steps
-- Rollback procedures
-
-### Quick Deploy
-
-```bash
-# Production deployment
-docker compose -f docker-compose.production.yml up -d --build
-```
-
----
-
-## 🧪 Testing
-
-### Running Tests
-
-```bash
-# Unit tests
-pytest
-
-# Integration tests
-pytest swx_core/tests/
-
-# Acceptance tests
-python scripts/full_user_simulation.py
-```
-
-### Test Coverage
-
-- ✅ Unit tests for services and controllers
-- ✅ Integration tests for routes
-- ✅ Acceptance tests for complete workflows
-- ✅ State validation for data integrity
-
----
-
 ## 📊 Example Usage
+
+### Base Classes (v2.0)
+
+```python
+# Complete resource in minutes
+from swx_core.controllers.base import BaseController
+from swx_core.services.base import BaseService
+from swx_core.repositories.base import BaseRepository
+from swx_core.utils.mixins import FullModelMixin
+
+# Model
+class Product(FullModelMixin, table=True):
+    name: str
+    price: float
+
+# Repository
+class ProductRepository(BaseRepository[Product]):
+    def __init__(self):
+        super().__init__(model=Product)
+
+# Service  
+class ProductService(BaseService[Product, ProductRepository]):
+    def __init__(self):
+        super().__init__(repository=ProductRepository())
+
+# Controller
+class ProductController(BaseController[Product, ProductCreate, ProductUpdate, ProductPublic]):
+    def __init__(self):
+        super().__init__(
+            model=Product,
+            schema_public=ProductPublic,
+            schema_create=ProductCreate,
+            schema_update=ProductUpdate,
+            prefix="/products",
+        )
+        self.register_routes()
+
+# Automatic endpoints:
+# GET    /products          - List with pagination
+# GET    /products/{id}      - Get by ID
+# POST   /products          - Create
+# PUT    /products/{id}     - Update
+# DELETE /products/{id}     - Delete
+```
 
 ### Authentication
 
@@ -349,21 +360,16 @@ async def list_users():
     ...
 ```
 
-### Billing
+### Rate Limiting
 
 ```python
-# Check entitlements
-from swx_core.services.billing.entitlement_resolver import EntitlementResolver
+from swx_core.utils.rate_limit import rate_limit_by_user
 
-resolver = EntitlementResolver(session)
-has_access = await resolver.check_entitlement(user, "api_requests")
+@router.get("/api/search")
+@rate_limit_by_user(requests=100, window=60)  # 100 req/min
+async def search(q: str):
+    return await search_service.search(q)
 ```
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please see our contributing guidelines for details.
 
 ---
 

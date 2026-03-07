@@ -29,6 +29,9 @@ Framework-grade documentation for production deployment.
 
 ## 04. Core Concepts
 
+- [CORE_PATTERNS.md](04-core-concepts/CORE_PATTERNS.md) - Design patterns overview
+- [BASE_CLASSES.md](04-core-concepts/BASE_CLASSES.md) - Controller-Service-Repository pattern (NEW)
+- [UTILITIES.md](04-core-concepts/UTILITIES.md) - Utilities reference (NEW)
 - [SERVICE_CONTAINER.md](04-core-concepts/SERVICE_CONTAINER.md) - IoC container usage
 - [SERVICE_PROVIDERS.md](04-core-concepts/SERVICE_PROVIDERS.md) - Provider pattern
 - [GUARDS.md](04-core-concepts/GUARDS.md) - Authentication guards
