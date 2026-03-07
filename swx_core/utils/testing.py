@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 
-from swx_core.database.db_setup import get_session
+from swx_core.database.db import get_session
 from swx_core.models.base import Base
 
 

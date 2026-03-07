@@ -76,3 +76,4 @@ redis-data/
 
 
 .idea/*
+/dist/

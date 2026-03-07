@@ -7,7 +7,7 @@ Reusable mixins for SQLAlchemy models.
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Boolean, DateTime, func
+from sqlalchemy import Column, Boolean, DateTime, func, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Field
 
@@ -76,9 +76,7 @@ class UUIDPrimaryKeyMixin:
     """
     id: uuid.UUID = Field(
         default_factory=uuid.uuid4,
-        primary_key=True,
-        index=True,
-        sa_column=Column(UUID(as_uuid=True), primary_key=True)
+        sa_column=Column(UUID(as_uuid=True), primary_key=True, nullable=False)
     )
 
 
@@ -110,13 +108,16 @@ class UpdatedByMixin:
     )
 
 
-class AuditMixin(CreatedByMixin, UpdatedByMixin):
+class AuditMixin(CreatedByMixin, UpdatedByMixin, TimestampMixin):
     """
-    Full audit mixin combining created_by and updated_by.
+    Combined mixin for full audit trail.
+    
+    Includes:
+    - created_at, updated_at
+    - created_by_id, updated_by_id
     
     Usage:
         class Product(AuditMixin, table=True):
-            id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
             name: str
     """
     pass
@@ -147,7 +148,7 @@ class ActiveMixin:
 
 class SlugMixin:
     """
-    Mixin to add slug field for URL-friendly identifiers.
+    Mixin to add a URL-friendly slug.
     
     Usage:
         class Product(SlugMixin, table=True):
@@ -155,91 +156,93 @@ class SlugMixin:
             name: str
     """
     slug: str = Field(
-        max_length=255,
-        unique=True,
-        index=True,
         sa_column=Column(String(255), unique=True, index=True)
     )
 
 
 class TitleMixin:
     """
-    Mixin to add title field with search optimization.
+    Mixin to add a title field.
     
     Usage:
         class Product(TitleMixin, table=True):
             id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+            description: str
     """
-    title: str = Field(
-        max_length=255,
-        index=True,
-        sa_column=Column(String(255), index=True)
-    )
+    title: str = Field(max_length=255, index=True)
 
 
 class DescriptionMixin:
     """
-    Mixin to add description field.
+    Mixin to add a description field.
     
     Usage:
         class Product(DescriptionMixin, table=True):
             id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+            name: str
     """
-    description: Optional[str] = Field(
-        default=None,
-        sa_column=Column(String)
-    )
+    description: Optional[str] = Field(default=None)
 
 
 class MetadataMixin:
     """
-    Mixin to add JSON metadata field.
+    Mixin to add a metadata JSON field.
     
     Usage:
         class Product(MetadataMixin, table=True):
             id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-        
-        # Store arbitrary metadata
-        product.metadata = {"key": "value"}
+            name: str
     """
-    metadata: dict = Field(
-        default_factory=dict,
-        sa_column=Column("metadata", sa_column_kwargs={"server_default": "{}"})
-    )
-    # Note: For PostgreSQL, you might want to use JSONB:
-    # from sqlalchemy.dialects.postgresql import JSONB
-    # metadata: dict = Field(default_factory=dict, sa_column=Column(JSONB, server_default="{}"))
+    metadata: dict = Field(default_factory=dict, sa_column=Column("metadata"))
 
 
-class FullModelMixin(
-    UUIDPrimaryKeyMixin,
-    TimestampMixin,
-    SoftDeleteMixin,
-    ActiveMixin,
-):
+class FullModelMixin(TimestampMixin, UUIDPrimaryKeyMixin, ActiveMixin):
     """
-    Complete mixin with all common fields.
+    Complete mixin combining common model fields.
+    
+    Includes:
+    - id (UUID primary key)
+    - created_at, updated_at
+    - is_active
     
     Usage:
         class Product(FullModelMixin, table=True):
             name: str
-            price: Decimal
+            price: float
     """
     pass
 
 
-class AuditedModelMixin(
-    UUIDPrimaryKeyMixin,
-    TimestampMixin,
-    AuditMixin,
-    SoftDeleteMixin,
-):
+class AuditedModelMixin(FullModelMixin, CreatedByMixin, UpdatedByMixin):
     """
-    Full audit mixin with timestamps and soft delete.
+    Full audit mixin with user tracking.
+    
+    Includes:
+    - id (UUID primary key)
+    - created_at, updated_at
+    - is_active
+    - created_by_id, updated_by_id
     
     Usage:
         class Product(AuditedModelMixin, table=True):
             name: str
-            price: Decimal
+            price: float
     """
     pass
+
+
+__all__ = [
+    "TimestampMixin",
+    "SoftDeleteMixin",
+    "UUIDPrimaryKeyMixin",
+    "CreatedByMixin",
+    "UpdatedByMixin",
+    "AuditMixin",
+    "ActiveMixin",
+    "SlugMixin",
+    "TitleMixin",
+    "DescriptionMixin",
+    "MetadataMixin",
+    "FullModelMixin",
+    "AuditedModelMixin",
+]

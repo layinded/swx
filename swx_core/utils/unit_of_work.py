@@ -25,7 +25,7 @@ from contextlib import asynccontextmanager
 from functools import wraps
 import asyncio
 
-from swx_core.database.db_setup import get_session
+from swx_core.database.db import get_session
 
 T = TypeVar("T")
 

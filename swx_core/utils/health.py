@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from swx_core.database.db_setup import get_session
+from swx_core.database.db import get_session
 
 
 class HealthStatus(BaseModel):

@@ -22,7 +22,7 @@ from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import BinaryExpression
 
-from swx_core.database.db_setup import get_session
+from swx_core.database.db import get_session
 from swx_core.models.base import Base
 
 

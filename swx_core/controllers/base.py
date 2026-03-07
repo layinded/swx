@@ -31,7 +31,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel
 from sqlalchemy import select, func
 
-from swx_core.database.db_setup import get_session
+from swx_core.database.db import get_session
 from swx_core.repositories.base import BaseRepository
 from swx_core.services.base import BaseService
 from swx_core.utils.pagination import PaginatedResponse, PaginationParams

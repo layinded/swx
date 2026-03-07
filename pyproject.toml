@@ -1,6 +1,6 @@
 [project]
 name = "swx-core"
-version = "2.1.0"
+version = "2.1.4"
 description = "Production-ready FastAPI framework with RBAC, OAuth, JWT, billing, modular architecture, and base class patterns. Create projects with 'swx new', scaffold with 'swx make:resource --base'."
 readme = "README.md"
 license = {text = "MIT"}
