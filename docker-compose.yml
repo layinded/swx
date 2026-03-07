@@ -1,0 +1,236 @@
+services:
+
+  db:
+    image: timescale/timescaledb-ha:pg17
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    volumes:
+      - app-db-data:/home/postgres/pgdata/data
+    env_file:
+      - .env
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    command: [ "-c", "ai.ollama_host=http://host.docker.internal:11434" ]  # Uses local Ollama
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+
+  vectorizer-worker:
+    image: timescale/pgai-vectorizer-worker:v0.7.0
+    restart: always
+    environment:
+      # SECURITY: Use environment variables instead of hardcoded credentials
+      PGAI_VECTORIZER_WORKER_DB_URL: postgres://${DB_USER:-postgres}:${DB_PASSWORD}@db:5432/${DB_NAME:-postgres}
+      OLLAMA_HOST: http://host.docker.internal:11434
+    command: [ "--poll-interval", "5s", "--log-level", "DEBUG" ]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h db -U ${DB_USER:-postgres} -d ${DB_NAME:-postgres}" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  adminer:
+    image: adminer
+    restart: always
+    networks:
+      - default
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - ADMINER_DESIGN=dracula
+    healthcheck:
+      test: [ "CMD", "php", "-r", "file_get_contents('http://localhost:8080') ? exit(0) : exit(1);" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # NOTE: Adminer is a development tool and should NOT be exposed in production
+    # In production, remove this service or ensure it's not accessible via Caddy
+
+  swx-api:
+    image: "swx-api:latest"
+    restart: always
+    networks:
+      - default
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -c
+      - |
+        bash /app/scripts/prestart.sh
+        exec /app/.venv/bin/uvicorn swx_core.main:app --host 0.0.0.0 --port 8000 --workers 4
+    env_file:
+      - .env
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+      - ENVIRONMENT=${ENVIRONMENT:-local}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
+      - SECRET_KEY=${SECRET_KEY}
+      - FIRST_SUPERUSER=${FIRST_SUPERUSER}
+      - FIRST_SUPERUSER_PASSWORD=${FIRST_SUPERUSER_PASSWORD}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - EMAILS_FROM_EMAIL=${EMAILS_FROM_EMAIL}
+      - DOCKERIZED=true
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_ENABLED=true
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/utils/health-check" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+
+  # =====================================================
+  # Celery Workers - Background Task Processing
+  # =====================================================
+  celery-worker:
+    image: "swx-api:latest"
+    restart: always
+    networks:
+      - default
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -c
+      - |
+        celery -A workers.celery_app worker --loglevel=info --concurrency=4
+    env_file:
+      - .env
+    environment:
+      - DOCKERIZED=true
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_ENABLED=true
+    healthcheck:
+      test: ["CMD", "celery", "-A", "workers.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  celery-beat:
+    image: "swx-api:latest"
+    restart: always
+    networks:
+      - default
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -c
+      - |
+        celery -A workers.celery_app beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - DOCKERIZED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_ENABLED=true
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Celery monitoring (Flower) - optional for development
+  celery-flower:
+    image: "swx-api:latest"
+    restart: always
+    networks:
+      - default
+    depends_on:
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -c
+      - |
+        celery -A workers.celery_app flower --port=5555
+    env_file:
+      - .env
+    environment:
+      - DOCKERIZED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_ENABLED=true
+    ports:
+      - "5555:5555"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/api/workers"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - monitoring
+
+volumes:
+  app-db-data:
+  redis-data:
+
+networks:
+  default:
+    name: swx-api-network

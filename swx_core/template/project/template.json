@@ -1,0 +1,13 @@
+{
+    "project_name": "{{project_name}}",
+    "project_slug": "{{project_slug}}",
+    "project_title": "{{project_title}}",
+    "version": "0.1.0",
+    "description": "{{project_title}} - Built with SwX Framework",
+    "features": {
+        "docker": true,
+        "celery": true,
+        "redis": true,
+        "prometheus": false
+    }
+}

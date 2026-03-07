@@ -1,0 +1,131 @@
+# SwX Framework Test Commands
+
+.PHONY: test test-unit test-integration test-e2e test-cli test-coverage test-quick test-stress clean-test help
+
+# Default target
+help:
+	@echo "SwX Framework Test Commands"
+	@echo "==========================="
+	@echo "  make test              - Run all tests"
+	@echo "  make test-unit         - Run unit tests only"
+	@echo "  make test-integration  - Run integration tests only"
+	@echo "  make test-e2e          - Run end-to-end tests"
+	@echo "  make test-cli          - Run CLI command tests"
+	@echo "  make test-coverage     - Run tests with coverage report"
+	@echo "  make test-quick        - Run quick tests (skip slow)"
+	@echo "  make test-stress       - Run stress tests only"
+	@echo "  make clean-test        - Clean test artifacts"
+	@echo ""
+	@echo "Coverage targets:"
+	@echo "  make coverage-html     - Generate HTML coverage report"
+	@echo "  make coverage-xml      - Generate XML coverage report"
+	@echo "  make coverage-report   - Show coverage summary"
+	@echo ""
+	@echo "Specific test markers:"
+	@echo "  make test-container    - Run container tests"
+	@echo "  make test-guard        - Run guard system tests"
+	@echo "  make test-event        - Run event bus tests"
+	@echo "  make test-webhook      - Run webhook tests"
+	@echo "  make test-plugin       - Run plugin tests"
+
+# Run all tests
+test:
+	pytest tests/ -v --tb=short
+
+# Run unit tests only
+test-unit:
+	pytest tests/unit/ -v --tb=short
+
+# Run integration tests only
+test-integration:
+	pytest tests/integration/ -v --tb=short
+
+# Run end-to-end tests
+test-e2e:
+	pytest tests/e2e/ -v --tb=short
+
+# Run CLI tests
+test-cli:
+	pytest tests/cli/ -v --tb=short
+
+# Run tests with coverage
+test-coverage:
+	pytest tests/ -v --cov=swx_core --cov-report=term --cov-report=html --cov-report=xml
+
+# Generate HTML coverage report
+coverage-html:
+	pytest tests/ --cov=swx_core --cov-report=html
+	@echo "Coverage report generated in htmlcov/"
+
+# Generate XML coverage report
+coverage-xml:
+	pytest tests/ --cov=swx_core --cov-report=xml
+	@echo "Coverage report generated: coverage.xml"
+
+# Show coverage summary
+coverage-report:
+	pytest tests/ --cov=swx_core --cov-report=term-missing
+
+# Run quick tests (skip slow tests)
+test-quick:
+	pytest tests/ -v -m "not slow" --tb=short
+
+# Run stress tests only
+test-stress:
+	pytest tests/ -v -m "stress" --tb=short
+
+# Run container tests
+test-container:
+	pytest tests/ -v -m "container" --tb=short
+
+# Run guard tests
+test-guard:
+	pytest tests/ -v -m "guard" --tb=short
+
+# Run event tests
+test-event:
+	pytest tests/ -v -m "event" --tb=short
+
+# Run webhook tests
+test-webhook:
+	pytest tests/ -v -m "webhook" --tb=short
+
+# Run plugin tests
+test-plugin:
+	pytest tests/ -v -m "plugin" --tb=short
+
+# Run upgrade safety tests
+test-upgrade:
+	pytest tests/ -v -m "upgrade" --tb=short
+
+# Clean test artifacts
+clean-test:
+	rm -rf .pytest_cache
+	rm -rf .coverage
+	rm -rf htmlcov
+	rm -rf coverage.xml
+	rm -rf coverage.json
+	rm -rf .tox
+	rm -rf __pycache__
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+
+# Run tests in parallel
+test-parallel:
+	pytest tests/ -v -n auto --tb=short
+
+# Run tests with detailed output
+test-verbose:
+	pytest tests/ -vv --tb=long --capture=no
+
+# Run tests and fail if coverage below 85%
+test-strict:
+	pytest tests/ --cov=swx_core --cov-fail-under=85 --cov-report=term
+
+# Run mutation testing (requires mutmut)
+test-mutation:
+	mutmut run --paths-to-mutate=swx_core/
+
+# Watch mode (requires pytest-watch)
+test-watch:
+	ptw tests/ -- -v --tb=short

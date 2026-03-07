@@ -1,0 +1,48 @@
+[run]
+source = swx_core
+branch = true
+parallel = true
+omit =
+    */tests/*
+    */migrations/*
+    */__pycache__/*
+    */site-packages/*
+    */.venv/*
+    */venv/*
+    */env/*
+    */examples/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+    @abc.abstractmethod
+    ...$
+    pass$
+fail_under = 85
+show_missing = true
+skip_covered = false
+skip_empty = true
+precision = 2
+sort = Cover
+
+[html]
+directory = htmlcov
+title = SwX Framework Coverage Report
+
+[xml]
+output = coverage.xml
+
+[json]
+output = coverage.json
+show_contexts = true
+
+[paths]
+source =
+    swx_core/
+    /home/aayinde/PycharmProjects/swx-v2/swx_core/

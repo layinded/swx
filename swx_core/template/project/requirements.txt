@@ -1,0 +1,7 @@
+swx-core>=2.0.0
+uvicorn[standard]>=0.23.0
+psycopg[binary]>=3.1.13
+asyncpg>=0.29.0
+alembic>=1.12.1
+redis[hiredis]>=5.0.0
+celery>=5.3.0

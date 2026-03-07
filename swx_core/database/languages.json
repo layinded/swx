@@ -1,0 +1,1882 @@
+[
+  {
+    "language_code": "en",
+    "key": "translation_edit",
+    "value": "Edit"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_delete",
+    "value": "Delete"
+  },
+  {
+    "language_code": "en",
+    "key": "loading_translations",
+    "value": "Loading translations..."
+  },
+  {
+    "language_code": "cs",
+    "key": "admin_translations_heading",
+    "value": "Správa překladů"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_create_heading",
+    "value": "Vytvořit nový překlad"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_language_code",
+    "value": "Kód jazyka"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_language_code_placeholder",
+    "value": "např. en, cs"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_key",
+    "value": "Klíč"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_key_placeholder",
+    "value": "Zadejte klíč překladu"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_value",
+    "value": "Hodnota"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_value_placeholder",
+    "value": "Zadejte hodnotu překladu"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_create_button",
+    "value": "Vytvořit překlad"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_edit",
+    "value": "Upravit"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_delete",
+    "value": "Smazat"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_edit_heading",
+    "value": "Upravit překlad"
+  },
+  {
+    "language_code": "cs",
+    "key": "cancel_button",
+    "value": "Zrušit"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_update_button",
+    "value": "Aktualizovat překlad"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_delete_heading",
+    "value": "Smazat překlad"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_delete_confirmation",
+    "value": "Opravdu chcete smazat překlad pro {key}?"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_delete_button",
+    "value": "Smazat"
+  },
+  {
+    "language_code": "cs",
+    "key": "loading_translations",
+    "value": "Načítání překladů..."
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_created",
+    "value": "Překlad vytvořen"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_created_successfully",
+    "value": "Překlad byl úspěšně vytvořen."
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_create_error",
+    "value": "Nepodařilo se vytvořit překlad."
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_updated",
+    "value": "Překlad aktualizován"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_updated_successfully",
+    "value": "Překlad byl úspěšně aktualizován."
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_update_error",
+    "value": "Nepodařilo se aktualizovat překlad."
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_deleted",
+    "value": "Překlad smazán"
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_deleted_successfully",
+    "value": "Překlad byl úspěšně smazán."
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_delete_error",
+    "value": "Nepodařilo se smazat překlad."
+  },
+  {
+    "language_code": "en",
+    "key": "admin_translations_heading",
+    "value": "Translations Management"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_create_heading",
+    "value": "Create New Translation"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_language_code",
+    "value": "Language Code"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_language_code_placeholder",
+    "value": "e.g., en, cs"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_key",
+    "value": "Key"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_key_placeholder",
+    "value": "Enter translation key"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_value",
+    "value": "Value"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_value_placeholder",
+    "value": "Enter translation value"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_create_button",
+    "value": "Create Translation"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_edit_heading",
+    "value": "Edit Translation"
+  },
+  {
+    "language_code": "en",
+    "key": "cancel_button",
+    "value": "Cancel"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_update_button",
+    "value": "Update Translation"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_delete_heading",
+    "value": "Delete Translation"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_delete_confirmation",
+    "value": "Are you sure you want to delete the translation for {key}?"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_delete_button",
+    "value": "Delete"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_created",
+    "value": "Translation Created"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_created_successfully",
+    "value": "Translation was created successfully."
+  },
+  {
+    "language_code": "en",
+    "key": "translation_create_error",
+    "value": "Failed to create translation."
+  },
+  {
+    "language_code": "en",
+    "key": "translation_updated",
+    "value": "Translation Updated"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_updated_successfully",
+    "value": "Translation was updated successfully."
+  },
+  {
+    "language_code": "en",
+    "key": "translation_update_error",
+    "value": "Failed to update translation."
+  },
+  {
+    "language_code": "en",
+    "key": "translation_deleted",
+    "value": "Translation Deleted"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_deleted_successfully",
+    "value": "Translation was deleted successfully."
+  },
+  {
+    "language_code": "en",
+    "key": "translation_delete_error",
+    "value": "Failed to delete translation."
+  },
+  {
+    "language_code": "en",
+    "key": "sidebar_translations",
+    "value": "Translations"
+  },
+  {
+    "language_code": "en",
+    "key": "translation_filter_placeholder",
+    "value": "Search for translations"
+  },
+  {
+    "language_code": "cs",
+    "key": "oauth_success_message",
+    "value": "Úspěšně jste se přihlásili."
+  },
+  {
+    "language_code": "cs",
+    "key": "oauth_error_title",
+    "value": "⚠️ Chyba"
+  },
+  {
+    "language_code": "cs",
+    "key": "oauth_error_message",
+    "value": "Nepodařilo se přihlásit. Zkuste to prosím znovu."
+  },
+  {
+    "language_code": "cs",
+    "key": "oauth_processing",
+    "value": "Zpracovávám přihlášení... Prosím čekejte."
+  },
+  {
+    "language_code": "en",
+    "key": "pagination_previous",
+    "value": "Previous"
+  },
+  {
+    "language_code": "en",
+    "key": "pagination_next",
+    "value": "Next"
+  },
+  {
+    "language_code": "en",
+    "key": "pagination_page",
+    "value": "Page {page}"
+  },
+  {
+    "language_code": "cs",
+    "key": "pagination_previous",
+    "value": "Předchozí"
+  },
+  {
+    "language_code": "cs",
+    "key": "pagination_next",
+    "value": "Další"
+  },
+  {
+    "language_code": "cs",
+    "key": "pagination_page",
+    "value": "Stránka {page}"
+  },
+  {
+    "language_code": "en",
+    "key": "sidebar_open_menu",
+    "value": "Open Menu"
+  },
+  {
+    "language_code": "en",
+    "key": "sidebar_logout",
+    "value": "Log out"
+  },
+  {
+    "language_code": "en",
+    "key": "sidebar_logged_in_as",
+    "value": "Logged in as:"
+  },
+  {
+    "language_code": "cs",
+    "key": "sidebar_open_menu",
+    "value": "Otevřít nabídku"
+  },
+  {
+    "language_code": "cs",
+    "key": "sidebar_logout",
+    "value": "Odhlásit se"
+  },
+  {
+    "language_code": "cs",
+    "key": "sidebar_logged_in_as",
+    "value": "Přihlášen jako:"
+  },
+  {
+    "language_code": "en",
+    "key": "social_continue_with_google",
+    "value": "Continue with Google"
+  },
+  {
+    "language_code": "en",
+    "key": "social_continue_with_facebook",
+    "value": "Continue with Facebook"
+  },
+  {
+    "language_code": "cs",
+    "key": "social_continue_with_google",
+    "value": "Pokračovat přes Google"
+  },
+  {
+    "language_code": "cs",
+    "key": "social_continue_with_facebook",
+    "value": "Pokračovat přes Facebook"
+  },
+  {
+    "language_code": "cs",
+    "key": "user_menu_options",
+    "value": "Možnosti"
+  },
+  {
+    "language_code": "cs",
+    "key": "user_menu_my_profile",
+    "value": "Můj profil"
+  },
+  {
+    "language_code": "cs",
+    "key": "user_menu_log_out",
+    "value": "Odhlásit se"
+  },
+  {
+    "language_code": "en",
+    "key": "user_menu_options",
+    "value": "Options"
+  },
+  {
+    "language_code": "en",
+    "key": "user_menu_my_profile",
+    "value": "My profile"
+  },
+  {
+    "language_code": "en",
+    "key": "user_menu_log_out",
+    "value": "Log out"
+  },
+  {
+    "language_code": "en",
+    "key": "sidebar_dashboard",
+    "value": "Dashboard"
+  },
+  {
+    "language_code": "en",
+    "key": "sidebar_user_settings",
+    "value": "User Settings"
+  },
+  {
+    "language_code": "en",
+    "key": "sidebar_admin",
+    "value": "Admin"
+  },
+  {
+    "language_code": "cs",
+    "key": "sidebar_dashboard",
+    "value": "Přehled"
+  },
+  {
+    "language_code": "cs",
+    "key": "sidebar_user_settings",
+    "value": "Nastavení uživatele"
+  },
+  {
+    "language_code": "cs",
+    "key": "sidebar_admin",
+    "value": "Administrace"
+  },
+  {
+    "language_code": "en",
+    "key": "form_label_preferred_language",
+    "value": "Preferred Language"
+  },
+  {
+    "language_code": "en",
+    "key": "language_english",
+    "value": "English"
+  },
+  {
+    "language_code": "en",
+    "key": "language_czech",
+    "value": "Czech"
+  },
+  {
+    "language_code": "en",
+    "key": "button_edit",
+    "value": "Edit"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_label_preferred_language",
+    "value": "Preferovaný jazyk"
+  },
+  {
+    "language_code": "cs",
+    "key": "language_english",
+    "value": "Anglicky"
+  },
+  {
+    "language_code": "cs",
+    "key": "language_czech",
+    "value": "Česky"
+  },
+  {
+    "language_code": "cs",
+    "key": "button_edit",
+    "value": "Upravit"
+  },
+  {
+    "language_code": "en",
+    "key": "success",
+    "value": "Success!"
+  },
+  {
+    "language_code": "cs",
+    "key": "success",
+    "value": "Úspěch!"
+  },
+  {
+    "language_code": "en",
+    "key": "user_updated_successfully",
+    "value": "User updated successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_updated_successfully",
+    "value": "Uživatel byl úspěšně aktualizován."
+  },
+  {
+    "language_code": "en",
+    "key": "appearance_heading",
+    "value": "Appearance"
+  },
+  {
+    "language_code": "cs",
+    "key": "appearance_heading",
+    "value": "Vzhled"
+  },
+  {
+    "language_code": "en",
+    "key": "appearance_light_mode",
+    "value": "Light Mode"
+  },
+  {
+    "language_code": "cs",
+    "key": "appearance_light_mode",
+    "value": "Světlý režim"
+  },
+  {
+    "language_code": "en",
+    "key": "appearance_dark_mode",
+    "value": "Dark Mode"
+  },
+  {
+    "language_code": "cs",
+    "key": "appearance_dark_mode",
+    "value": "Tmavý režim"
+  },
+  {
+    "language_code": "en",
+    "key": "change_password_heading",
+    "value": "Change Password"
+  },
+  {
+    "language_code": "cs",
+    "key": "change_password_heading",
+    "value": "Změna hesla"
+  },
+  {
+    "language_code": "en",
+    "key": "change_password_success_message",
+    "value": "Password updated successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "change_password_success_message",
+    "value": "Heslo bylo úspěšně změněno."
+  },
+  {
+    "language_code": "en",
+    "key": "delete_account_heading",
+    "value": "Delete Account"
+  },
+  {
+    "language_code": "cs",
+    "key": "delete_account_heading",
+    "value": "Smazat účet"
+  },
+  {
+    "language_code": "en",
+    "key": "delete_account_button",
+    "value": "Delete Account"
+  },
+  {
+    "language_code": "cs",
+    "key": "delete_account_button",
+    "value": "Smazat účet"
+  },
+  {
+    "language_code": "en",
+    "key": "delete_success_message",
+    "value": "The {entity} was deleted successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "delete_success_message",
+    "value": "{entity} byl úspěšně smazán."
+  },
+  {
+    "language_code": "en",
+    "key": "notfound_oops",
+    "value": "Oops!"
+  },
+  {
+    "language_code": "cs",
+    "key": "notfound_oops",
+    "value": "Ups!"
+  },
+  {
+    "language_code": "en",
+    "key": "notfound_page_not_found",
+    "value": "Page not found."
+  },
+  {
+    "language_code": "cs",
+    "key": "notfound_page_not_found",
+    "value": "Stránka nebyla nalezena."
+  },
+  {
+    "language_code": "en",
+    "key": "oauth_success_welcome",
+    "value": "Welcome!"
+  },
+  {
+    "language_code": "cs",
+    "key": "oauth_success_welcome",
+    "value": "Vítejte!"
+  },
+  {
+    "language_code": "en",
+    "key": "oauth_processing",
+    "value": "Processing login... Please wait."
+  },
+  {
+    "language_code": "cs",
+    "key": "oauth_processing",
+    "value": "Probíhá přihlášení... Prosím, čekejte."
+  },
+  {
+    "language_code": "en",
+    "key": "form_validation_email_required",
+    "value": "Email is required"
+  },
+  {
+    "language_code": "en",
+    "key": "form_placeholder_email",
+    "value": "Email"
+  },
+  {
+    "language_code": "en",
+    "key": "form_label_full_name",
+    "value": "Full Name"
+  },
+  {
+    "language_code": "en",
+    "key": "form_placeholder_full_name",
+    "value": "Full Name"
+  },
+  {
+    "language_code": "en",
+    "key": "form_label_set_new_password",
+    "value": "Set New Password"
+  },
+  {
+    "language_code": "en",
+    "key": "form_placeholder_new_password",
+    "value": "New Password (leave empty to keep current password)"
+  },
+  {
+    "language_code": "en",
+    "key": "form_label_confirm_password",
+    "value": "Confirm Password"
+  },
+  {
+    "language_code": "en",
+    "key": "form_placeholder_confirm_password",
+    "value": "Confirm Password"
+  },
+  {
+    "language_code": "en",
+    "key": "form_validation_password_min_length",
+    "value": "Password must be at least 8 characters"
+  },
+  {
+    "language_code": "en",
+    "key": "form_validation_passwords_do_not_match",
+    "value": "The passwords do not match"
+  },
+  {
+    "language_code": "cs",
+    "key": "edit_user_modal_header",
+    "value": "Upravit uživatele"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_label_email",
+    "value": "E-mail"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_validation_email_required",
+    "value": "E-mail je povinný"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_placeholder_email",
+    "value": "E-mail"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_label_full_name",
+    "value": "Celé jméno"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_placeholder_full_name",
+    "value": "Celé jméno"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_label_set_new_password",
+    "value": "Nastavit nové heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_placeholder_new_password",
+    "value": "Nové heslo (ponechte prázdné, pokud chcete zachovat aktuální heslo)"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_label_confirm_password",
+    "value": "Potvrdit heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_placeholder_confirm_password",
+    "value": "Potvrdit heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_validation_password_min_length",
+    "value": "Heslo musí mít alespoň 8 znaků"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_validation_passwords_do_not_match",
+    "value": "Hesla se neshodují"
+  },
+  {
+    "language_code": "en",
+    "key": "appearance_heading",
+    "value": "Appearance"
+  },
+  {
+    "language_code": "en",
+    "key": "appearance_light_mode",
+    "value": "Light Mode"
+  },
+  {
+    "language_code": "en",
+    "key": "appearance_dark_mode",
+    "value": "Dark Mode"
+  },
+  {
+    "language_code": "en",
+    "key": "appearance_system_default",
+    "value": "System Default"
+  },
+  {
+    "language_code": "cs",
+    "key": "appearance_heading",
+    "value": "Vzhled"
+  },
+  {
+    "language_code": "cs",
+    "key": "appearance_light_mode",
+    "value": "Světlý režim"
+  },
+  {
+    "language_code": "cs",
+    "key": "appearance_dark_mode",
+    "value": "Tmavý režim"
+  },
+  {
+    "language_code": "cs",
+    "key": "appearance_system_default",
+    "value": "Systémové výchozí"
+  },
+  {
+    "language_code": "en",
+    "key": "change_password_heading",
+    "value": "Change Password"
+  },
+  {
+    "language_code": "en",
+    "key": "change_password_social_error",
+    "value": "Your account was created using social login, so you cannot set or change a password."
+  },
+  {
+    "language_code": "en",
+    "key": "form_label_current_password",
+    "value": "Current Password"
+  },
+  {
+    "language_code": "en",
+    "key": "form_placeholder_current_password",
+    "value": "Current Password"
+  },
+  {
+    "language_code": "en",
+    "key": "form_validation_current_password_required",
+    "value": "Current password is required"
+  },
+  {
+    "language_code": "cs",
+    "key": "change_password_heading",
+    "value": "Změna hesla"
+  },
+  {
+    "language_code": "cs",
+    "key": "change_password_social_error",
+    "value": "Váš účet byl vytvořen pomocí sociálního přihlášení, proto nemůžete nastavit ani změnit heslo."
+  },
+  {
+    "language_code": "cs",
+    "key": "form_label_current_password",
+    "value": "Aktuální heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_placeholder_current_password",
+    "value": "Aktuální heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_validation_current_password_required",
+    "value": "Aktuální heslo je povinné"
+  },
+  {
+    "language_code": "en",
+    "key": "button_save",
+    "value": "Save"
+  },
+  {
+    "language_code": "en",
+    "key": "button_cancel",
+    "value": "Cancel"
+  },
+  {
+    "language_code": "cs",
+    "key": "button_save",
+    "value": "Uložit"
+  },
+  {
+    "language_code": "cs",
+    "key": "button_cancel",
+    "value": "Zrušit"
+  },
+  {
+    "language_code": "en",
+    "key": "recover_email_sent_message",
+    "value": "We sent an email with a link to reset your password."
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_password_heading",
+    "value": "Obnova hesla"
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_password_text",
+    "value": "Zadejte váš registrovaný e-mail a my vám zašleme odkaz pro obnovení hesla."
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_email_required",
+    "value": "E-mail je povinný"
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_email_placeholder",
+    "value": "Zadejte váš e-mail"
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_reset_link_button",
+    "value": "Odeslat odkaz na obnovení"
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_email_sent_title",
+    "value": "E-mail odeslán."
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_email_sent_message",
+    "value": "Odeslali jsme vám e-mail s odkazem na obnovení hesla."
+  },
+  {
+    "language_code": "en",
+    "key": "reset_password_heading",
+    "value": "Reset Password"
+  },
+  {
+    "language_code": "en",
+    "key": "reset_password_text",
+    "value": "Please enter your new password and confirm it to reset your password."
+  },
+  {
+    "language_code": "en",
+    "key": "reset_new_password_label",
+    "value": "New Password"
+  },
+  {
+    "language_code": "en",
+    "key": "reset_new_password_placeholder",
+    "value": "Enter new password"
+  },
+  {
+    "language_code": "en",
+    "key": "reset_confirm_password_label",
+    "value": "Confirm Password"
+  },
+  {
+    "language_code": "en",
+    "key": "reset_confirm_password_placeholder",
+    "value": "Confirm new password"
+  },
+  {
+    "language_code": "en",
+    "key": "reset_password_button",
+    "value": "Reset Password"
+  },
+  {
+    "language_code": "en",
+    "key": "reset_success_title",
+    "value": "Success!"
+  },
+  {
+    "language_code": "en",
+    "key": "reset_success_message",
+    "value": "Password updated successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "reset_password_heading",
+    "value": "Obnovení hesla"
+  },
+  {
+    "language_code": "cs",
+    "key": "reset_password_text",
+    "value": "Zadejte nové heslo a potvrďte ho pro obnovení hesla."
+  },
+  {
+    "language_code": "cs",
+    "key": "reset_new_password_label",
+    "value": "Nové heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "reset_new_password_placeholder",
+    "value": "Zadejte nové heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "reset_confirm_password_label",
+    "value": "Potvrďte heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "reset_confirm_password_placeholder",
+    "value": "Potvrďte nové heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "reset_password_button",
+    "value": "Obnovit heslo"
+  },
+  {
+    "language_code": "cs",
+    "key": "reset_success_title",
+    "value": "Úspěch!"
+  },
+  {
+    "language_code": "cs",
+    "key": "reset_success_message",
+    "value": "Heslo bylo úspěšně změněno."
+  },
+  {
+    "language_code": "en",
+    "key": "form_invalid_email_address",
+    "value": "Invalid email address"
+  },
+  {
+    "language_code": "en",
+    "key": "form_invalid_name",
+    "value": "Invalid name"
+  },
+  {
+    "language_code": "en",
+    "key": "form_password_min_length",
+    "value": "Password must be at least 8 characters"
+  },
+  {
+    "language_code": "en",
+    "key": "form_password_required",
+    "value": "Password is required"
+  },
+  {
+    "language_code": "en",
+    "key": "form_passwords_do_not_match",
+    "value": "The passwords do not match"
+  },
+  {
+    "language_code": "en",
+    "key": "form_password_confirmation_required",
+    "value": "Password confirmation is required"
+  },
+  {
+    "language_code": "en",
+    "key": "form_generic_error",
+    "value": "Something went wrong."
+  },
+  {
+    "language_code": "cs",
+    "key": "form_invalid_email_address",
+    "value": "Neplatná e-mailová adresa"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_invalid_name",
+    "value": "Neplatné jméno"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_password_min_length",
+    "value": "Heslo musí mít alespoň 8 znaků"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_password_required",
+    "value": "Heslo je povinné"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_passwords_do_not_match",
+    "value": "Hesla se neshodují"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_password_confirmation_required",
+    "value": "Potvrzení hesla je povinné"
+  },
+  {
+    "language_code": "cs",
+    "key": "form_generic_error",
+    "value": "Něco se pokazilo."
+  },
+  {
+    "language_code": "en",
+    "key": "success",
+    "value": "Success!"
+  },
+  {
+    "language_code": "cs",
+    "key": "success",
+    "value": "Úspěch!"
+  },
+  {
+    "language_code": "en",
+    "key": "user_created_successfully",
+    "value": "User created successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_created_successfully",
+    "value": "Uživatel byl úspěšně vytvořen."
+  },
+  {
+    "language_code": "en",
+    "key": "edit_user_modal_header",
+    "value": "Edit User"
+  },
+  {
+    "language_code": "en",
+    "key": "form_label_email",
+    "value": "Email"
+  },
+  {
+    "language_code": "en",
+    "key": "user_not_found",
+    "value": "User not found."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_not_found",
+    "value": "Uživatel nebyl nalezen."
+  },
+  {
+    "language_code": "en",
+    "key": "inactive_user",
+    "value": "User is inactive."
+  },
+  {
+    "language_code": "cs",
+    "key": "inactive_user",
+    "value": "Uživatel je neaktivní."
+  },
+  {
+    "language_code": "en",
+    "key": "insufficient_privileges",
+    "value": "Insufficient privileges."
+  },
+  {
+    "language_code": "cs",
+    "key": "insufficient_privileges",
+    "value": "Nedostatečná oprávnění."
+  },
+  {
+    "language_code": "en",
+    "key": "user_lacks_required_privileges",
+    "value": "User lacks required privileges."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_lacks_required_privileges",
+    "value": "Uživatel postrádá požadovaná oprávnění."
+  },
+  {
+    "language_code": "en",
+    "key": "invalid_refresh_token_payload",
+    "value": "Invalid refresh token payload."
+  },
+  {
+    "language_code": "cs",
+    "key": "invalid_refresh_token_payload",
+    "value": "Neplatný obsah refresh tokenu."
+  },
+  {
+    "language_code": "en",
+    "key": "invalid_or_revoked_refresh_token",
+    "value": "Invalid or revoked refresh token."
+  },
+  {
+    "language_code": "cs",
+    "key": "invalid_or_revoked_refresh_token",
+    "value": "Neplatný nebo odvolaný refresh token."
+  },
+  {
+    "language_code": "en",
+    "key": "refresh_token_expired",
+    "value": "Refresh token expired."
+  },
+  {
+    "language_code": "cs",
+    "key": "refresh_token_expired",
+    "value": "Refresh token vypršel."
+  },
+  {
+    "language_code": "en",
+    "key": "dashboard_hi",
+    "value": "Hi, {name} 👋🏼"
+  },
+  {
+    "language_code": "cs",
+    "key": "dashboard_hi",
+    "value": "Ahoj, {name} 👋🏼"
+  },
+  {
+    "language_code": "en",
+    "key": "dashboard_welcome_back",
+    "value": "Welcome back, nice to see you again!"
+  },
+  {
+    "language_code": "cs",
+    "key": "dashboard_welcome_back",
+    "value": "Vítejte zpět, hezké vás znovu vidět!"
+  },
+  {
+    "language_code": "en",
+    "key": "admin_users_management",
+    "value": "Users Management"
+  },
+  {
+    "language_code": "cs",
+    "key": "admin_users_management",
+    "value": "Správa uživatelů"
+  },
+  {
+    "language_code": "en",
+    "key": "admin_role",
+    "value": "Role"
+  },
+  {
+    "language_code": "cs",
+    "key": "admin_role",
+    "value": "Role"
+  },
+  {
+    "language_code": "en",
+    "key": "settings_user_settings",
+    "value": "User Settings"
+  },
+  {
+    "language_code": "cs",
+    "key": "settings_user_settings",
+    "value": "Nastavení uživatele"
+  },
+  {
+    "language_code": "en",
+    "key": "settings_password",
+    "value": "Password"
+  },
+  {
+    "language_code": "cs",
+    "key": "settings_password",
+    "value": "Heslo"
+  },
+  {
+    "language_code": "en",
+    "key": "login_email_or_username_placeholder",
+    "value": "Email or Username"
+  },
+  {
+    "language_code": "cs",
+    "key": "login_email_or_username_placeholder",
+    "value": "Email nebo uživatelské jméno"
+  },
+  {
+    "language_code": "en",
+    "key": "login_password_placeholder",
+    "value": "Password"
+  },
+  {
+    "language_code": "cs",
+    "key": "login_password_placeholder",
+    "value": "Heslo"
+  },
+  {
+    "language_code": "en",
+    "key": "login_show_password",
+    "value": "Show password"
+  },
+  {
+    "language_code": "cs",
+    "key": "login_show_password",
+    "value": "Zobrazit heslo"
+  },
+  {
+    "language_code": "en",
+    "key": "login_hide_password",
+    "value": "Hide password"
+  },
+  {
+    "language_code": "cs",
+    "key": "login_hide_password",
+    "value": "Skrýt heslo"
+  },
+  {
+    "language_code": "en",
+    "key": "login_forgot_password",
+    "value": "Forgot password?"
+  },
+  {
+    "language_code": "cs",
+    "key": "login_forgot_password",
+    "value": "Zapomněli jste heslo?"
+  },
+  {
+    "language_code": "en",
+    "key": "login_button",
+    "value": "Log In"
+  },
+  {
+    "language_code": "cs",
+    "key": "login_button",
+    "value": "Přihlásit se"
+  },
+  {
+    "language_code": "en",
+    "key": "login_no_account",
+    "value": "Don't have an account?"
+  },
+  {
+    "language_code": "cs",
+    "key": "login_no_account",
+    "value": "Nemáte účet?"
+  },
+  {
+    "language_code": "en",
+    "key": "login_signup",
+    "value": "Sign up"
+  },
+  {
+    "language_code": "cs",
+    "key": "login_signup",
+    "value": "Zaregistrovat se"
+  },
+  {
+    "language_code": "en",
+    "key": "recover_password_heading",
+    "value": "Password Recovery"
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_password_heading",
+    "value": "Obnovení hesla"
+  },
+  {
+    "language_code": "en",
+    "key": "recover_email_placeholder",
+    "value": "Enter your email"
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_email_placeholder",
+    "value": "Zadejte svůj e-mail"
+  },
+  {
+    "language_code": "en",
+    "key": "recover_reset_link_button",
+    "value": "Send Reset Link"
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_reset_link_button",
+    "value": "Odeslat odkaz pro obnovení"
+  },
+  {
+    "language_code": "en",
+    "key": "recover_email_sent_title",
+    "value": "Email sent."
+  },
+  {
+    "language_code": "cs",
+    "key": "recover_email_sent_title",
+    "value": "Email odeslán."
+  },
+  {
+    "language_code": "en",
+    "key": "insufficient_privileges",
+    "value": "Insufficient privileges."
+  },
+  {
+    "language_code": "cs",
+    "key": "insufficient_privileges",
+    "value": "Nedostatečná oprávnění."
+  },
+  {
+    "language_code": "en",
+    "key": "access_denied",
+    "value": "Access denied."
+  },
+  {
+    "language_code": "cs",
+    "key": "access_denied",
+    "value": "Přístup zakázán."
+  },
+  {
+    "language_code": "en",
+    "key": "incorrect_current_password",
+    "value": "Incorrect current password."
+  },
+  {
+    "language_code": "cs",
+    "key": "incorrect_current_password",
+    "value": "Nesprávné aktuální heslo."
+  },
+  {
+    "language_code": "en",
+    "key": "password_updated_successfully",
+    "value": "Password updated successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "password_updated_successfully",
+    "value": "Heslo bylo úspěšně změněno."
+  },
+  {
+    "language_code": "en",
+    "key": "user_already_exists",
+    "value": "User already exists."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_already_exists",
+    "value": "Uživatel již existuje."
+  },
+  {
+    "language_code": "en",
+    "key": "user_email_already_exists",
+    "value": "User with this email already exists."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_email_already_exists",
+    "value": "Uživatel s tímto e-mailem již existuje."
+  },
+  {
+    "language_code": "en",
+    "key": "user_deleted_successfully",
+    "value": "User deleted successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_deleted_successfully",
+    "value": "Uživatel byl úspěšně smazán."
+  },
+  {
+    "language_code": "en",
+    "key": "user_not_found",
+    "value": "User not found."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_not_found",
+    "value": "Uživatel nebyl nalezen."
+  },
+  {
+    "language_code": "en",
+    "key": "incorrect_email_or_password",
+    "value": "Incorrect email or password."
+  },
+  {
+    "language_code": "cs",
+    "key": "incorrect_email_or_password",
+    "value": "Nesprávný email nebo heslo."
+  },
+  {
+    "language_code": "en",
+    "key": "inactive_user",
+    "value": "User is inactive."
+  },
+  {
+    "language_code": "cs",
+    "key": "inactive_user",
+    "value": "Uživatel je neaktivní."
+  },
+  {
+    "language_code": "en",
+    "key": "invalid_or_expired_refresh_token",
+    "value": "Invalid or expired refresh token."
+  },
+  {
+    "language_code": "cs",
+    "key": "invalid_or_expired_refresh_token",
+    "value": "Neplatný nebo vypršelý refresh token."
+  },
+  {
+    "language_code": "en",
+    "key": "token_already_revoked",
+    "value": "Token already revoked or missing."
+  },
+  {
+    "language_code": "cs",
+    "key": "token_already_revoked",
+    "value": "Token byl již odvolán nebo chybí."
+  },
+  {
+    "language_code": "en",
+    "key": "logged_out_successfully",
+    "value": "Successfully logged out."
+  },
+  {
+    "language_code": "cs",
+    "key": "logged_out_successfully",
+    "value": "Úspěšně odhlášen."
+  },
+  {
+    "language_code": "en",
+    "key": "user_email_not_found",
+    "value": "User with this email does not exist."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_email_not_found",
+    "value": "Uživatel s tímto emailem neexistuje."
+  },
+  {
+    "language_code": "en",
+    "key": "password_reset_not_available",
+    "value": "Password reset is only available for local users."
+  },
+  {
+    "language_code": "cs",
+    "key": "password_reset_not_available",
+    "value": "Resetování hesla je dostupné pouze pro lokální uživatele."
+  },
+  {
+    "language_code": "en",
+    "key": "password_recovery_email_sent_successfully",
+    "value": "Password recovery email sent successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "password_recovery_email_sent_successfully",
+    "value": "Email pro obnovení hesla byl úspěšně odeslán."
+  },
+  {
+    "language_code": "en",
+    "key": "invalid_or_expired_reset_token",
+    "value": "Invalid or expired reset token."
+  },
+  {
+    "language_code": "cs",
+    "key": "invalid_or_expired_reset_token",
+    "value": "Neplatný nebo vypršelý reset token."
+  },
+  {
+    "language_code": "en",
+    "key": "password_reset_successful",
+    "value": "Password reset successful. You have been logged out."
+  },
+  {
+    "language_code": "cs",
+    "key": "password_reset_successful",
+    "value": "Reset hesla byl úspěšný. Byli jste odhlášeni."
+  },
+  {
+    "language_code": "en",
+    "key": "google_login_disabled",
+    "value": "Google login is disabled."
+  },
+  {
+    "language_code": "cs",
+    "key": "google_login_disabled",
+    "value": "Google přihlášení je zakázáno."
+  },
+  {
+    "language_code": "en",
+    "key": "facebook_login_disabled",
+    "value": "Facebook login is disabled."
+  },
+  {
+    "language_code": "cs",
+    "key": "facebook_login_disabled",
+    "value": "Facebook přihlášení je zakázáno."
+  },
+  {
+    "language_code": "en",
+    "key": "could_not_validate_credentials",
+    "value": "Could not validate credentials."
+  },
+  {
+    "language_code": "cs",
+    "key": "could_not_validate_credentials",
+    "value": "Nepodařilo se ověřit přihlašovací údaje."
+  },
+  {
+    "language_code": "en",
+    "key": "user_not_found",
+    "value": "User not found."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_not_found",
+    "value": "Uživatel nebyl nalezen."
+  },
+  {
+    "language_code": "cs",
+    "key": "email_verification_body",
+    "value": "Klikněte na odkaz níže a ověřte svou e-mailovou adresu:\n{verification_link}"
+  },
+  {
+    "language_code": "en",
+    "key": "email_footer",
+    "value": "Thank you for using Swifter-FS!"
+  },
+  {
+    "language_code": "cs",
+    "key": "email_footer",
+    "value": "Děkujeme, že používáte Swifter-FS!"
+  },
+  {
+    "language_code": "en",
+    "key": "login_success",
+    "value": "Welcome back, {username}!"
+  },
+  {
+    "language_code": "cs",
+    "key": "login_success",
+    "value": "Vítejte zpět, {username}!"
+  },
+  {
+    "language_code": "en",
+    "key": "invalid_credentials",
+    "value": "Invalid username or password."
+  },
+  {
+    "language_code": "cs",
+    "key": "invalid_credentials",
+    "value": "Neplatné uživatelské jméno nebo heslo."
+  },
+  {
+    "language_code": "en",
+    "key": "profile_updated",
+    "value": "Your profile has been updated successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "profile_updated",
+    "value": "Váš profil byl úspěšně aktualizován."
+  },
+  {
+    "language_code": "en",
+    "key": "password_changed",
+    "value": "Your password was changed successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "password_changed",
+    "value": "Vaše heslo bylo úspěšně změněno."
+  },
+  {
+    "language_code": "en",
+    "key": "new_message",
+    "value": "Hi {username}, you have {count} new messages."
+  },
+  {
+    "language_code": "cs",
+    "key": "new_message",
+    "value": "Ahoj {username}, máte {count} nových zpráv."
+  },
+  {
+    "language_code": "en",
+    "key": "task_completed",
+    "value": "Task '{task_name}' completed successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "task_completed",
+    "value": "Úkol '{task_name}' byl úspěšně dokončen."
+  },
+  {
+    "language_code": "en",
+    "key": "user_logged_in",
+    "value": "{username} logged in at {timestamp}."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_logged_in",
+    "value": "{username} se přihlásil v {timestamp}."
+  },
+  {
+    "language_code": "en",
+    "key": "user_logged_out",
+    "value": "{username} logged out at {timestamp}."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_logged_out",
+    "value": "{username} se odhlásil v {timestamp}."
+  },
+  {
+    "language_code": "en",
+    "key": "error_occurred",
+    "value": "An error occurred: {error_message}."
+  },
+  {
+    "language_code": "cs",
+    "key": "error_occurred",
+    "value": "Došlo k chybě: {error_message}."
+  },
+  {
+    "language_code": "en",
+    "key": "not_found",
+    "value": "The requested resource was not found."
+  },
+  {
+    "language_code": "cs",
+    "key": "not_found",
+    "value": "Požadovaný zdroj nebyl nalezen."
+  },
+  {
+    "language_code": "en",
+    "key": "translation_created",
+    "value": "Translation created successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_created",
+    "value": "Překlad byl úspěšně vytvořen."
+  },
+  {
+    "language_code": "en",
+    "key": "translation_updated",
+    "value": "Translation updated successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_updated",
+    "value": "Překlad byl úspěšně aktualizován."
+  },
+  {
+    "language_code": "en",
+    "key": "translation_deleted",
+    "value": "Translation deleted successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "translation_deleted",
+    "value": "Překlad byl úspěšně smazán."
+  },
+  {
+    "language_code": "en",
+    "key": "no_translations_found",
+    "value": "No translations found for the requested language."
+  },
+  {
+    "language_code": "cs",
+    "key": "no_translations_found",
+    "value": "Nebyly nalezeny žádné překlady pro zadaný jazyk."
+  },
+  {
+    "language_code": "en",
+    "key": "user_already_exists",
+    "value": "User already exists."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_already_exists",
+    "value": "Uživatel již existuje."
+  },
+  {
+    "language_code": "en",
+    "key": "user_email_already_exists",
+    "value": "User with this email already exists."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_email_already_exists",
+    "value": "Uživatel s tímto e-mailem již existuje."
+  },
+  {
+    "language_code": "en",
+    "key": "user_deleted_successfully",
+    "value": "User deleted successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_deleted_successfully",
+    "value": "Uživatel byl úspěšně smazán."
+  },
+  {
+    "language_code": "en",
+    "key": "user_not_found",
+    "value": "User not found."
+  },
+  {
+    "language_code": "cs",
+    "key": "user_not_found",
+    "value": "Uživatel nebyl nalezen."
+  },
+  {
+    "language_code": "en",
+    "key": "insufficient_privileges",
+    "value": "Insufficient privileges."
+  },
+  {
+    "language_code": "cs",
+    "key": "insufficient_privileges",
+    "value": "Nedostatečná oprávnění."
+  },
+  {
+    "language_code": "en",
+    "key": "access_denied",
+    "value": "Access denied."
+  },
+  {
+    "language_code": "cs",
+    "key": "access_denied",
+    "value": "Přístup zakázán."
+  },
+  {
+    "language_code": "en",
+    "key": "incorrect_current_password",
+    "value": "Incorrect current password."
+  },
+  {
+    "language_code": "cs",
+    "key": "incorrect_current_password",
+    "value": "Nesprávné aktuální heslo."
+  },
+  {
+    "language_code": "en",
+    "key": "password_updated_successfully",
+    "value": "Password updated successfully."
+  },
+  {
+    "language_code": "cs",
+    "key": "password_updated_successfully",
+    "value": "Heslo bylo úspěšně změněno."
+  },
+  {
+    "language_code": "en",
+    "key": "validation_required",
+    "value": "The field '{field}' is required."
+  },
+  {
+    "language_code": "cs",
+    "key": "validation_required",
+    "value": "Pole '{field}' je povinné."
+  },
+  {
+    "language_code": "en",
+    "key": "validation_email",
+    "value": "Please enter a valid email address."
+  },
+  {
+    "language_code": "cs",
+    "key": "validation_email",
+    "value": "Zadejte platnou e-mailovou adresu."
+  },
+  {
+    "language_code": "en",
+    "key": "validation_password_length",
+    "value": "Password must be at least {min_length} characters."
+  },
+  {
+    "language_code": "cs",
+    "key": "validation_password_length",
+    "value": "Heslo musí mít alespoň {min_length} znaků."
+  },
+  {
+    "language_code": "en",
+    "key": "validation_match_password",
+    "value": "Passwords do not match."
+  },
+  {
+    "language_code": "cs",
+    "key": "validation_match_password",
+    "value": "Hesla se neshodují."
+  },
+  {
+    "language_code": "en",
+    "key": "dashboard_welcome",
+    "value": "Welcome to your dashboard, {username}!"
+  },
+  {
+    "language_code": "cs",
+    "key": "dashboard_welcome",
+    "value": "Vítejte na svém panelu, {username}!"
+  },
+  {
+    "language_code": "en",
+    "key": "dashboard_overview",
+    "value": "Here’s an overview of your activities:"
+  },
+  {
+    "language_code": "cs",
+    "key": "dashboard_overview",
+    "value": "Zde je přehled vašich aktivit:"
+  },
+  {
+    "language_code": "en",
+    "key": "dashboard_tasks",
+    "value": "You have {count} pending tasks."
+  },
+  {
+    "language_code": "cs",
+    "key": "dashboard_tasks",
+    "value": "Máte {count} nevyřízených úkolů."
+  },
+  {
+    "language_code": "en",
+    "key": "dashboard_notifications",
+    "value": "Recent notifications:"
+  },
+  {
+    "language_code": "cs",
+    "key": "dashboard_notifications",
+    "value": "Nedávná oznámení:"
+  },
+  {
+    "language_code": "en",
+    "key": "email_greeting",
+    "value": "Hello {username},"
+  },
+  {
+    "language_code": "cs",
+    "key": "email_greeting",
+    "value": "Ahoj {username},"
+  },
+  {
+    "language_code": "en",
+    "key": "email_verification_subject",
+    "value": "Verify Your Email Address"
+  },
+  {
+    "language_code": "cs",
+    "key": "email_verification_subject",
+    "value": "Ověřte svou e-mailovou adresu"
+  },
+  {
+    "language_code": "en",
+    "key": "email_verification_body",
+    "value": "Please click the link below to verify your email address:\n{verification_link}"
+  }
+]

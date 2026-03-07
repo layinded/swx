@@ -1,0 +1,78 @@
+# Ignore Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore environment variables
+.env
+.env.local
+.env.*.backup
+
+# Ignore dependency caches
+*.egg-info/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Ignore IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+
+# Ignore virtual environment
+venv/
+env/
+.venv/
+
+# Ignore log files
+logs/
+*.log
+
+# Ignore compiled files
+*.out
+*.o
+*.a
+*.so
+*.exe
+
+# Ignore database migrations
+
+
+# Ignore cache and temporary files
+__pycache__/
+cache/
+*.pid
+
+
+# Ignore test coverage files
+.coverage
+htmlcov/
+pytest_cache/
+
+# Ignore compiled static files
+staticfiles/
+media/
+
+# Ignore Uvicorn & Gunicorn logs
+gunicorn.log
+gunicorn.access.log
+gunicorn.error.log
+
+# Ignore Docker-related files
+back/docker-compose.override.yml
+back/docker-compose.yml
+.dockerignore
+
+# Ignore IDE-specific files (PyCharm, VSCode)
+*.iml
+.idea/
+.vscode/
+*.code-workspace
+
+# Ignore queue & Redis files
+rq-worker.pid
+redis-data/
+
+
+.idea/*

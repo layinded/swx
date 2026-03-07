@@ -1,0 +1,22 @@
+repos:
+  # Ruff: Linter & Formatter
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.2.2
+    hooks:
+      - id: ruff
+        args: [ "--fix" ]  # Automatically fix issues when possible
+      - id: ruff-format
+
+  # Mypy: Static Type Checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        args: [ "--strict" ]
+        additional_dependencies:
+          - types-requests  # Ensure third-party type hints (e.g., for `requests`)
+
+# Exclude certain files from checks (optional)
+exclude: |
+  ^migrations/.*  # Ignore migration files
+  ^tests/fixtures/.*  # Ignore test data
