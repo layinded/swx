@@ -286,7 +286,7 @@ async def async_test_context():
 
 
 # Fixtures utility
-def create_fixture_data(models: List[Dict[str, Any]], session: AsyncSession):
+async def create_fixture_data(models: List[Dict[str, Any]], session: AsyncSession):
     """
     Create fixture data in database.
     

@@ -15,7 +15,7 @@ This package provides:
 
 Usage:
     from swx_core import __version__, get_version_info
-    print(__version__)  # "2.0.0"
+    print(__version__)  # "2.1.6"
     
     # Base classes
     from swx_core.controllers import BaseController
@@ -65,7 +65,6 @@ from swx_core.utils import (
     # Pagination
     PaginationParams,
     PaginatedResponse,
-    paginated_response,
     # Response
     APIResponse,
     DataResponse,
