@@ -10,6 +10,10 @@ from swx_core.cli.commands.format import format
 from swx_core.cli.commands.lint import lint
 from swx_core.cli.commands.new import new_project, init_project
 
+# AI-Aware Layer imports
+from swx_core.ai_exports.cli import register_ai_commands
+
+
 @click.group()
 @click.version_option(version="2.0.0", prog_name="swx")
 def main():
@@ -48,6 +52,14 @@ def main():
             swx plugin:disable Disable plugin
             swx plugin:install Install plugin
         
+        AI-Aware Layer:
+            swx ai export-architecture  Export architecture
+            swx ai export-contracts      Export contracts
+            swx ai export-graph          Export dependency graph
+            swx ai ai-context            Generate AI context
+            swx ai export-agent-rules    Export agent rules
+            swx ai zone:check           Check zone classification
+        
         Dev Tools:
             swx tinker         Interactive shell
             swx format         Format code
@@ -81,6 +93,9 @@ main.add_command(lint, "lint")
 # Project management
 main.add_command(new_project, "new")
 main.add_command(init_project, "init")
+
+# AI-Aware Layer commands
+register_ai_commands(main)
 
 
 if __name__ == "__main__":

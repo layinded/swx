@@ -1,0 +1,53 @@
+{
+  "timestamp": "2026-03-08T20:25:31.099842",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "name": "Add multi-tenant rate limiting",
+      "prompt_no_context": {
+        "tokens": 88,
+        "expected_files": 2
+      },
+      "prompt_with_context": {
+        "tokens": 399,
+        "context_overhead": 311,
+        "expected_files": 2
+      }
+    },
+    {
+      "id": "TASK-002",
+      "name": "Add audit logging",
+      "prompt_no_context": {
+        "tokens": 77,
+        "expected_files": 2
+      },
+      "prompt_with_context": {
+        "tokens": 389,
+        "context_overhead": 312,
+        "expected_files": 2
+      }
+    },
+    {
+      "id": "TASK-003",
+      "name": "Add API key guard",
+      "prompt_no_context": {
+        "tokens": 70,
+        "expected_files": 2
+      },
+      "prompt_with_context": {
+        "tokens": 381,
+        "context_overhead": 311,
+        "expected_files": 2
+      }
+    }
+  ],
+  "summary": {
+    "total_tasks": 3,
+    "total_tokens_no_context": 235,
+    "total_tokens_with_context": 1169,
+    "average_tokens_no_context": 78,
+    "average_tokens_with_context": 389,
+    "context_overhead_total": 934,
+    "context_overhead_percent": 397.44680851063833
+  }
+}
