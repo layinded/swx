@@ -232,7 +232,7 @@ class StripeWebhookHandler:
             from swx_core.models.job import JobType
             
             return await enqueue_job(
-                job_type=JobType.BILLING_WEBHOOK,
+                job_type=JobType.billing_webhook,
                 payload={
                     "stripe_event_id": event_id,
                     "event_type": event_type,

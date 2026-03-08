@@ -58,7 +58,7 @@ class JobBase(Base):
         default_factory=dict,
         sa_column=Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
     )
-    status: JobStatus = Field(default=JobStatus.PENDING, index=True)
+    status: JobStatus = Field(default=JobStatus.pending, index=True)
     attempts: int = Field(default=0)
     max_attempts: int = Field(default=3)
     scheduled_at: Optional[datetime] = Field(default=None, index=True)

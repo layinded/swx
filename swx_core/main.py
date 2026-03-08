@@ -109,11 +109,11 @@ async def lifespan(app: FastAPI):  # noqa
     )
     from swx_core.models.job import JobType
     
-    register_job_handler(JobType.BILLING_SYNC, billing_sync_handler)
-    register_job_handler(JobType.BILLING_WEBHOOK, billing_webhook_handler)
-    register_job_handler(JobType.ALERT_SEND, alert_send_handler)
-    register_job_handler(JobType.AUDIT_AGGREGATE, audit_aggregate_handler)
-    register_job_handler(JobType.CACHE_REFRESH, cache_refresh_handler)
+    register_job_handler(JobType.billing_sync, billing_sync_handler)
+    register_job_handler(JobType.billing_webhook, billing_webhook_handler)
+    register_job_handler(JobType.alert_send, alert_send_handler)
+    register_job_handler(JobType.audit_aggregate, audit_aggregate_handler)
+    register_job_handler(JobType.cache_refresh, cache_refresh_handler)
     logger.info("Job handlers registered successfully.")
 
     # Step 5: Start job runner
