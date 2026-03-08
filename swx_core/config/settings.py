@@ -131,6 +131,10 @@ class Settings(BaseSettings):
     DB_USER: str = "swx_user"
     DB_PASSWORD: str = "changeme"
     DB_NAME: str = "swx_db"
+    
+    # Allow overriding the database URI directly
+    DATABASE_URL: str | None = Field(default=None, description="Override database URL (takes precedence)")
+    ASYNC_DATABASE_URL: str | None = Field(default=None, description="Override async database URL (takes precedence)")
 
     @property
     def ASYNC_SQLALCHEMY_DATABASE_URI(self) -> str:
@@ -140,7 +144,13 @@ class Settings(BaseSettings):
         Returns:
             str: The full async database connection string.
         """
-        db_host = "db" if self.DOCKERIZED else self.DB_HOST
+        # Allow direct override
+        if self.ASYNC_DATABASE_URL:
+            return self.ASYNC_DATABASE_URL
+        
+        # Use DB_HOST directly - it should be set correctly in all environments
+        # DOCKERIZED is just for informational purposes, not for overriding DB_HOST
+        db_host = self.DB_HOST
 
         if self.DATABASE_TYPE == "sqlite":
             return f"sqlite+aiosqlite:///./{self.DB_NAME}.db"
@@ -156,7 +166,12 @@ class Settings(BaseSettings):
         Returns:
             str: The full database connection string.
         """
-        db_host = "db" if self.DOCKERIZED else self.DB_HOST
+        # Allow direct override
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        
+        # Use DB_HOST directly
+        db_host = self.DB_HOST
 
         if self.DATABASE_TYPE == "sqlite":
             return f"sqlite:///./{self.DB_NAME}.db"

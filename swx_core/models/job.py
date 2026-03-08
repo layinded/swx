@@ -15,39 +15,40 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
 
-
 class JobStatus(str, Enum):
-    """Job execution status."""
-    PENDING = "pending"
-    QUEUED = "queued"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    DEAD_LETTER = "dead_letter"
-    CANCELLED = "cancelled"
+    """Job execution status - lowercase members to match PostgreSQL enum."""
+    pending = "pending"
+    queued = "queued"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+    dead_letter = "dead_letter"
+    cancelled = "cancelled"
+
 
 
 class JobType(str, Enum):
     """Predefined job types."""
     # Billing jobs
-    BILLING_SYNC = "billing.sync"
-    BILLING_WEBHOOK = "billing.webhook"
-    SUBSCRIPTION_RENEWAL = "billing.subscription.renewal"
+    billing_sync = "billing.sync"
+    billing_webhook = "billing.webhook"
+    subscription_renewal = "billing.subscription.renewal"
     
     # Alert jobs
-    ALERT_SEND = "alert.send"
-    ALERT_AGGREGATE = "alert.aggregate"
+    alert_send = "alert.send"
+    alert_aggregate = "alert.aggregate"
     
     # Audit jobs
-    AUDIT_AGGREGATE = "audit.aggregate"
-    AUDIT_CLEANUP = "audit.cleanup"
+    audit_aggregate = "audit.aggregate"
+    audit_cleanup = "audit.cleanup"
     
     # System jobs
-    CACHE_REFRESH = "system.cache.refresh"
-    DATA_EXPORT = "system.data.export"
+    cache_refresh = "system.cache.refresh"
+    data_export = "system.data.export"
     
     # Generic
-    GENERIC = "generic"
+    generic = "generic"
+
 
 
 class JobBase(Base):

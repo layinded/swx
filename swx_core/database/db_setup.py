@@ -37,9 +37,14 @@ from swx_core.services.channels.models import AlertSeverity, AlertSource
 max_tries = 60 * 5  # Retries up to 5 minutes
 wait_seconds = 1
 
-# Path to the translations JSON file
-TRANSLATIONS_FILE = "swx_core/database/languages.json"
-
+# Path to the translations JSON file (use importlib.resources for package support)
+try:
+    from importlib.resources import files
+    TRANSLATIONS_FILE = files("swx_core.database").joinpath("languages.json")
+except ImportError:
+    # Python < 3.9 fallback
+    import pkg_resources
+    TRANSLATIONS_FILE = pkg_resources.resource_filename("swx_core", "database/languages.json")
 
 @retry(
     stop=stop_after_attempt(max_tries),
@@ -140,8 +145,15 @@ async def seed_languages(session: AsyncSession) -> None:
     """
     logger.info("Seeding languages from JSON file...")
     try:
-        with open(TRANSLATIONS_FILE, "r", encoding="utf-8") as file:
-            languages = json.load(file)
+        # Handle importlib.resources Traversable or regular file path
+        if hasattr(TRANSLATIONS_FILE, "read_text"):
+            # importlib.resources Traversable (Python >= 3.9)
+            content = TRANSLATIONS_FILE.read_text()
+            languages = json.loads(content)
+        else:
+            # Regular file path (Python < 3.9 fallback)
+            with open(TRANSLATIONS_FILE, "r", encoding="utf-8") as file:
+                languages = json.load(file)
 
         for lang in languages:
             statement = select(Language).where(
@@ -157,7 +169,7 @@ async def seed_languages(session: AsyncSession) -> None:
         await session.commit()
         logger.info("Translations seeded successfully.")
     except FileNotFoundError:
-        logger.error(f"Translation file {TRANSLATIONS_FILE} not found.")
+        logger.error(f"Translation file not found.")
     except json.JSONDecodeError:
         logger.error("Error decoding JSON file.")
     except Exception as e:
