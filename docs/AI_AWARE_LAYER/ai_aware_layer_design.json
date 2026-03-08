@@ -1,0 +1,2434 @@
+{
+  "version": "3.0.0",
+  "generated_at": "2026-03-08T18:37:00Z",
+  "document_type": "AI-Aware Layer Architecture Design Specification",
+  "project": "SwX - AI-Native Backend Operating System",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Architecture Introspection Engine",
+      "description": "Self-describing architecture with deterministic export capabilities",
+      "components": {
+        "cli_commands": {
+          "swx_export_architecture": {
+            "command": "swx export-architecture [OPTIONS]",
+            "options": [
+              {
+                "name": "--format",
+                "type": "choice",
+                "values": ["json", "graph", "agents", "yaml"],
+                "default": "json",
+                "description": "Output format for architecture export"
+              },
+              {
+                "name": "--include",
+                "type": "multiple_choice",
+                "values": ["providers", "bindings", "guards", "events", "routes", "plugins", "contracts", "middleware", "models"],
+                "default": "all",
+                "description": "Specific components to include"
+              },
+              {
+                "name": "--output",
+                "type": "path",
+                "description": "Output file path (stdout if not specified)"
+              },
+              {
+                "name": "--pretty",
+                "type": "boolean",
+                "default": true,
+                "description": "Pretty-print JSON output"
+              },
+              {
+                "name": "--minify",
+                "type": "boolean",
+                "default": false,
+                "description": "Minify JSON output for token efficiency"
+              }
+            ],
+            "examples": [
+              "swx export-architecture --format json",
+              "swx export-architecture --format graph --include providers --include guards",
+              "swx export-architecture --format agents --output agent-context.json"
+            ]
+          }
+        },
+        "json_schema": {
+          "architecture_export": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "SwX Architecture Export",
+            "type": "object",
+            "required": ["version", "exported_at", "providers", "bindings"],
+            "properties": {
+              "version": {
+                "type": "string",
+                "pattern": "^\\d+\\.\\d+\\.\\d+$",
+                "description": "Architecture schema version"
+              },
+              "exported_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp of export"
+              },
+              "swx_version": {
+                "type": "string",
+                "description": "SwX framework version"
+              },
+              "providers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/provider"
+                },
+                "description": "Registered service providers"
+              },
+              "bindings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/binding"
+                },
+                "description": "Container bindings"
+              },
+              "guards": {
+                "$ref": "#/definitions/guards",
+                "description": "Guard configuration map"
+              },
+              "events": {
+                "$ref": "#/definitions/events",
+                "description": "Event registry and listeners"
+              },
+              "routes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/route"
+                },
+                "description": "Route tree"
+              },
+              "plugins": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/plugin"
+                },
+                "description": "Registered plugins"
+              },
+              "contracts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/contract"
+                },
+                "description": "Contract definitions"
+              },
+              "middleware": {
+                "$ref": "#/definitions/middleware_stack",
+                "description": "Middleware stack configuration"
+              },
+              "safe_zones": {
+                "$ref": "#/definitions/safe_zones",
+                "description": "Mutation safety boundaries"
+              }
+            },
+            "definitions": {
+              "provider": {
+                "type": "object",
+                "required": ["name", "class_path", "priority"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Provider identifier"
+                  },
+                  "class_path": {
+                    "type": "string",
+                    "description": "Full module path to provider class"
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "description": "Boot priority (lower = earlier)"
+                  },
+                  "bindings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Services registered by this provider"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Provider categorization tags"
+                  },
+                  "zone": {
+                    "$ref": "#/definitions/mutation_zone",
+                    "description": "Mutation zone classification"
+                  }
+                }
+              },
+              "binding": {
+                "type": "object",
+                "required": ["abstract", "binding_type"],
+                "properties": {
+                  "abstract": {
+                    "type": "string",
+                    "description": "Abstract service name"
+                  },
+                  "concrete": {
+                    "type": "string",
+                    "description": "Concrete implementation path"
+                  },
+                  "binding_type": {
+                    "type": "string",
+                    "enum": ["transient", "singleton", "scoped", "instance"],
+                    "description": "Binding lifecycle type"
+                  },
+                  "is_alias": {
+                    "type": "boolean",
+                    "description": "Whether this is an alias"
+                  },
+                  "alias_for": {
+                    "type": "string",
+                    "description": "Original abstract if this is an alias"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "dependencies": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Injected dependencies"
+                  }
+                }
+              },
+              "guards": {
+                "type": "object",
+                "properties": {
+                  "api_key": {
+                    "$ref": "#/definitions/guard_config"
+                  },
+                  "jwt": {
+                    "$ref": "#/definitions/guard_config"
+                  },
+                  "oauth2": {
+                    "$ref": "#/definitions/guard_config"
+                  },
+                  "custom": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/guard_config"
+                    }
+                  }
+                }
+              },
+              "guard_config": {
+                "type": "object",
+                "properties": {
+                  "class_path": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "config": {
+                    "type": "object",
+                    "description": "Guard-specific configuration"
+                  }
+                }
+              },
+              "events": {
+                "type": "object",
+                "properties": {
+                  "dispatcher_class": {
+                    "type": "string"
+                  },
+                  "listeners": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/listener"
+                    }
+                  }
+                }
+              },
+              "listener": {
+                "type": "object",
+                "required": ["event", "handler"],
+                "properties": {
+                  "event": {
+                    "type": "string",
+                    "description": "Event name"
+                  },
+                  "handler": {
+                    "type": "string",
+                    "description": "Handler class path"
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "description": "Execution priority"
+                  },
+                  "queueable": {
+                    "type": "boolean",
+                    "description": "Whether can be queued"
+                  },
+                  "zone": {
+                    "$ref": "#/definitions/mutation_zone"
+                  }
+                }
+              },
+              "route": {
+                "type": "object",
+                "required": ["path", "methods", "handler"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "methods": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "handler": {
+                    "type": "string"
+                  },
+                  "middleware": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "guards": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "domain": {
+                    "type": "string",
+                    "enum": ["admin", "user", "system", "public"]
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "plugin": {
+                "type": "object",
+                "required": ["name", "class_path"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "class_path": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "dependencies": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "hooks": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "zone": {
+                    "$ref": "#/definitions/mutation_zone"
+                  }
+                }
+              },
+              "contract": {
+                "type": "object",
+                "required": ["name", "interface_path"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "interface_path": {
+                    "type": "string"
+                  },
+                  "methods": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/method_signature"
+                    }
+                  },
+                  "implementations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "method_signature": {
+                "type": "object",
+                "required": ["name", "return_type"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "parameters": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/parameter"
+                    }
+                  },
+                  "return_type": {
+                    "type": "string"
+                  },
+                  "is_async": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "parameter": {
+                "type": "object",
+                "required": ["name", "type"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "has_default": {
+                    "type": "boolean"
+                  },
+                  "default_value": {
+                    "type": "string"
+                  },
+                  "is_optional": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "middleware_stack": {
+                "type": "object",
+                "properties": {
+                  "global": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/middleware_entry"
+                    }
+                  },
+                  "route_specific": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/middleware_entry"
+                    }
+                  }
+                }
+              },
+              "middleware_entry": {
+                "type": "object",
+                "required": ["class_path", "position"],
+                "properties": {
+                  "class_path": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "integer"
+                  },
+                  "config": {
+                    "type": "object"
+                  }
+                }
+              },
+              "mutation_zone": {
+                "type": "string",
+                "enum": ["CORE", "APP", "PROVIDER", "PLUGIN", "READ_ONLY", "SAFE", "EXTENSION"],
+                "description": "Mutation zone classification"
+              },
+              "safe_zones": {
+                "type": "object",
+                "properties": {
+                  "core": {
+                    "$ref": "#/definitions/zone_definition"
+                  },
+                  "app": {
+                    "$ref": "#/definitions/zone_definition"
+                  },
+                  "providers": {
+                    "$ref": "#/definitions/zone_definition"
+                  },
+                  "plugins": {
+                    "$ref": "#/definitions/zone_definition"
+                  }
+                }
+              },
+              "zone_definition": {
+                "type": "object",
+                "required": ["mutability", "description"],
+                "properties": {
+                  "mutability": {
+                    "type": "string",
+                    "enum": ["read-only", "safe", "override-layer", "extension-layer"]
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "allowed_operations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "forbidden_operations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "example_output": {
+          "json": {
+            "version": "2.0.0",
+            "exported_at": "2026-03-08T18:37:00Z",
+            "swx_version": "2.0.0",
+            "providers": [
+              {
+                "name": "database",
+                "class_path": "swx_core.providers.database_provider.DatabaseServiceProvider",
+                "priority": 1,
+                "bindings": ["database", "db_connection", "query_builder"],
+                "tags": ["core", "database"],
+                "zone": "CORE"
+              },
+              {
+                "name": "event",
+                "class_path": "swx_core.providers.event_provider.EventServiceProvider",
+                "priority": 2,
+                "bindings": ["event_bus", "event_dispatcher"],
+                "tags": ["core", "events"],
+                "zone": "CORE"
+              },
+              {
+                "name": "auth",
+                "class_path": "swx_core.providers.auth_provider.AuthServiceProvider",
+                "priority": 3,
+                "bindings": ["auth_service", "token_service", "user_provider"],
+                "tags": ["core", "security"],
+                "zone": "CORE"
+              },
+              {
+                "name": "rate_limit",
+                "class_path": "swx_core.providers.rate_limit_provider.RateLimitServiceProvider",
+                "priority": 4,
+                "bindings": ["rate_limiter", "abuse_detector"],
+                "tags": ["core", "performance"],
+                "zone": "CORE"
+              },
+              {
+                "name": "billing",
+                "class_path": "swx_core.providers.billing_provider.BillingServiceProvider",
+                "priority": 5,
+                "bindings": ["billing_service", "subscription_manager", "entitlement_resolver"],
+                "tags": ["core", "billing"],
+                "zone": "CORE"
+              }
+            ],
+            "bindings": [
+              {
+                "abstract": "database",
+                "concrete": "swx_core.database.db.Database",
+                "binding_type": "singleton",
+                "dependencies": ["config"]
+              },
+              {
+                "abstract": "rate_limiter",
+                "concrete": "swx_core.services.rate_limit.RateLimiter",
+                "binding_type": "singleton",
+                "dependencies": ["config", "redis"]
+              },
+              {
+                "abstract": "auth_service",
+                "concrete": "swx_core.auth.services.AuthService",
+                "binding_type": "singleton",
+                "dependencies": ["user_repository", "token_service", "config"]
+              }
+            ],
+            "guards": {
+              "jwt": {
+                "class_path": "swx_core.guards.jwt_guard.JWTGuard",
+                "enabled": true,
+                "config": {
+                  "algorithm": "HS256",
+                  "expiration_minutes": 60,
+                  "refresh_token_expiration_days": 30
+                }
+              },
+              "api_key": {
+                "class_path": "swx_core.guards.api_key_guard.APIKeyGuard",
+                "enabled": true,
+                "config": {
+                  "header_name": "X-API-Key",
+                  "validate_domain": true
+                }
+              }
+            },
+            "events": {
+              "dispatcher_class": "swx_core.events.dispatcher.EventDispatcher",
+              "listeners": [
+                {
+                  "event": "user.created",
+                  "handler": "swx_core.events.listeners.UserEventListener",
+                  "priority": 50,
+                  "queueable": true,
+                  "zone": "APP"
+                },
+                {
+                  "event": "payment.completed",
+                  "handler": "swx_core.events.listeners.PaymentEventListener",
+                  "priority": 50,
+                  "queueable": true,
+                  "zone": "CORE"
+                }
+              ]
+            },
+            "routes": [
+              {
+                "path": "/api/v1/admin/users",
+                "methods": ["GET", "POST"],
+                "handler": "swx_core.routes.admin.users.router",
+                "guards": ["jwt:admin"],
+                "domain": "admin"
+              },
+path": "/api              {
+                "/v1/auth/login",
+                "methods": ["POST"],
+                "handler": "swx_core.routes.auth.login.router",
+                "guards": [],
+                "domain": "public"
+              }
+            ],
+            "contracts": [
+              {
+                "name": "RepositoryProtocol",
+                "interface_path": "swx_core.contracts.repositories.RepositoryProtocol",
+                "methods": [
+                  {
+                    "name": "find_by_id",
+                    "parameters": [{"name": "id", "type": "int"}],
+                    "return_type": "Optional[Model]",
+                    "is_async": true
+                  },
+                  {
+                    "name": "create",
+                    "parameters": [{"name": "data", "type": "dict"}],
+                    "return_type": "Model",
+                    "is_async": true
+                  }
+                ],
+                "implementations": [
+                  "swx_core.repositories.UserRepository",
+                  "swx_app.repositories.ProductRepository"
+                ]
+              }
+            ],
+            "safe_zones": {
+              "core": {
+                "mutability": "read-only",
+                "description": "Framework core - cannot be modified",
+                "forbidden_operations": ["edit", "delete", "override"]
+              },
+              "app": {
+                "mutability": "safe",
+                "description": "Application code - safe to modify within contracts"
+              },
+              "providers": {
+                "mutability": "override-layer",
+                "description": "Providers can be overridden via container binding"
+              },
+              "plugins": {
+                "mutability": "extension-layer",
+                "description": "Plugins extend functionality via hooks"
+              }
+            }
+          },
+          "graph": {
+            "format": "DOT",
+            "graphs": [
+              {
+                "name": "service_dependencies",
+                "type": "digraph",
+                "statements": [
+                  "rankdir=LR",
+                  "node [shape=box]",
+                  "rate_limiter -> config",
+                  "rate_limiter -> redis",
+                  "auth_service -> user_repository",
+                  "auth_service -> token_service",
+                  "billing_service -> stripe_client"
+                ]
+              }
+            ]
+          },
+          "agents": {
+            "purpose": "Lightweight context for AI agents",
+            "summary": {
+              "total_providers": 5,
+              "total_bindings": 47,
+              "total_routes": 23,
+              "total_events": 12,
+              "total_contracts": 8
+            },
+            "extension_points": [
+              {
+                "type": "provider",
+                "description": "Register new services via service providers",
+                "example": "swx make:provider CustomProvider"
+              },
+              {
+                "type": "plugin",
+                "description": "Extend via plugin hooks",
+                "example": "Implement PluginInterface"
+              },
+              {
+                "type": "middleware",
+                "description": "Add middleware for request/response processing",
+                "example": "swx make:middleware CustomMiddleware"
+              },
+              {
+                "type": "event_listener",
+                "description": "Subscribe to events",
+                "example": "Create listener in app/listeners/"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "phase": 2,
+      "name": "Safe Modification Zones",
+      "description": "Explicit AI mutation boundaries with machine-checkable rules",
+      "components": {
+        "zone_definitions": {
+          "CORE": {
+            "mutability": "read-only",
+            "description": "Framework core - immutable by design",
+            "paths": [
+              "swx_core/container/**",
+              "swx_core/bootstrap.py",
+              "swx_core/router.py",
+              "swx_core/main.py"
+            ],
+            "forbidden_operations": ["edit", "delete", "override", "replace"],
+            "exceptions": "None - core is strictly read-only",
+            "rationale": "Core framework changes require framework updates"
+          },
+          "APP": {
+            "mutability": "safe",
+            "description": "Application layer - safe modifications within contracts",
+            "paths": [
+              "swx_app/controllers/**",
+              "swx_app/services/**",
+              "swx_app/repositories/**",
+              "swx_app/models/**",
+              "swx_app/routes/**"
+            ],
+            "allowed_operations": [
+              "create",
+              "edit",
+              "delete",
+              "extend",
+              "implement"
+            ],
+            "constraints": [
+              "Must implement contract interfaces",
+              "Must respect provider bindings",
+              "Must not break existing routes"
+            ]
+          },
+          "PROVIDER": {
+            "mutability": "override-layer",
+            "description": "Service providers - can be overridden via container",
+            "paths": [
+              "swx_core/providers/*.py",
+              "swx_app/providers/**"
+            ],
+            "allowed_operations": [
+              "override_binding",
+              "extend_provider",
+              "create_new_provider"
+            ],
+            "mechanism": "Container binding override",
+            "example": "container.bind('cache', CustomCacheImplementation)"
+          },
+          "PLUGIN": {
+            "mutability": "extension-layer",
+            "description": "Plugins - extend functionality without modification",
+            "paths": [
+              "swx_plugins/**",
+              "swx_core/plugins/**"
+            ],
+            "allowed_operations": [
+              "install",
+              "uninstall",
+              "configure",
+              "hook"
+            ],
+            "constraints": [
+              "Cannot override other plugins without explicit rule",
+              "Must declare dependencies",
+              "Must follow plugin API"
+            ]
+          }
+        },
+        "metadata_files": {
+          "core_json": {
+            "filename": "core.json",
+            "location": "swx_core/.swx_metadata/core.json",
+            "schema": {
+              "type": "object",
+              "required": ["zone", "version", "fingerprint"],
+              "properties": {
+                "zone": {
+                  "const": "CORE"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "fingerprint": {
+                  "type": "string",
+                  "description": "SHA256 hash of file contents"
+                },
+                "components": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "api_surface": {
+                  "type": "object",
+                  "description": "Public API endpoints that app can depend on"
+                }
+              }
+            }
+          },
+          "app_json": {
+            "filename": "app.json",
+            "location": "swx_app/.swx_metadata/app.json",
+            "schema": {
+              "type": "object",
+              "required": ["zone", "version"],
+              "properties": {
+                "zone": {
+                  "const": "APP"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "contracts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "extensions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "plugin_json": {
+            "filename": "plugin.json",
+            "location": "swx_plugins/*/.swx_metadata/plugin.json",
+            "schema": {
+              "type": "object",
+              "required": ["zone", "name", "version", "hooks"],
+              "properties": {
+                "zone": {
+                  "const": "PLUGIN"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "hooks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "cli_commands": {
+          "swx_zone_info": {
+            "command": "swx zone:info <path>",
+            "description": "Show zone classification for a file path",
+            "example": "swx zone:info swx_core/container/container.py"
+          },
+          "swx_zone_validate": {
+            "command": "swx zone:validate",
+            "description": "Validate zone integrity and detect unauthorized modifications"
+          },
+          "swx_zone_check": {
+            "command": "swx zone:check <path> --operation <operation>",
+            "description": "Check if operation is allowed on path",
+            "example": "swx zone:check swx_core/main.py --operation edit"
+          }
+        }
+      }
+    },
+    {
+      "phase": 3,
+      "name": "File Role Metadata",
+      "description": "Structured headers and sidecar metadata for AI context",
+      "components": {
+        "header_schema": {
+          "format": "YAML-like comment block",
+          "location": "File header (first 20 lines)",
+          "schema_version": "1.0.0",
+          "fields": {
+            "SWX_ROLE": {
+              "type": "string",
+              "enum": [
+                "Service",
+                "Repository",
+                "Controller",
+                "Guard",
+                "Middleware",
+                "Provider",
+                "Event",
+                "Listener",
+                "Model",
+                "Contract",
+                "Plugin",
+                "Utility",
+                "Configuration"
+              ],
+              "required": true,
+              "description": "Primary role classification of the file"
+            },
+            "SWX_SCOPE": {
+              "type": "string",
+              "enum": [
+                "Request",
+                "Application",
+                "Domain",
+                "Infrastructure",
+                "Framework"
+              ],
+              "required": true,
+              "description": "Execution scope"
+            },
+            "SWX_DEPENDS_ON": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "required": false,
+              "description": "Explicit dependencies (service names)",
+              "example": ["UserRepository", "AuthService", "Config"]
+            },
+            "SWX_MUTATION_ZONE": {
+              "type": "string",
+              "enum": ["CORE", "APP", "PROVIDER", "PLUGIN", "READ_ONLY", "SAFE", "EXTENSION"],
+              "required": true,
+              "description": "Mutation zone classification"
+            },
+            "SWX_CONTRACTS": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "required": false,
+              "description": "Contract interfaces this file implements",
+              "example": ["RepositoryProtocol", "AuthGuardProtocol"]
+            },
+            "SWX_EXPORTS": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "required": false,
+              "description": "Public API exports",
+              "example": ["RateLimiter", "LimitExceededError"]
+            },
+            "SWX_EVENTS": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "required": false,
+              "description": "Events dispatched by this component",
+              "structure": [
+                {
+                  "name": "event_name",
+                  "type": "string"
+                },
+                {
+                  "name": "payload",
+                  "type": "object"
+                }
+              ]
+            },
+            "SWX_LISTENS_TO": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "required": false,
+              "description": "Events this component listens to",
+              "example": ["user.created", "payment.completed"]
+            }
+          }
+        },
+        "example_headers": {
+          "service_example": "# SWX_ROLE: Service\n# SWX_SCOPE: Application\n# SWX_DEPENDS_ON: [UserRepository, CacheInterface, Config]\n# SWX_MUTATION_ZONE: APP\n# SWX_CONTRACTS: [UserServiceProtocol]\n# SWX_EXPORTS: [UserService, UserNotFoundError]\n# SWX_EVENTS: [{name: user.created, payload: {user_id: int}}]\n",
+          "guard_example": "# SWX_ROLE: Guard\n# SWX_SCOPE: Request\n# SWX_DEPENDS_ON: [TokenService, Config, UserRepository]\n# SWX_MUTATION_ZONE: CORE\n# SWX_EXPORTS: [JWTGuard, TokenExpiredError, InvalidTokenError]\n",
+          "repository_example": "# SWX_ROLE: Repository\n# SWX_SCOPE: Infrastructure\n# SWX_DEPENDS_ON: [Database, Model]\n# SWX_MUTATION_ZONE: APP\n# SWX_CONTRACTS: [UserRepositoryProtocol]\n# SWX_EXPORTS: [UserRepository]\n"
+        },
+        "sidecar_format": {
+          "filename_pattern": "*.meta.json",
+          "alternative": "*.swx.json",
+          "location": "Same directory as source file",
+          "priority": "Overrides header metadata if present",
+          "schema": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "SwX File Metadata",
+            "type": "object",
+            "required": ["swx_role", "swx_mutation_zone"],
+            "properties": {
+              "swx_role": {
+                "type": "string",
+                "enum": ["Service", "Repository", "Controller", "Guard", "Middleware", "Provider", "Event", "Listener", "Model", "Contract", "Plugin", "Utility", "Configuration"]
+              },
+              "swx_scope": {
+                "type": "string",
+                "enum": ["Request", "Application", "Domain", "Infrastructure", "Framework"]
+              },
+              "swx_depends_on": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "swx_mutation_zone": {
+                "type": "string",
+                "enum": ["CORE", "APP", "PROVIDER", "PLUGIN", "READ_ONLY", "SAFE", "EXTENSION"]
+              },
+              "swx_contracts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "swx_exports": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "swx_events": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "payload": {
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              "swx_listens_to": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "swx_override_of": {
+                "type": "string",
+                "description": "If this file overrides a core component"
+              },
+              "swx_tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "cli_commands": {
+          "swx_metadata_add": {
+            "command": "swx metadata:add <file> --role Service --zone APP",
+            "description": "Add metadata header to file"
+          },
+          "swx_metadata_validate": {
+            "command": "swx metadata:validate [--path <directory>]",
+            "description": "Validate metadata in all files"
+          },
+          "swx_metadata_export": {
+            "command": "swx metadata:export --format json",
+            "description": "Export all metadata as machine-readable format"
+          }
+        }
+      }
+    },
+    {
+      "phase": 4,
+      "name": "Contract Registry",
+      "description": "Machine-readable interface definitions for AI code generation",
+      "components": {
+        "cli_commands": {
+          "swx_export_contracts": {
+            "command": "swx export-contracts [OPTIONS]",
+            "options": [
+              {
+                "name": "--format",
+                "type": "choice",
+                "values": ["json", "typescript", "python", "openapi"],
+                "default": "json"
+              },
+              {
+                "name": "--interface",
+                "type": "string",
+                "description": "Specific interface to export"
+              },
+              {
+                "name": "--include-implementations",
+                "type": "boolean",
+                "default": false,
+                "description": "Include implementation details"
+              },
+              {
+                "name": "--output",
+                "type": "path"
+              }
+            ],
+            "examples": [
+              "swx export-contracts --format json",
+              "swx export-contracts --interface RepositoryProtocol --include-implementations"
+            ]
+          }
+        },
+        "json_schema": {
+          "contract_registry": {
+            "type": "object",
+            "required": ["version", "contracts"],
+            "properties": {
+              "version": {
+                "type": "string"
+              },
+              "generated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "contracts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/contract_definition"
+                }
+              }
+            },
+            "definitions": {
+              "contract_definition": {
+                "type": "object",
+                "required": ["name", "path", "type", "methods"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["abstract_base_class", "protocol", "interface", "abc"]
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "methods": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/method_definition"
+                    }
+                  },
+                  "attributes": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/attribute_definition"
+                    }
+                  },
+                  "generics": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "implementations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/implementation_reference"
+                    }
+                  },
+                  "compatibility": {
+                    "$ref": "#/definitions/compatibility_info"
+                  }
+                }
+              },
+              "method_definition": {
+                "type": "object",
+                "required": ["name", "signature", "return_type"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "signature": {
+                    "type": "string",
+                    "description": "Python signature string"
+                  },
+                  "return_type": {
+                    "type": "string"
+                  },
+                  "is_async": {
+                    "type": "boolean"
+                  },
+                  "is_abstract": {
+                    "type": "boolean"
+                  },
+                  "raises": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "decorators": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "override_instructions": {
+                    "type": "string",
+                    "description": "AI instructions for proper implementation"
+                  }
+                }
+              },
+              "attribute_definition": {
+                "type": "object",
+                "required": ["name", "type"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "is_class_var": {
+                    "type": "boolean"
+                  },
+                  "is_property": {
+                    "type": "boolean"
+                  },
+                  "default_value": {
+                    "type": "string"
+                  }
+                }
+              },
+              "implementation_reference": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "class_name": {
+                    "type": "string"
+                  },
+                  "is_override": {
+                    "type": "boolean"
+                  },
+                  "zone": {
+                    "type": "string"
+                  }
+                }
+              },
+              "compatibility_info": {
+                "type": "object",
+                "properties": {
+                  "major_version": {
+                    "type": "integer"
+                  },
+                  "breaking_changes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "deprecation_warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "example_output": {
+          "contracts": [
+            {
+              "name": "RepositoryProtocol",
+              "path": "swx_core.contracts.repositories.RepositoryProtocol",
+              "type": "protocol",
+              "description": "Base repository interface for all data access",
+              "methods": [
+                {
+                  "name": "find_by_id",
+                  "signature": "find_by_id(self, id: int) -> Optional[Model]",
+                  "return_type": "Optional[Model]",
+                  "is_async": true,
+                  "is_abstract": true,
+                  "override_instructions": "Must query database by primary key. Return None if not found. Do not raise exceptions for missing records."
+                },
+                {
+                  "name": "find_all",
+                  "signature": "find_all(self, filters: Optional[dict] = None, pagination: Optional[Pagination] = None) -> List[Model]",
+                  "return_type": "List[Model]",
+                  "is_async": true,
+                  "is_abstract": true,
+                  "override_instructions": "Apply filters and pagination. Return empty list if no results."
+                },
+                {
+                  "name": "create",
+                  "signature": "create(self, data: dict) -> Model",
+                  "return_type": "Model",
+                  "is_async": true,
+                  "is_abstract": true,
+                  "override_instructions": "Create new record from data dict. Return created instance with generated ID."
+                },
+                {
+                  "name": "update",
+                  "signature": "update(self, id: int, data: dict) -> Optional[Model]",
+                  "return_type": "Optional[Model]",
+                  "is_async": true,
+                  "is_abstract": true,
+                  "override_instructions": "Update existing record. Return updated instance or None if not found."
+                },
+                {
+                  "name": "delete",
+                  "signature": "delete(self, id: int) -> bool",
+                  "return_type": "bool",
+                  "is_async": true,
+                  "is_abstract": true,
+                  "override_instructions": "Delete record by ID. Return True if deleted, False if not found."
+                }
+              ],
+              "implementations": [
+                {
+                  "path": "swx_core.repositories.UserRepository",
+                  "class_name": "UserRepository",
+                  "zone": "CORE"
+                },
+                {
+                  "path": "swx_app.repositories.ProductRepository",
+                  "class_name": "ProductRepository",
+                  "zone": "APP",
+                  "is_override": false
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "phase": 5,
+      "name": "Agent Context Bundle",
+      "description": "Compressed architecture summary optimized for LLM token limits",
+      "components": {
+        "cli_commands": {
+          "swx_ai_context": {
+            "command": "swx ai-context [OPTIONS]",
+            "options": [
+              {
+                "name": "--format",
+                "type": "choice",
+                "values": ["compact", "standard", "detailed"],
+                "default": "standard"
+              },
+              {
+                "name": "--include",
+                "type": "multiple_choice",
+                "values": ["structure", "services", "guards", "events", "extension_points", "modification_patterns"],
+                "default": "all"
+              },
+              {
+                "name": "--output",
+                "type": "path"
+              },
+              {
+                "name": "--token-budget",
+                "type": "integer",
+                "description": "Target token count for compression",
+                "default": 4000
+              }
+            ],
+            "examples": [
+              "swx ai-context --format compact --token-budget 2000",
+              "swx ai-context --include services --include guards"
+            ]
+          }
+        },
+        "context_schema": {
+          "compact": {
+            "purpose": "Maximum compression for simple contexts",
+            "structure": {
+              "version": "string",
+              "project_type": "SwX FastAPI Framework",
+              "entry_points": ["swx_core/main.py", "swx_core/bootstrap.py"],
+              "key_services": {
+                "rate_limiter": "Rate limiting service",
+                "auth_service": "Authentication service",
+                "billing_service": "Billing and subscriptions",
+                "event_bus": "Event dispatcher"
+              },
+              "extension_mechanisms": {
+                "providers": "Service providers with priority-based boot",
+                "plugins": "Plugin hooks system",
+                "middleware": "Request/response middleware",
+                "event_listeners": "Event subscription"
+              },
+              "file_locations": {
+                "core": "swx_core/",
+                "app": "swx_app/",
+                "config": "swx_core/config/",
+                "routes": "swx_core/routes/"
+              }
+            }
+          },
+          "standard": {
+            "purpose": "Balanced context for most tasks",
+            "additional_sections": [
+              "service_dependencies",
+              "guard_configuration",
+              "event_topology",
+              "common_modification_patterns",
+              "zone_boundaries"
+            ]
+          },
+          "detailed": {
+            "purpose": "Full context for complex tasks",
+            "additional_sections": [
+              "full_route_tree",
+              "all_bindings",
+              "contract_signatures",
+              "metadata_export",
+              "graph_representations"
+            ]
+          }
+        },
+        "example_output": {
+          "context": {
+            "version": "2.0.0",
+            "format": "compact",
+            "summary": "SwX FastAPI Framework v2.0 - Production SaaS Platform",
+            "folder_structure": {
+              "swx_core": "Framework core (READ-ONLY)",
+              "swx_app": "Application layer (SAFE modification)",
+              "swx_plugins": "Plugin extensions",
+              "swx_core/config": "Configuration",
+              "swx_core/providers": "Service providers",
+              "swx_core/guards": "Authentication guards",
+              "swx_core/events": "Event system",
+              "swx_core/routes": "API routes"
+            },
+            "extension_points": [
+              {
+                "type": "provider",
+                "path": "swx_app/providers/",
+                "purpose": "Register new services",
+                "example": "class CustomProvider(ServiceProvider)"
+              },
+              {
+                "type": "middleware",
+                "path": "swx_app/middleware/",
+                "purpose": "Request/response processing",
+                "example": "class CustomMiddleware(BaseMiddleware)"
+              },
+              {
+                "type": "event_listener",
+                "path": "swx_app/listeners/",
+                "purpose": "React to events",
+                "example": "class UserListener(Listener): event = 'user.created'"
+              },
+              {
+                "type": "controller",
+                "path": "swx_app/controllers/",
+                "purpose": "API endpoints",
+                "example": "class ProductController(BaseController)"
+              }
+            ],
+            "service_map": {
+              "rate_limiter": {
+                "purpose": "Rate limiting and abuse detection",
+                "zone": "CORE",
+                "config_key": "rate_limit"
+              },
+              "auth_service": {
+                "purpose": "JWT authentication",
+                "zone": "CORE",
+                "guards": ["jwt", "api_key"]
+              },
+              "billing_service": {
+                "purpose": "Stripe integration",
+                "zone": "CORE"
+              }
+            },
+            "guard_config": {
+              "jwt": {
+                "enabled": true,
+                "config": {
+                  "algorithm": "HS256",
+                  "expiration_minutes": 60
+                }
+              },
+              "api_key": {
+                "enabled": true
+              }
+            },
+            "event_topology": {
+              "dispatcher": "swx_core.events.dispatcher.EventDispatcher",
+              "common_events": [
+                "user.created",
+                "user.updated",
+                "payment.completed",
+                "subscription.created"
+              ]
+            },
+            "modification_patterns": {
+              "add_service": "Create provider in swx_app/providers/",
+              "add_route": "Create controller in swx_app/controllers/",
+              "add_middleware": "Create in swx_app/middleware/",
+              "subscribe_to_event": "Create listener in swx_app/listeners/"
+            },
+            "safe_zones": {
+              "CORE": "Do not modify - framework",
+              "APP": "Safe to modify",
+              "PROVIDER": "Override via container binding",
+              "PLUGIN": "Extension layer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": 6,
+      "name": "Change Planning Protocol",
+      "description": "Automated change impact analysis and planning",
+      "components": {
+        "cli_commands": {
+          "swx_plan_change": {
+            "command": "swx plan-change \"<description>\" [OPTIONS]",
+            "options": [
+              {
+                "name": "--format",
+                "type": "choice",
+                "values": ["json", "text", "markdown"],
+                "default": "text"
+              },
+              {
+                "name": "--risk-threshold",
+                "type": "choice",
+                "values": ["low", "medium", "high"],
+                "default": "medium"
+              },
+              {
+                "name": "--include-tests",
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "examples": [
+              "swx plan-change \"Add multi-tenant rate limit override\"",
+              "swx plan-change \"Add new payment provider\" --format json"
+            ]
+          }
+        },
+        "json_schema": {
+          "change_plan": {
+            "type": "object",
+            "required": ["version", "change_description", "impact_analysis"],
+            "properties": {
+              "version": {
+                "type": "string"
+              },
+              "change_description": {
+                "type": "string"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "impact_analysis": {
+                "$ref": "#/definitions/impact_analysis"
+              },
+              "files_to_modify": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/file_change"
+                }
+              },
+              "contracts_to_respect": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/contract_requirement"
+                }
+              },
+              "providers_to_update": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tests_required": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/test_requirement"
+                }
+              },
+              "risk_assessment": {
+                "$ref": "#/definitions/risk_assessment"
+              }
+            },
+            "definitions": {
+              "impact_analysis": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "enum": ["local", "module", "system"]
+                  },
+                  "affected_components": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "breaking_change": {
+                    "type": "boolean"
+                  },
+                  "migration_needed": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "file_change": {
+                "type": "object",
+                "required": ["path", "action"],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": ["create", "modify", "delete", "extend"]
+                  },
+                  "zone": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              },
+              "contract_requirement": {
+                "type": "object",
+                "required": ["contract_name", "constraint"],
+                "properties": {
+                  "contract_name": {
+                    "type": "string"
+                  },
+                  "constraint": {
+                    "type": "string"
+                  },
+                  "methods_affected": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "test_requirement": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["unit", "integration", "e2e"]
+                  },
+                  "coverage": {
+                    "type": "string"
+                  }
+                }
+              },
+              "risk_assessment": {
+                "type": "object",
+                "required": ["level"],
+                "properties": {
+                  "level": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "critical"]
+                  },
+                  "factors": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "mitigations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "example_output": {
+          "plan": {
+            "change_description": "Add multi-tenant rate limit override",
+            "timestamp": "2026-03-08T18:37:00Z",
+            "impact_analysis": {
+              "scope": "module",
+              "affected_components": [
+                "rate_limiter",
+                "RateLimitProvider",
+                "TenantContext"
+              ],
+              "breaking_change": false,
+              "migration_needed": false
+            },
+            "files_to_modify": [
+              {
+                "path": "swx_app/services/custom_rate_limiter.py",
+                "action": "create",
+                "zone": "APP",
+                "description": "Create custom rate limiter for multi-tenancy"
+              },
+              {
+                "path": "swx_core/providers/rate_limit_provider.py",
+                "action": "extend",
+                "zone": "CORE",
+                "description": "Extend to support tenant override"
+              }
+            ],
+            "contracts_to_respect": [
+              {
+                "contract_name": "RateLimiterProtocol",
+                "constraint": "Must implement check_limit() and get_limit()",
+                "methods_affected": ["check_limit"]
+              }
+            ],
+            "providers_to_update": [
+              "RateLimitServiceProvider"
+            ],
+            "tests_required": [
+              {
+                "file": "tests/test_rate_limit_multi_tenant.py",
+                "type": "unit",
+                "coverage": "Multi-tenant rate limiting"
+              },
+              {
+                "file": "tests/integration/test_tenant_rate_limits.py",
+                "type": "integration",
+                "coverage": "Cross-tenant isolation"
+              }
+            ],
+            "risk_assessment": {
+              "level": "low",
+              "factors": [
+                "No breaking changes to existing API",
+                "Uses extension pattern not modification"
+              ],
+              "mitigations": [
+                "Test tenant isolation thoroughly",
+                "Verify performance impact"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": 7,
+      "name": "Dependency Graph Export",
+      "description": "Service, event, and plugin dependency graphs in multiple formats",
+      "components": {
+        "cli_commands": {
+          "swx_export_graph": {
+            "command": "swx export-graph [OPTIONS]",
+            "options": [
+              {
+                "name": "--type",
+                "type": "choice",
+                "values": ["service", "event", "provider", "plugin", "all"],
+                "default": "all"
+              },
+              {
+                "name": "--format",
+                "type": "choice",
+                "values": ["json", "dot", "mermaid", "plantuml"],
+                "default": "json"
+              },
+              {
+                "name": "--output",
+                "type": "path"
+              },
+              {
+                "name": "--direction",
+                "type": "choice",
+                "values": ["forward", "reverse"],
+                "default": "forward"
+              },
+              {
+                "name": "--depth",
+                "type": "integer",
+                "description": "Maximum traversal depth"
+              }
+            ],
+            "examples": [
+              "swx export-graph --type service --format mermaid",
+              "swx export-graph --type event --format dot --output events.dot",
+              "swx export-graph --type provider --depth 2"
+            ]
+          }
+        },
+        "graph_formats": {
+          "json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "graph_type": {
+                  "type": "string"
+                },
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/node"
+                  }
+                },
+                "edges": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/edge"
+                  }
+                }
+              },
+              "definitions": {
+                "node": {
+                  "type": "object",
+                  "required": ["id", "label"],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "zone": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "edge": {
+                  "type": "object",
+                  "required": ["source", "target"],
+                  "properties": {
+                    "source": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["dependency", "event", "hook", "inheritance"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "dot": {
+            "description": "Graphviz DOT format",
+            "example": "digraph service_dependencies {\n  rankdir=LR;\n  rate_limiter -> config;\n  rate_limiter -> redis;\n}"
+          },
+          "mermaid": {
+            "description": "Mermaid diagram format",
+            "example": "graph LR\n  rate_limiter --> config\n  rate_limiter --> redis\n  auth_service --> user_repository"
+          }
+        },
+        "example_output": {
+          "service_graph": {
+            "graph_type": "service_dependencies",
+            "nodes": [
+              {
+                "id": "rate_limiter",
+                "label": "RateLimiter",
+                "zone": "CORE",
+                "type": "service"
+              },
+              {
+                "id": "redis",
+                "label": "Redis",
+                "zone": "INFRA",
+                "type": "infrastructure"
+              },
+              {
+                "id": "config",
+                "label": "Config",
+                "zone": "CORE",
+                "type": "service"
+              }
+            ],
+            "edges": [
+              {
+                "source": "rate_limiter",
+                "target": "redis",
+                "type": "dependency"
+              },
+              {
+                "source": "rate_limiter",
+                "target": "config",
+                "type": "dependency"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "phase": 8,
+      "name": "Structured Change Logic",
+      "description": "Machine-checkable rules for safe modifications",
+      "components": {
+        "rules_engine": {
+          "core_immutability": {
+            "description": "Core framework files cannot be modified",
+            "enforcement": {
+              "check": "Zone check on file path",
+              "action": "Block edit/delete operations",
+              "exception": "None - framework updates only"
+            },
+            "machine_checkable": {
+              "rule_id": "CORE-001",
+              "predicate": "file.zone == 'CORE' && operation in ['edit', 'delete']",
+              "action": "DENY"
+            }
+          },
+          "contract_compatibility": {
+            "description": "Contract interfaces must remain compatible",
+            "enforcement": {
+              "check": "Contract signature validation",
+              "action": "Warn on breaking changes"
+            },
+            "machine_checkable": {
+              "rule_id": "CONTRACT-001",
+              "predicate": "implementing_class.method_signature != contract.method_signature",
+              "action": "WARN"
+            }
+          },
+          "plugin_isolation": {
+            "description": "Plugins cannot override other plugins without explicit rule",
+            "enforcement": {
+              "check": "Plugin dependency validation",
+              "action": "Block unauthorized overrides"
+            },
+            "machine_checkable": {
+              "rule_id": "PLUGIN-001",
+              "predicate": "plugin_a.overrides(plugin_b) && !plugin_b.has_explicit_override_rule",
+              "action": "DENY"
+            }
+          },
+          "provider_override": {
+            "description": "Providers can be overridden via container binding only",
+            "enforcement": {
+              "check": "Container binding validation",
+              "action": "Enforce override through container"
+            },
+            "machine_checkable": {
+              "rule_id": "PROVIDER-001",
+              "predicate": "override && !through_container",
+              "action": "DENY"
+            }
+          }
+        },
+        "cli_commands": {
+          "swx_validate_change": {
+            "command": "swx validate-change <file> --operation <operation>",
+            "description": "Validate if change is allowed",
+            "example": "swx validate-change swx_core/main.py --operation edit"
+          },
+          "swx_rules_list": {
+            "command": "swx rules:list",
+            "description": "List all change validation rules"
+          },
+          "swx_rules_check": {
+            "command": "swx rules:check",
+            "description": "Check current codebase for rule violations"
+          }
+        },
+        "json_schema": {
+          "rule_definition": {
+            "type": "object",
+            "required": ["rule_id", "name", "predicate", "action"],
+            "properties": {
+              "rule_id": {
+                "type": "string",
+                "pattern": "^[A-Z]+-\\d+$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "predicate": {
+                "type": "string",
+                "description": "Machine-evaluable condition"
+              },
+              "action": {
+                "type": "string",
+                "enum": ["DENY", "WARN", "ALLOW"]
+              },
+              "zone": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": 9,
+      "name": "Agent Instruction Manifest",
+      "description": "Operating manual for AI agents interacting with SwX",
+      "components": {
+        "cli_commands": {
+          "swx_export_agent_rules": {
+            "command": "swx export-agent-rules [OPTIONS]",
+            "options": [
+              {
+                "name": "--format",
+                "type": "choice",
+                "values": ["json", "markdown", "yaml"],
+                "default": "markdown"
+              },
+              {
+                "name": "--output",
+                "type": "path"
+              }
+            ],
+            "examples": [
+              "swx export-agent-rules --format markdown --output AGENT_MANUAL.md"
+            ]
+          }
+        },
+        "manifest_schema": {
+          "mutation_rules": {
+            "description": "Rules governing what AI agents can modify",
+            "rules": [
+              {
+                "id": "MUTATION-001",
+                "rule": "Never modify files in CORE zone directly",
+                "rationale": "Core framework changes require framework updates",
+                "exception": "Use provider override or plugin extension instead"
+              },
+              {
+                "id": "MUTATION-002",
+                "rule": "All APP modifications must implement contract interfaces",
+                "rationale": "Ensures compatibility and substitutability"
+              },
+              {
+                "id": "MUTATION-003",
+                "rule": "Provider modifications must go through container binding",
+                "rationale": "Maintains IoC integrity"
+              }
+            ]
+          },
+          "file_ownership_rules": {
+            "description": "Which files agents can modify based on zone",
+            "ownership": {
+              "swx_core": {
+                "mutability": "none",
+                "rationale": "Framework code - do not modify",
+                "exceptions": []
+              },
+              "swx_app": {
+                "mutability": "full",
+                "rationale": "Application code - safe to modify",
+                "restrictions": ["Must implement contracts", "Must respect routes"]
+              },
+              "swx_plugins": {
+                "mutability": "plugin_only",
+                "rationale": "Plugin-specific code",
+                "restrictions": ["Must follow plugin API"]
+              }
+            }
+          },
+          "safe_override_patterns": {
+            "description": "Approved patterns for extending SwX",
+            "patterns": [
+              {
+                "pattern": "Provider Override",
+                "example": "container.bind('service', CustomImplementation)",
+                "when_to_use": "Need different implementation of core service"
+              },
+              {
+                "pattern": "Event Listener",
+                "example": "class CustomListener(Listener): event = 'user.created'",
+                "when_to_use": "Need to react to system events"
+              },
+              {
+                "pattern": "Middleware",
+                "example": "class CustomMiddleware(BaseMiddleware)",
+                "when_to_use": "Need to process requests/responses"
+              },
+              {
+                "pattern": "Plugin Hook",
+                "example": "def custom_hook(context): pass",
+                "when_to_use": "Need to extend plugin functionality"
+              }
+            ]
+          },
+          "contract_enforcement_rules": {
+            "description": "Rules for implementing contracts",
+            "rules": [
+              {
+                "id": "CONTRACT-001",
+                "rule": "Method signatures must match contract exactly",
+                "rationale": "Ensures interface compatibility"
+              },
+              {
+                "id": "CONTRACT-002",
+                "rule": "Return types must be covariant with contract",
+                "rationale": "Liskov substitution principle"
+              },
+              {
+                "id": "CONTRACT-003",
+                "rule": "Exceptions must be documented",
+                "rationale": "API contract clarity"
+              }
+            ]
+          },
+          "testing_requirements": {
+            "description": "Required tests for different change types",
+            "requirements": [
+              {
+                "change_type": "new_service",
+                "required_tests": ["unit_test", "integration_test"]
+              },
+              {
+                "change_type": "new_route",
+                "required_tests": ["unit_test", "api_test"]
+              },
+              {
+                "change_type": "contract_implementation",
+                "required_tests": ["contract_test"]
+              }
+            ]
+          }
+        },
+        "example_output": {
+          "manifest": "# SwX Agent Instruction Manifest\n\n## Mutation Rules\n\n### Rule MUTATION-001: Core Immutability\n- **Rule**: Never modify files in CORE zone directly\n- **Rationale**: Core framework changes require framework updates\n- **Exception**: Use provider override or plugin extension instead\n\n### Rule MUTATION-002: Contract Implementation\n- **Rule**: All APP modifications must implement contract interfaces\n- **Rationale**: Ensures compatibility and substitutability\n\n## Safe Override Patterns\n\n### Provider Override\n```python\ncontainer.bind('service', CustomImplementation)\n```\nUse when: Need different implementation of core service\n\n### Event Listener\n```python\nclass CustomListener(Listener):\n    event = 'user.created'\n```\nUse when: Need to react to system events\n\n## Testing Requirements\n\n| Change Type | Required Tests |\n|------------|----------------|\n| New Service | unit_test, integration_test |\n| New Route | unit_test, api_test |\n| Contract Implementation | contract_test |\n"
+        }
+      }
+    },
+    {
+      "phase": 10,
+      "name": "Versioned AI Spec",
+      "description": "Versioned schema specifications for AI layer compatibility",
+      "components": {
+        "cli_commands": {
+          "swx_export_ai_spec": {
+            "command": "swx export-ai-spec [OPTIONS]",
+            "options": [
+              {
+                "name": "--format",
+                "type": "choice",
+                "values": ["json", "yaml"],
+                "default": "json"
+              },
+              {
+                "name": "--output",
+                "type": "path"
+              }
+            ]
+          }
+        },
+        "spec_schema": {
+          "ai_spec": {
+            "type": "object",
+            "required": [
+              "ai_metadata_schema_version",
+              "architecture_schema_version",
+              "change_safety_model_version",
+              "compatibility"
+            ],
+            "properties": {
+              "ai_metadata_schema_version": {
+                "type": "string",
+                "pattern": "^\\d+\\.\\d+\\.\\d+$"
+              },
+              "architecture_schema_version": {
+                "type": "string",
+                "pattern": "^\\d+\\.\\d+\\.\\d+$"
+              },
+              "change_safety_model_version": {
+                "type": "string",
+                "pattern": "^\\d+\\.\\d+\\.\\d+$"
+              },
+              "swx_version": {
+                "type": "string"
+              },
+              "generated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "compatibility": {
+                "$ref": "#/definitions/compatibility_matrix"
+              },
+              "deprecations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/deprecation"
+                }
+              },
+              "breaking_changes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "definitions": {
+              "compatibility_matrix": {
+                "type": "object",
+                "properties": {
+                  "min_ai_spec_version": {
+                    "type": "string"
+                  },
+                  "max_ai_spec_version": {
+                    "type": "string"
+                  },
+                  "supported_export_formats": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "supported_graph_formats": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "deprecation": {
+                "type": "object",
+                "required": ["feature", "version", "replacement"],
+                "properties": {
+                  "feature": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "replacement": {
+                    "type": "string"
+                  },
+                  "removal_version": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "example_output": {
+          "ai_spec": {
+            "ai_metadata_schema_version": "1.0.0",
+            "architecture_schema_version": "2.0.0",
+            "change_safety_model_version": "1.0.0",
+            "swx_version": "2.0.0",
+            "generated_at": "2026-03-08T18:37:00Z",
+            "compatibility": {
+              "min_ai_spec_version": "1.0.0",
+              "max_ai_spec_version": "1.0.0",
+              "supported_export_formats": ["json", "graph", "agents", "yaml"],
+              "supported_graph_formats": ["json", "dot", "mermaid", "plantuml"]
+            },
+            "deprecations": [],
+            "breaking_changes": []
+          }
+        }
+      }
+    }
+  ],
+  "implementation_plan": {
+    "phase_order": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    "dependencies": {
+      "phase_1": [],
+      "phase_2": ["phase_1"],
+      "phase_3": ["phase_2"],
+      "phase_4": ["phase_1"],
+      "phase_5": ["phase_1", "phase_4"],
+      "phase_6": ["phase_1", "phase_2", "phase_5"],
+      "phase_7": ["phase_1"],
+      "phase_8": ["phase_2"],
+      "phase_9": ["phase_2", "phase_3", "phase_8"],
+      "phase_10": ["phase_1", "phase_2", "phase_3"]
+    },
+    "estimated_complexity": {
+      "phase_1": "high",
+      "phase_2": "medium",
+      "phase_3": "medium",
+      "phase_4": "medium",
+      "phase_5": "low",
+      "phase_6": "high",
+      "phase_7": "medium",
+      "phase_8": "high",
+      "phase_9": "medium",
+      "phase_10": "low"
+    },
+    "implementation_priority": [
+      {
+        "phase": 1,
+        "priority": 1,
+        "rationale": "Foundation - all other phases depend on architecture introspection"
+      },
+      {
+        "phase": 2,
+        "priority": 2,
+        "rationale": "Safety boundaries - critical for AI modification control"
+      },
+      {
+        "phase": 10,
+        "priority": 3,
+        "rationale": "Versioning - ensures compatibility as system evolves"
+      },
+      {
+        "phase": 4,
+        "priority": 4,
+        "rationale": "Contracts - enables AI code generation"
+      },
+      {
+        "phase": 7,
+        "priority": 5,
+        "rationale": "Graphs - enables AI reasoning about dependencies"
+      },
+      {
+        "phase": 3,
+        "priority": 6,
+        "rationale": "Metadata - provides file-level context"
+      },
+      {
+        "phase": 5,
+        "priority": 7,
+        "rationale": "Context bundle - simplifies AI integration"
+      },
+      {
+        "phase": 8,
+        "priority": 8,
+        "rationale": "Change logic - enforces rules"
+      },
+      {
+        "phase": 9,
+        "priority": 9,
+        "rationale": "Manifest - provides operating instructions"
+      },
+      {
+        "phase": 6,
+        "priority": 10,
+        "rationale": "Change planning - complex analysis capability"
+      }
+    ]
+  },
+  "backwards_compatibility_strategy": {
+    "principles": [
+      {
+        "name": "Schema Versioning",
+        "description": "All exported schemas include version for compatibility checking",
+        "implementation": "Semver in every export, minimum version requirement in imports"
+      },
+      {
+        "name": "Non-Breaking Additions",
+        "description": "New fields can be added without breaking existing parsers",
+        "implementation": "Optional fields with sensible defaults"
+      },
+      {
+        "name": "Deprecation Path",
+        "description": "Features follow documented deprecation cycle",
+        "implementation": "2-version notice before removal, explicit replacement guidance"
+      },
+      {
+        "name": "Multi-Version Support",
+        "description": "Export system supports multiple schema versions",
+        "implementation": "Version parameter in CLI, backward-compatible parsing"
+      }
+    ],
+    "migration_guide": {
+      "from_1x_to_2x": {
+        "changes": [
+          "Added safe_zones to architecture export",
+          "Renamed plugins to extension_points in agent context",
+          "Added zone metadata to all exports"
+        ],
+        "migration_steps": [
+          "Update AI agents to parse new zone field",
+          "Update change planning to respect zone boundaries"
+        ]
+      }
+    }
+  }
+}
