@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.3.4  
+**Version:** 2.3.5  
 **Last Updated:** 2026-03-30
 
 ---
@@ -29,6 +29,13 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.3.5 (2026-03-30)
+
+**Documentation**
+
+- ✅ Updated FAQ with auth route auto-registration info
+- ✅ Added NullType migration error troubleshooting
 
 ### Version 2.3.4 (2026-03-30)
 

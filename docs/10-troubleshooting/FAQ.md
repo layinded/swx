@@ -1,7 +1,7 @@
 # Frequently Asked Questions (FAQ)
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.3.5  
+**Last Updated:** 2026-03-30
 
 ---
 
@@ -51,10 +51,22 @@
 ### Q: How do I authenticate?
 
 **A:** Use JWT tokens:
-1. Login: `POST /api/auth/` with email and password
-2. Receive access and refresh tokens
-3. Use access token: `Authorization: Bearer <token>`
-4. Refresh when expired: `POST /api/auth/refresh`
+1. Register: `POST /api/auth/register` with email and password
+2. Login: `POST /api/auth/` with email and password
+3. Receive access and refresh tokens
+4. Use access token: `Authorization: Bearer <token>`
+5. Refresh when expired: `POST /api/auth/refresh`
+6. Logout: `POST /api/auth/revoke`
+
+### Q: Are auth routes automatically registered?
+
+**A:** Yes! swx-core automatically registers all auth routes when you use `bootstrap_app()`. No manual router registration needed. The routes are:
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/` - User login
+- `POST /api/auth/refresh` - Refresh access token
+- `POST /api/auth/revoke` - Logout/revoke token
+- `GET /api/user/profile/` - Get current user
+- `PATCH /api/user/profile/` - Update current user
 
 ### Q: What's the difference between admin and user tokens?
 

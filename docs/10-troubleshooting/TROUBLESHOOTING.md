@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-**Version:** 1.0.0  
+**Version:** 2.3.5  
 **Last Updated:** 2026-01-26
 
 ---
@@ -250,6 +250,35 @@ docker compose exec swx-api alembic downgrade -1
 
 # Check for conflicts
 docker compose exec swx-api alembic check
+```
+
+### Issue: Migration Fails with NullType Error
+
+**Symptoms:**
+- Error: `module 'sqlalchemy' has no attribute 'NullType'`
+- Generated migration contains `sa.NullType()` for datetime fields
+
+**Diagnosis:**
+```bash
+# Check the generated migration file
+cat migrations/versions/<migration_file>.py | grep NullType
+```
+
+**Cause:**
+This is a known issue with SQLModel + Alembic autogenerate. The `DateTime` field type gets incorrectly mapped as `NullType` when combined with `server_default`.
+
+**Solution (v2.3.4+):**
+This issue is fixed in swx-core v2.3.4. The migration template now properly renders NullType as DateTime(). Upgrade:
+```bash
+pip install --upgrade swx-core
+```
+
+If on older version, manually fix the migration:
+```python
+# In migration file, replace:
+sa.Column('created_at', sa.NullType(), ...)
+# With:
+sa.Column('created_at', sa.DateTime(), ...)
 ```
 
 ### Issue: Slow Queries
