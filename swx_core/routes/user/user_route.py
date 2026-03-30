@@ -17,7 +17,7 @@ Endpoints:
 
 from typing import Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Request
 
 from swx_core.database.db import SessionDep
 from swx_core.models.common import Message
@@ -29,8 +29,6 @@ from swx_core.services.user_service import (
     update_password_service,
     delete_user_service,
 )
-from swx_core.services.policy.dependencies import require_policy
-from swx_core.utils.language_helper import translate
 
 # Define the router with a prefix for user profile-related operations
 router = APIRouter(prefix="/user/profile")
@@ -78,14 +76,6 @@ async def read_user_by_id(
     session: SessionDep,
     current_user: UserDep,
     request: Request,
-    _policy: None = Depends(
-        require_policy(
-            action="user:read",
-            resource_type="user",
-            resource_id=user_id,
-            resource_owner_id=user_id
-        )
-    ),
 ) -> Any:
     """
     Retrieve user details by their unique ID.

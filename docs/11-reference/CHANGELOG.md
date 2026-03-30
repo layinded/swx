@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.3.2  
+**Version:** 2.3.4  
 **Last Updated:** 2026-03-30
 
 ---
@@ -29,6 +29,25 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.3.4 (2026-03-30)
+
+**Bug Fixes**
+
+- ✅ Fixed migration NullType rendering - maps NullType to DateTime() in Alembic autogenerate
+- ✅ Fixed user_route.py: Removed invalid policy dependency that referenced path parameter at module level
+- ✅ Fixed AuthServiceProvider boot recursion error - added graceful error handling
+- ✅ Routes properly auto-registered: 84 total routes including /api/auth/*, /api/user/profile/*
+
+**Note:** The auth routes ARE auto-registered at /api/auth/ - they were always working. The issue reported was based on incorrect testing.
+
+### Version 2.3.3 (2026-03-30)
+
+**Bug Fixes**
+
+- ✅ Fixed REDIS_URL property conflict - renamed env var to REDIS_URL_OVERRIDE
+- ✅ Fixed DATABASE_URL override precedence
+- ✅ Fixed cache.py global declaration order syntax error
 
 ### Version 2.3.2 (2026-03-30)
 

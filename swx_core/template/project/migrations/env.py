@@ -48,14 +48,14 @@ def run_migrations_offline() -> None:
 
 
 def render_item(type_, obj, autogen_context):
-    """Render SQLModel types for Alembic autogenerate."""
     from sqlmodel.sql.sqltypes import AutoString
-    from sqlalchemy import String, Text, Integer, BigInteger, Float, Boolean, DateTime
+    from sqlalchemy import String, DateTime, Text, Integer, BigInteger, Float, Boolean
 
-    if type_ == "type" and isinstance(obj, AutoString):
-        if obj.length:
-            return f"String({obj.length})"
-        return "String()"
+    if type_ == "type":
+        if isinstance(obj, AutoString):
+            return f"String({obj.length})" if obj.length else "String()"
+        if hasattr(obj, "__class__") and obj.__class__.__name__ == "NullType":
+            return "DateTime()"
     return False
 
 
