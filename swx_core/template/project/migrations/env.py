@@ -54,8 +54,12 @@ def render_item(type_, obj, autogen_context):
     if type_ == "type":
         if isinstance(obj, AutoString):
             return f"String({obj.length})" if obj.length else "String()"
-        if hasattr(obj, "__class__") and obj.__class__.__name__ == "NullType":
-            return "DateTime()"
+        # Handle NullType - SQLModel generates this for datetime fields
+        try:
+            if obj.__class__.__name__ == "NullType":
+                return "DateTime()"
+        except AttributeError:
+            pass
     return False
 
 

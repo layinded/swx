@@ -275,6 +275,46 @@ gunicorn swx_core.main:app \
 
 ---
 
+## Using swx-core in Your Application
+
+### Option 1: Use bootstrap_app() (Recommended)
+
+```python
+# main.py
+from fastapi import FastAPI
+from swx_core.bootstrap import bootstrap_app
+
+app = FastAPI()
+container = bootstrap_app(app)
+
+# Routes are automatically registered:
+# - /api/auth/* (login, register, refresh, revoke)
+# - /api/user/profile/* (current user)
+# - /api/admin/* (admin CRUD)
+# - /api/utils/* (health, language)
+# - etc.
+```
+
+### Option 2: Import swx-core app directly
+
+```python
+# main.py
+from swx_core.main import app  # Use swx-core app directly
+```
+
+### Option 3: Import router into your own app
+
+```python
+# main.py
+from fastapi import FastAPI
+from swx_core.router import router
+
+app = FastAPI()
+app.include_router(router)  # All swx-core routes registered
+```
+
+---
+
 ## Verifying Installation
 
 ### 1. Check API Health

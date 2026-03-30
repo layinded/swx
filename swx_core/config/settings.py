@@ -233,6 +233,11 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER: str = "admin@example.com"
     FIRST_SUPERUSER_PASSWORD: str = "securepassword"
 
+    @property
+    def FIRST_ADMIN_EMAIL(self) -> str:
+        """Backward compatibility alias for FIRST_SUPERUSER."""
+        return self.FIRST_SUPERUSER
+
     # Redis Configuration (for rate limiting and caching)
     REDIS_HOST: str = Field(default="localhost", description="Redis host")
     REDIS_PORT: int = Field(default=6379, description="Redis port")

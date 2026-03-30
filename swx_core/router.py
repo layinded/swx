@@ -4,6 +4,7 @@ SwX Router Module.
 Handles dynamic route loading from both core and app directories.
 Uses configurable discovery for app paths.
 """
+
 import sys
 import warnings
 from pathlib import Path
@@ -24,7 +25,7 @@ router = APIRouter()
 
 
 def router_module(
-        module, full_module_name: str, main_router: APIRouter, version: Optional[str] = None
+    module, full_module_name: str, main_router: APIRouter, version: Optional[str] = None
 ):
     """
     Dynamically registers a module's router.
@@ -43,7 +44,7 @@ def router_module(
     module_parts = full_module_name.split(".")
     try:
         idx = module_parts.index("routes")
-        route_parts = module_parts[idx + 1:]
+        route_parts = module_parts[idx + 1 :]
     except ValueError:
         print(
             f"⚠️ WARNING: Could not determine route structure for '{full_module_name}'"
@@ -78,7 +79,7 @@ def router_module(
     normalized_prefix = user_defined_prefix.rstrip("/")
     for route in module.router.routes:
         if route.path.startswith(normalized_prefix):
-            new_path = route.path[len(normalized_prefix):]
+            new_path = route.path[len(normalized_prefix) :]
             if not new_path.startswith("/"):
                 new_path = "/" + new_path
             # Avoid empty paths (default to "/")
@@ -118,8 +119,11 @@ def router_module(
 # ------------------------------------------------------------------------------
 # Dynamically load Core Routes from swx_core/routes
 # ------------------------------------------------------------------------------
+import os
+
+swx_path = os.path.dirname(os.path.abspath(__file__))
 core_routes_dict = dynamic_import(
-    "swx_core/routes", "swx_core.routes", recursive=True
+    os.path.join(swx_path, "routes"), "swx_core.routes", recursive=True
 )
 if core_routes_dict:
     for full_module_name, module in core_routes_dict.items():
@@ -135,14 +139,14 @@ def load_versioned_routes(router: APIRouter):
     """
     Dynamically loads API routes from versioned folders (e.g., app/routes/v1, v2, etc.)
     and registers them under /api/v1/, /api/v2/, etc.
-    
+
     Uses configurable discovery to find the app routes directory.
     """
     # Check if app exists first
     if not discovery.app_exists():
         print("⚠️ App directory not found. Skipping versioned routes.")
         return
-    
+
     versioned_routes_exist = False
     for version in settings.API_VERSIONS:
         routes_path = discovery.app_routes_path / version
@@ -176,14 +180,14 @@ def load_user_routes(router: APIRouter):
     """
     Dynamically loads all non-versioned user-defined API routes from app/routes
     and registers them under the global route prefix.
-    
+
     Uses configurable discovery to find the app routes directory.
     """
     # Check if app exists first
     if not discovery.app_exists():
         print("⚠️ App directory not found. Skipping user routes.")
         return
-    
+
     routes_path = discovery.app_routes_path
     if not routes_path.exists():
         print("⚠️ No user-defined API routes found. Skipping...")
