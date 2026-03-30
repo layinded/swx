@@ -34,7 +34,7 @@ target_metadata = Base.metadata
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     from swx_core.config.settings import settings
-    
+
     url = settings.SQLALCHEMY_DATABASE_URI
     context.configure(
         url=url,
@@ -47,8 +47,24 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def render_item(type_, obj, autogen_context):
+    """Render SQLModel types for Alembic autogenerate."""
+    from sqlmodel.sql.sqltypes import AutoString
+    from sqlalchemy import String, Text, Integer, BigInteger, Float, Boolean, DateTime
+
+    if type_ == "type" and isinstance(obj, AutoString):
+        if obj.length:
+            return f"String({obj.length})"
+        return "String()"
+    return False
+
+
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        render_item=render_item,
+    )
 
     with context.begin_transaction():
         context.run_migrations()
@@ -57,7 +73,7 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_async_migrations() -> None:
     """Run migrations in 'online' mode with async engine."""
     from swx_core.config.settings import settings
-    
+
     configuration = {"sqlalchemy.url": settings.ASYNC_SQLALCHEMY_DATABASE_URI}
     connectable = async_engine_from_config(
         configuration,

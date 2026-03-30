@@ -12,7 +12,7 @@ Framework-grade documentation for production deployment.
 
 - [OVERVIEW.md](01-overview/OVERVIEW.md) - Framework introduction and architecture
 - [FEATURES.md](01-overview/FEATURES.md) - Complete feature list
-- [REQUIREMENTS.md](01-overview/REQUIREMENTS.md) - System requirements
+- [DEPENDENCIES.md](01-overview/DEPENDENCIES.md) - Optional dependencies guide (v2.3.0+)
 
 ## 02. Getting Started
 

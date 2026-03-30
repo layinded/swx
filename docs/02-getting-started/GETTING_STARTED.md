@@ -80,10 +80,19 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install swx-core
+
+# Or install with extras for additional features:
+# - billing: Stripe payment processing
+# - monitoring: Sentry error tracking
+# - jobs: Celery background tasks
+# - ai: Vector embeddings (pgai)
+# - prod: Gunicorn WSGI server
+
+pip install swx-core[billing,monitoring,jobs]
 
 # Or using uv (faster)
-uv pip install -r requirements.txt
+uv pip install swx-core
 ```
 
 ---

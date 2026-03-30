@@ -16,13 +16,8 @@ from swx_core.config.settings import settings
 
 
 def setup_sentry_middleware():
-    """
-    Initializes Sentry for error monitoring.
-
-    Behavior:
-        - Only enabled if `settings.SENTRY_DSN` is set.
-        - Disabled in local development environments.
-    """
+    if not settings.MONITORING_ENABLED:
+        return
     if not getattr(settings, "SENTRY_DSN", None):
         return
     if settings.ENVIRONMENT == "local":
@@ -39,10 +34,10 @@ def setup_sentry_middleware():
 def apply_middleware(app):
     """
     Apply Sentry middleware (called by dynamic middleware loader).
-    
+
     This function is called automatically by swx_core.utils.loader.load_middleware().
     Sentry doesn't use FastAPI middleware - it hooks into Python directly.
-    
+
     Args:
         app: The FastAPI application instance (unused, kept for interface consistency).
     """

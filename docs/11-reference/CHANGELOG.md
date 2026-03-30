@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.1.0  
-**Last Updated:** 2026-03-07
+**Version:** 2.3.2  
+**Last Updated:** 2026-03-30
 
 ---
 
@@ -29,6 +29,56 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.3.2 (2026-03-30)
+
+**Bug Fixes**
+
+- ✅ Fixed REDIS_URL property conflict - renamed env var to REDIS_URL_OVERRIDE
+
+### Version 2.3.1 (2026-03-30)
+
+**Bug Fixes**
+
+- ✅ Added `render_item()` function in migrations/env.py for SQLModel type rendering (fixes AutoString/NullType errors)
+- ✅ Fixed DATABASE_URL override - now takes precedence over computed DB_HOST, DB_PORT, etc.
+- ✅ Fixed REDIS_URL override - now takes precedence over computed REDIS_HOST, REDIS_PORT
+- ✅ Exported password utilities from `swx_core.security` (get_password_hash, verify_password)
+- ✅ Added test conftest.py for required environment variables
+- ✅ Fixed syntax error in cache.py (global declaration order)
+
+**Documentation**
+- ✅ Added DEPENDENCIES.md - Optional dependencies guide
+- ✅ Added RESERVED_FIELD_NAMES.md - Document SQLModel reserved field names (metadata, registry, etc.)
+- ✅ Updated GETTING_STARTED.md with new installation commands
+
+### Version 2.3.0 (2026-03-30)
+
+**Dependencies Restructuring**
+
+- ✅ Removed unused dependencies (gunicorn, celery, rich, psutil, email-validator, prometheus-client, pgai)
+- ✅ Moved optional features to extras (billing, monitoring, jobs, ai, prod)
+- ✅ Fixed sentry-sdk version conflict (removed upper bound)
+
+**Feature Flags (Optional Features)**
+
+- ✅ Added BILLING_ENABLED, MONITORING_ENABLED, JOBS_ENABLED, AI_ENABLED settings
+- ✅ Added is_billing_available, is_monitoring_available, is_jobs_available, is_ai_available properties
+- ✅ Added lazy imports for stripe, sentry_sdk, redis, celery, pgai
+- ✅ Made BillingServiceProvider conditional on BILLING_ENABLED
+- ✅ Made RateLimitServiceProvider conditional on REDIS_ENABLED
+- ✅ Added BILLING_ENABLED env var check to stripe webhook endpoint
+- ✅ Added MONITORING_ENABLED env var check to sentry middleware
+
+**Installation**
+
+```bash
+# Minimal (19 packages)
+pip install swx-core
+
+# With extras
+pip install swx-core[billing,monitoring,jobs,ai,prod]
+```
 
 ### Version 2.1.0 (2026-03-07)
 

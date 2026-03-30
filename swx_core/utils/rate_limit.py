@@ -12,6 +12,7 @@ from functools import wraps
 
 try:
     import redis.asyncio as redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -22,7 +23,7 @@ from swx_core.middleware.logging_middleware import logger
 
 class RateLimitExceeded(HTTPException):
     """Exception raised when rate limit is exceeded."""
-    
+
     def __init__(self, detail: str = "Rate limit exceeded"):
         super().__init__(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -34,13 +35,13 @@ class RateLimitExceeded(HTTPException):
 class RateLimiter:
     """
     Rate limiter implementation.
-    
+
     Supports:
     - In-memory rate limiting (for development)
     - Redis-based rate limiting (for production)
     - Multiple rate limit windows (per minute, per hour, per day)
     """
-    
+
     def __init__(
         self,
         redis_url: Optional[str] = None,
@@ -48,7 +49,7 @@ class RateLimiter:
     ):
         """
         Initialize rate limiter.
-        
+
         Args:
             redis_url: Redis connection URL (optional)
             prefix: Key prefix for Redis
@@ -57,21 +58,21 @@ class RateLimiter:
         self._redis: Optional[redis.Redis] = None
         self._redis_url = redis_url
         self._memory_store: Dict[str, Dict[str, Any]] = {}
-    
+
     async def _get_redis(self) -> Optional[redis.Redis]:
         """Get Redis client."""
         if not REDIS_AVAILABLE or not self._redis_url:
             return None
-        
+
         if self._redis is None:
             self._redis = redis.from_url(self._redis_url)
-        
+
         return self._redis
-    
+
     def _make_key(self, identifier: str, action: str) -> str:
         """Create rate limit key."""
         return f"{self.prefix}{identifier}:{action}"
-    
+
     async def is_allowed(
         self,
         identifier: str,
@@ -81,28 +82,32 @@ class RateLimiter:
     ) -> tuple[bool, int, int]:
         """
         Check if request is allowed.
-        
+
         Args:
             identifier: Unique identifier (e.g., IP address, user ID)
             action: Action name (e.g., "api_call", "login")
             max_requests: Maximum requests allowed
             window_seconds: Time window in seconds
-            
+
         Returns:
             Tuple of (is_allowed, remaining_requests, retry_after_seconds)
         """
         key = self._make_key(identifier, action)
         current_time = time.time()
         window_start = current_time - window_seconds
-        
+
         # Try Redis first
         redis_client = await self._get_redis()
-        
+
         if redis_client:
-            return await self._check_redis(redis_client, key, max_requests, window_seconds, current_time)
+            return await self._check_redis(
+                redis_client, key, max_requests, window_seconds, current_time
+            )
         else:
-            return await self._check_memory(key, max_requests, window_seconds, current_time, window_start)
-    
+            return await self._check_memory(
+                key, max_requests, window_seconds, current_time, window_start
+            )
+
     async def _check_redis(
         self,
         redis_client: redis.Redis,
@@ -114,25 +119,29 @@ class RateLimiter:
         """Check rate limit using Redis."""
         # Use sliding window algorithm
         window_start = current_time - window_seconds
-        
+
         # Remove old entries
         await redis_client.zremrangebyscore(key, 0, window_start)
-        
+
         # Count current requests
         count = await redis_client.zcard(key)
-        
+
         if count >= max_requests:
             # Get oldest request time to calculate retry-after
             oldest = await redis_client.zrange(key, 0, 0, withscores=True)
-            retry_after = int(oldest[0][1] + window_seconds - current_time) if oldest else window_seconds
+            retry_after = (
+                int(oldest[0][1] + window_seconds - current_time)
+                if oldest
+                else window_seconds
+            )
             return False, 0, max(1, retry_after)
-        
+
         # Add current request
         await redis_client.zadd(key, {str(current_time): current_time})
         await redis_client.expire(key, window_seconds)
-        
+
         return True, max_requests - count - 1, 0
-    
+
     async def _check_memory(
         self,
         key: str,
@@ -144,29 +153,28 @@ class RateLimiter:
         """Check rate limit using in-memory store."""
         if key not in self._memory_store:
             self._memory_store[key] = {"timestamps": []}
-        
+
         # Remove old entries
         self._memory_store[key]["timestamps"] = [
-            ts for ts in self._memory_store[key]["timestamps"]
-            if ts > window_start
+            ts for ts in self._memory_store[key]["timestamps"] if ts > window_start
         ]
-        
+
         count = len(self._memory_store[key]["timestamps"])
-        
+
         if count >= max_requests:
             oldest = min(self._memory_store[key]["timestamps"])
             retry_after = int(oldest + window_seconds - current_time)
             return False, 0, max(1, retry_after)
-        
+
         # Add current request
         self._memory_store[key]["timestamps"].append(current_time)
-        
+
         return True, max_requests - count - 1, 0
-    
+
     async def reset(self, identifier: str, action: str) -> None:
         """Reset rate limit for identifier."""
         key = self._make_key(identifier, action)
-        
+
         redis_client = await self._get_redis()
         if redis_client:
             await redis_client.delete(key)
@@ -179,15 +187,16 @@ _rate_limiter: Optional[RateLimiter] = None
 
 
 def get_rate_limiter() -> RateLimiter:
-    """Get the global rate limiter instance."""
     global _rate_limiter
     if _rate_limiter is None:
-        _rate_limiter = RateLimiter()
+        from swx_core.config.settings import settings
+
+        redis_url = settings.REDIS_URL if settings.REDIS_ENABLED else None
+        _rate_limiter = RateLimiter(redis_url=redis_url)
     return _rate_limiter
 
 
 def set_rate_limiter(limiter: RateLimiter) -> None:
-    """Set the global rate limiter instance."""
     global _rate_limiter
     _rate_limiter = limiter
 
@@ -200,22 +209,23 @@ def rate_limit(
 ):
     """
     Decorator to rate limit a function.
-    
+
     Usage:
         @rate_limit(max_requests=10, window_seconds=60)
         async def expensive_operation(user_id: str):
             return {"result": "success"}
-        
+
         @rate_limit(max_requests=5, window_seconds=60, identifier_func=lambda req: req.client.host)
         async def api_endpoint(request: Request):
             return {"data": "value"}
-    
+
     Args:
         max_requests: Maximum requests allowed in window
         window_seconds: Time window in seconds
         identifier_func: Function to extract identifier from request
         action: Action name for rate limit key
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -229,7 +239,7 @@ def rate_limit(
                         break
                 if request is None:
                     request = kwargs.get("request")
-                
+
                 if request:
                     identifier = identifier_func(request)
                 else:
@@ -237,7 +247,7 @@ def rate_limit(
             else:
                 # Use first arg as identifier
                 identifier = str(args[0]) if args else "anonymous"
-            
+
             # Check rate limit
             limiter = get_rate_limiter()
             allowed, remaining, retry_after = await limiter.is_allowed(
@@ -246,15 +256,16 @@ def rate_limit(
                 max_requests=max_requests,
                 window_seconds=window_seconds,
             )
-            
+
             if not allowed:
                 raise RateLimitExceeded(
                     detail=f"Rate limit exceeded. Try again in {retry_after} seconds."
                 )
-            
+
             return await func(*args, **kwargs)
-        
+
         return wrapper
+
     return decorator
 
 
@@ -265,15 +276,16 @@ def rate_limit_by_ip(
 ):
     """
     Decorator to rate limit by IP address.
-    
+
     Usage:
         @rate_limit_by_ip(max_requests=100, window_seconds=60)
         async def public_endpoint(request: Request):
             return {"data": "value"}
     """
+
     def identifier_func(request: Request) -> str:
         return request.client.host if request.client else "unknown"
-    
+
     return rate_limit(
         max_requests=max_requests,
         window_seconds=window_seconds,
@@ -289,19 +301,20 @@ def rate_limit_by_user(
 ):
     """
     Decorator to rate limit by user ID.
-    
+
     Usage:
         @rate_limit_by_user(max_requests=50, window_seconds=60)
         async def protected_endpoint(request: Request, user: User = Depends(get_current_user)):
             return {"data": "value"}
     """
+
     def identifier_func(request: Request) -> str:
         # Try to get user from request state
         user = getattr(request.state, "user", None)
         if user and hasattr(user, "id"):
             return str(user.id)
         return "anonymous"
-    
+
     return rate_limit(
         max_requests=max_requests,
         window_seconds=window_seconds,
@@ -317,19 +330,22 @@ def rate_limit_by_api_key(
 ):
     """
     Decorator to rate limit by API key.
-    
+
     Usage:
         @rate_limit_by_api_key(max_requests=1000, window_seconds=60)
         async def api_endpoint(request: Request):
             return {"data": "value"}
     """
+
     def identifier_func(request: Request) -> str:
         # Try to get API key from headers
-        api_key = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
+        api_key = request.headers.get("X-API-Key") or request.headers.get(
+            "Authorization", ""
+        )
         if api_key.startswith("ApiKey "):
             api_key = api_key[7:]
         return api_key or "anonymous"
-    
+
     return rate_limit(
         max_requests=max_requests,
         window_seconds=window_seconds,
@@ -347,7 +363,7 @@ async def check_rate_limit(
 ):
     """
     FastAPI dependency to check rate limit.
-    
+
     Usage:
         @router.get("/endpoint")
         async def endpoint(
@@ -358,22 +374,22 @@ async def check_rate_limit(
     """
     if action is None:
         action = f"{request.method}:{request.url.path}"
-    
+
     limiter = get_rate_limiter()
     identifier = request.client.host if request.client else "unknown"
-    
+
     allowed, remaining, retry_after = await limiter.is_allowed(
         identifier=identifier,
         action=action,
         max_requests=max_requests,
         window_seconds=window_seconds,
     )
-    
+
     if not allowed:
         raise RateLimitExceeded(
             detail=f"Rate limit exceeded. Try again in {retry_after} seconds."
         )
-    
+
     # Add rate limit headers to response
     request.state.rate_limit_remaining = remaining
     request.state.rate_limit_reset = int(time.time()) + window_seconds

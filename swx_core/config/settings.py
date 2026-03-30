@@ -64,12 +64,18 @@ class Settings(BaseSettings):
     API_VERSIONS: List[str] = Field(["v1", "v2"], description="Supported API versions")
     DEFAULT_API_VERSION: str = Field("v1", description="Default API version")
 
-    BACKEND_HOST: str = Field("http://localhost:8000", description="Backend API host URL")
-    FRONTEND_HOST: str = Field("http://localhost:5173", description="Frontend application URL")
+    BACKEND_HOST: str = Field(
+        "http://localhost:8000", description="Backend API host URL"
+    )
+    FRONTEND_HOST: str = Field(
+        "http://localhost:5173", description="Frontend application URL"
+    )
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
 
-    LOG_LEVEL: Literal["debug", "info", "warning", "error", "critical", "production"] = Field(default="warning")
-    
+    LOG_LEVEL: Literal[
+        "debug", "info", "warning", "error", "critical", "production"
+    ] = Field(default="warning")
+
     @field_validator("LOG_LEVEL", mode="before")
     def normalize_log_level(cls, v: Any) -> str:
         """Normalize LOG_LEVEL to lowercase."""
@@ -78,17 +84,28 @@ class Settings(BaseSettings):
         return v
 
     # Security & Authentication
-    PASSWORD_SECURITY_ALGORITHM: str = Field(default="HS256", description="Algorithm for password security")
-    SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32), description="Secret key for JWT tokens")
+    PASSWORD_SECURITY_ALGORITHM: str = Field(
+        default="HS256", description="Algorithm for password security"
+    )
+    SECRET_KEY: str = Field(
+        default_factory=lambda: secrets.token_urlsafe(32),
+        description="Secret key for JWT tokens",
+    )
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # 30 days
-    REFRESH_SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32),
-                                    description="Secret key for refresh tokens")
-    PASSWORD_RESET_SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32),
-                                           description="Secret key for password reset tokens (separate from access tokens)")
+    REFRESH_SECRET_KEY: str = Field(
+        default_factory=lambda: secrets.token_urlsafe(32),
+        description="Secret key for refresh tokens",
+    )
+    PASSWORD_RESET_SECRET_KEY: str = Field(
+        default_factory=lambda: secrets.token_urlsafe(32),
+        description="Secret key for password reset tokens (separate from access tokens)",
+    )
 
     # CORS Settings
-    BACKEND_CORS_ORIGINS: str | list[str] = Field("", description="Allowed CORS origins")
+    BACKEND_CORS_ORIGINS: str | list[str] = Field(
+        "", description="Allowed CORS origins"
+    )
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     def parse_cors_string(cls, v: Any) -> list[str]:
@@ -119,10 +136,15 @@ class Settings(BaseSettings):
         Returns:
             list[str]: List of allowed CORS origins.
         """
-        return list(set(self.BACKEND_CORS_ORIGINS + [self.FRONTEND_HOST, self.BACKEND_HOST]))
+        return list(
+            set(self.BACKEND_CORS_ORIGINS + [self.FRONTEND_HOST, self.BACKEND_HOST])
+        )
 
     # Detect Docker Environment
-    DOCKERIZED: bool = Field(default_factory=lambda: False, description="Detects if the app runs inside Docker")
+    DOCKERIZED: bool = Field(
+        default_factory=lambda: False,
+        description="Detects if the app runs inside Docker",
+    )
 
     # Database Configuration
     DATABASE_TYPE: Literal["sqlite", "postgres", "mysql"] = "postgres"
@@ -131,25 +153,30 @@ class Settings(BaseSettings):
     DB_USER: str = "swx_user"
     DB_PASSWORD: str = "changeme"
     DB_NAME: str = "swx_db"
-    
+
     # Allow overriding the database URI directly
-    DATABASE_URL: str | None = Field(default=None, description="Override database URL (takes precedence)")
-    ASYNC_DATABASE_URL: str | None = Field(default=None, description="Override async database URL (takes precedence)")
+    DATABASE_URL: str | None = Field(
+        default=None, description="Override database URL (takes precedence)"
+    )
+    ASYNC_DATABASE_URL: str | None = Field(
+        default=None, description="Override async database URL (takes precedence)"
+    )
 
     @property
     def ASYNC_SQLALCHEMY_DATABASE_URI(self) -> str:
-        """
-        Generates a dynamic async database connection URL.
-
-        Returns:
-            str: The full async database connection string.
-        """
-        # Allow direct override
         if self.ASYNC_DATABASE_URL:
             return self.ASYNC_DATABASE_URL
-        
-        # Use DB_HOST directly - it should be set correctly in all environments
-        # DOCKERIZED is just for informational purposes, not for overriding DB_HOST
+
+        if self.DATABASE_URL:
+            url = self.DATABASE_URL
+            if url.startswith("postgresql://"):
+                return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgres://"):
+                return url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url.startswith("mysql://"):
+                return url.replace("mysql://", "mysql+asyncmy://", 1)
+            return url
+
         db_host = self.DB_HOST
 
         if self.DATABASE_TYPE == "sqlite":
@@ -169,7 +196,7 @@ class Settings(BaseSettings):
         # Allow direct override
         if self.DATABASE_URL:
             return self.DATABASE_URL
-        
+
         # Use DB_HOST directly
         db_host = self.DB_HOST
 
@@ -198,7 +225,9 @@ class Settings(BaseSettings):
         Returns:
             bool: True if email configuration is set correctly, otherwise False.
         """
-        return all([self.SMTP_HOST, self.SMTP_USER, self.SMTP_PASSWORD, self.EMAILS_FROM_EMAIL])
+        return all(
+            [self.SMTP_HOST, self.SMTP_USER, self.SMTP_PASSWORD, self.EMAILS_FROM_EMAIL]
+        )
 
     # Superuser Configuration
     FIRST_SUPERUSER: str = "admin@example.com"
@@ -209,19 +238,129 @@ class Settings(BaseSettings):
     REDIS_PORT: int = Field(default=6379, description="Redis port")
     REDIS_PASSWORD: str | None = Field(default=None, description="Redis password")
     REDIS_DB: int = Field(default=0, description="Redis database number")
-    REDIS_ENABLED: bool = Field(default=True, description="Enable Redis (disable for development without Redis)")
+    REDIS_ENABLED: bool = Field(
+        default=True, description="Enable Redis (disable for development without Redis)"
+    )
+
+    REDIS_URL_OVERRIDE: str | None = Field(
+        default=None, description="Override full Redis URL"
+    )
 
     @property
     def REDIS_URL(self) -> str:
-        """
-        Generates Redis connection URL.
-        
-        Returns:
-            str: Redis connection URL
-        """
+        if self.REDIS_URL_OVERRIDE:
+            return self.REDIS_URL_OVERRIDE
         if self.REDIS_PASSWORD:
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
+    BILLING_ENABLED: bool = Field(
+        default=False, description="Enable Stripe billing integration"
+    )
+    STRIPE_API_KEY: str | None = Field(default=None, description="Stripe API key")
+    STRIPE_WEBHOOK_SECRET: str | None = Field(
+        default=None, description="Stripe webhook secret"
+    )
+
+    MONITORING_ENABLED: bool = Field(
+        default=False, description="Enable Sentry monitoring"
+    )
+    SENTRY_DSN: str | None = Field(
+        default=None, description="Sentry DSN for error tracking"
+    )
+
+    JOBS_ENABLED: bool = Field(
+        default=False, description="Enable Celery background jobs"
+    )
+    AI_ENABLED: bool = Field(
+        default=False, description="Enable AI/vector embeddings (pgai)"
+    )
+
+    @property
+    def is_billing_available(self) -> bool:
+        if not self.BILLING_ENABLED:
+            return False
+        try:
+            import stripe
+
+            return stripe is not None
+        except ImportError:
+            return False
+
+    @property
+    def is_monitoring_available(self) -> bool:
+        if not self.MONITORING_ENABLED:
+            return False
+        try:
+            import sentry_sdk
+
+            return sentry_sdk is not None
+        except ImportError:
+            return False
+
+    @property
+    def is_jobs_available(self) -> bool:
+        if not self.JOBS_ENABLED:
+            return False
+        try:
+            import celery
+
+            return celery is not None
+        except ImportError:
+            return False
+
+    @property
+    def is_ai_available(self) -> bool:
+        if not self.AI_ENABLED:
+            return False
+        try:
+            import pgai
+
+            return pgai is not None
+        except ImportError:
+            return False
+        try:
+            import stripe
+
+            return stripe is not None
+        except ImportError:
+            return False
+
+    @property
+    def is_monitoring_available(self) -> bool:
+        """Check if monitoring is available (enabled + sentry installed)."""
+        if not self.MONITORING_ENABLED:
+            return False
+        try:
+            import sentry_sdk
+
+            return sentry_sdk is not None
+        except ImportError:
+            return False
+
+    @property
+    def is_jobs_available(self) -> bool:
+        """Check if jobs is available (enabled + celery installed)."""
+        if not self.JOBS_ENABLED:
+            return False
+        try:
+            import celery
+
+            return celery is not None
+        except ImportError:
+            return False
+
+    @property
+    def is_ai_available(self) -> bool:
+        """Check if AI is available (enabled + pgai installed)."""
+        if not self.AI_ENABLED:
+            return False
+        try:
+            import pgai
+
+            return pgai is not None
+        except ImportError:
+            return False
 
 
 # Instantiate settings
