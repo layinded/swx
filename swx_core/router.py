@@ -76,6 +76,14 @@ def router_module(
     if not user_defined_prefix.startswith("/"):
         user_defined_prefix = "/" + user_defined_prefix
 
+    # Strip the router's own prefix from each route path to avoid duplication
+    route_prefix_strip = user_defined_prefix.rstrip("/")
+    for route in module.router.routes:
+        if route.path.startswith(route_prefix_strip):
+            route.path = route.path[len(route_prefix_strip) :]
+            if not route.path.startswith("/"):
+                route.path = "/" + route.path
+
     # Clear the router's own prefix to prevent FastAPI from appending it again.
     module.router.prefix = ""
 
