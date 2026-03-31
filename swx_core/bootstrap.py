@@ -115,12 +115,13 @@ def bootstrap_app(
     if app is not None:
         app.state.container = container
 
-        # Check if router already has routes registered (avoid duplicates)
+        # Register core routes if not already registered (check app routes directly)
+        existing_route_paths = {r.path for r in app.routes if hasattr(r, "path")}
+
         if core_router.routes:
-            already_registered = any(
-                r.path.startswith("/api") for r in app.routes if hasattr(r, "path")
-            )
-            if not already_registered:
+            # Check if any routes from core_router are already in app
+            core_paths = {r.path for r in core_router.routes}
+            if not core_paths.issubset(existing_route_paths):
                 app.include_router(core_router)
                 logger.info("Registered core routes with app")
             else:
