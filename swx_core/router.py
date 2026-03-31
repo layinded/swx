@@ -35,9 +35,10 @@ def router_module(
     - Also normalizes route paths to avoid duplicate segments.
     """
     if not hasattr(module, "router"):
-        print(
-            f"⚠️ WARNING: Module '{full_module_name}' does not have a 'router' attribute."
-        )
+        msg = f"⚠️ WARNING: Module '{full_module_name}' does not have a 'router' attribute."
+        if settings.STRICT_ROUTE_LOADING:
+            raise ValueError(msg)
+        print(msg)
         return
 
     # Split module path into parts (expecting structure like swx_core/routes/<folder>/<file>)
@@ -74,16 +75,6 @@ def router_module(
     # Ensure the prefix starts with "/"
     if not user_defined_prefix.startswith("/"):
         user_defined_prefix = "/" + user_defined_prefix
-
-    # Normalize each route's path: remove duplicate prefix if the route decorator includes it.
-    normalized_prefix = user_defined_prefix.rstrip("/")
-    for route in module.router.routes:
-        if route.path.startswith(normalized_prefix):
-            new_path = route.path[len(normalized_prefix) :]
-            if not new_path.startswith("/"):
-                new_path = "/" + new_path
-            # Avoid empty paths (default to "/")
-            route.path = new_path or "/"
 
     # Clear the router's own prefix to prevent FastAPI from appending it again.
     module.router.prefix = ""
@@ -182,8 +173,8 @@ def load_user_routes(router: APIRouter):
     and registers them under the global route prefix.
 
     Uses configurable discovery to find the app routes directory.
+    Skips versioned directories (v1, v2, etc.) to avoid duplicate registration.
     """
-    # Check if app exists first
     if not discovery.app_exists():
         print("⚠️ App directory not found. Skipping user routes.")
         return
@@ -203,6 +194,21 @@ def load_user_routes(router: APIRouter):
         return
 
     for full_module_name, module in user_routes_dict.items():
+        route_parts = full_module_name.split(".")
+
+        if "routes" in route_parts:
+            idx = route_parts.index("routes")
+            path_parts = route_parts[idx + 1 :]
+
+            if path_parts and any(
+                part.startswith("v") and len(part) > 1 and part[1:].isdigit()
+                for part in path_parts
+            ):
+                print(
+                    f"⏭️  Skipping versioned route: '{full_module_name}' (already loaded by load_versioned_routes)"
+                )
+                continue
+
         router_module(module, full_module_name, router)
 
 

@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     ROUTE_PREFIX: str = Field("/api", description="Base API route prefix")
     API_VERSIONS: List[str] = Field(["v1", "v2"], description="Supported API versions")
     DEFAULT_API_VERSION: str = Field("v1", description="Default API version")
+    STRICT_ROUTE_LOADING: bool = Field(
+        False,
+        description="If True, raise errors for missing routers instead of warnings",
+    )
 
     BACKEND_HOST: str = Field(
         "http://localhost:8000", description="Backend API host URL"
