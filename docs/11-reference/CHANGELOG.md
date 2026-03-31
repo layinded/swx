@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.3.5  
-**Last Updated:** 2026-03-30
+**Version:** 2.3.12  
+**Last Updated:** 2026-03-31
 
 ---
 
@@ -29,6 +29,62 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.3.12 (2026-03-31)
+
+**Bug Fixes**
+
+- ✅ Fixed duplicate route registration in swagger - `bootstrap_app()` was registering same router as `app.include_router(router)`, causing routes to appear twice in OpenAPI docs
+
+### Version 2.3.11 (2026-03-31)
+
+**Bug Fixes**
+
+- ✅ Fixed version prefix being stripped when routes define explicit prefix - versioned routes now ALWAYS get `/v1/` prefix regardless of explicit prefix setting
+
+### Version 2.3.10 (2026-03-31)
+
+**Bug Fixes**
+
+- ✅ Fixed duplicate route registration - `load_user_routes()` now skips versioned directories (v1, v2, etc.) to avoid loading same routes twice
+- ✅ Removed broken path stripping logic that could break valid routes
+- ✅ Added `STRICT_ROUTE_LOADING` setting to raise errors for missing routers instead of warnings
+
+**Improvements**
+
+- ✅ Versioned routes now show version in tags (e.g., "v1 - User API")
+
+### Version 2.3.9 (2026-03-31)
+
+**Bug Fixes**
+
+- ✅ Fixed EventBus.emit() method missing - Added `emit()` method as alias to `dispatch()` for backward compatibility
+- ✅ Fixed BaseController accepting dicts for backward compatibility in create() and update() methods
+
+### Version 2.3.8 (2026-03-31)
+
+**Bug Fixes**
+
+- ✅ Fixed BaseController.list() Query parameter issue - removed Query() wrapper from method default parameters to avoid passing Query objects to repository
+
+### Version 2.3.7 (2026-03-31)
+
+**Bug Fixes**
+
+- ✅ Fixed BaseRepository session handling - Changed from `get_session()` (async generator) to `AsyncSessionLocal()` (session factory) in all 18 methods
+
+### Version 2.3.6 (2026-03-31)
+
+**Bug Fixes**
+
+- ✅ Fixed dynamic_import path in router.py - was passing package name instead of filesystem path
+- ✅ Fixed empty `__init__.py` files in route modules - populated all exports so routers are accessible
+- ✅ Fixed migration NullType rendering - alembic was generating sa.NullType() which doesn't exist
+- ✅ Fixed provider instantiation errors - discovery was returning module names instead of class names
+- ✅ Fixed bootstrap_app() route registration - core routes weren't being registered with FastAPI app
+- ✅ Added FIRST_ADMIN_EMAIL backward compatibility alias in settings
+
+**Impact:** All core routes (auth, user, admin, utils) that were silently failing to load are now working.
 
 ### Version 2.3.5 (2026-03-30)
 
