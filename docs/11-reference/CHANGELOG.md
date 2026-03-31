@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.3.12  
+**Version:** 2.3.13  
 **Last Updated:** 2026-03-31
 
 ---
@@ -29,6 +29,12 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.3.13 (2026-03-31)
+
+**Bug Fixes**
+
+- ✅ Fixed route mounting check - now properly checks if route paths from core_router are already registered in app before including
 
 ### Version 2.3.12 (2026-03-31)
 
