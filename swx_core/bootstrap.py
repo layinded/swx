@@ -115,9 +115,18 @@ def bootstrap_app(
     if app is not None:
         app.state.container = container
 
-        # Register core routes with the app
-        app.include_router(core_router)
-        logger.info("Registered core routes with app")
+        # Check if router already has routes registered (avoid duplicates)
+        if core_router.routes:
+            already_registered = any(
+                r.path.startswith("/api") for r in app.routes if hasattr(r, "path")
+            )
+            if not already_registered:
+                app.include_router(core_router)
+                logger.info("Registered core routes with app")
+            else:
+                logger.info(
+                    "Core routes already registered, skipping duplicate registration"
+                )
 
     # Load core providers
     all_providers = CORE_PROVIDERS[:]
