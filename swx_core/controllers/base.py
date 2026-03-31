@@ -209,12 +209,15 @@ class BaseController(Generic[ModelType, CreateSchema, UpdateSchema, PublicSchema
         Override this method to customize creation behavior.
 
         Args:
-            data: Creation schema
+            data: Creation schema (Pydantic model or dict for backward compat)
             created_by_id: ID of the user creating the record
             emit_event: Whether to emit an event
         """
-        # Convert schema to dict
-        create_data = data.model_dump()
+        # Convert schema to dict (accept both schema and dict for backward compat)
+        if hasattr(data, "model_dump"):
+            create_data = data.model_dump()
+        else:
+            create_data = data
 
         # Add created_by if provided
         if created_by_id and hasattr(self.model, "created_by_id"):
@@ -236,8 +239,11 @@ class BaseController(Generic[ModelType, CreateSchema, UpdateSchema, PublicSchema
 
         Override this method to customize update behavior.
         """
-        # Convert schema to dict, excluding unset values
-        update_data = data.model_dump(exclude_unset=True)
+        # Convert schema to dict (accept both schema and dict for backward compat)
+        if hasattr(data, "model_dump"):
+            update_data = data.model_dump(exclude_unset=True)
+        else:
+            update_data = data
 
         # Update through service
         item = await self.service.update(id, update_data, emit_event=emit_event)
