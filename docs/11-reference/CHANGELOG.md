@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.3.13  
+**Version:** 2.3.14  
 **Last Updated:** 2026-03-31
 
 ---
@@ -29,6 +29,13 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.3.14 (2026-03-31)
+
+**Bug Fixes**
+
+- ✅ Fixed duplicate prefix in routes - strips router's prefix from each route path before registering to avoid duplication
+- Example: `v1/hospitals.py` with `prefix="/hospitals"` now correctly maps to `/api/v1/hospitals/` instead of `/api/v1/hospitals/hospitals/`
 
 ### Version 2.3.13 (2026-03-31)
 
