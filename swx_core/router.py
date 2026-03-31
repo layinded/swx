@@ -79,8 +79,13 @@ def router_module(
     # Clear the router's own prefix to prevent FastAPI from appending it again.
     module.router.prefix = ""
 
-    # Prepend the global API prefix (e.g. "/api") to the user-defined/default prefix.
-    include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}{user_defined_prefix}"
+    # Prepend the global API prefix and version (e.g. "/api/v1") to the user-defined/default prefix.
+    if version:
+        include_prefix = (
+            f"{settings.ROUTE_PREFIX.rstrip('/')}/{version}{user_defined_prefix}"
+        )
+    else:
+        include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}{user_defined_prefix}"
 
     # NOTE: Admin route protection is now explicit.
     # Admin routes must use AdminUserDep dependency explicitly.
