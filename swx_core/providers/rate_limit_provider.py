@@ -39,7 +39,7 @@ class RateLimitServiceProvider(ServiceProvider):
 
         try:
             return aioredis.from_url(
-                settings.REDIS_URL,
+                settings.redis_url,
                 encoding="utf-8",
                 decode_responses=True,
             )

@@ -191,7 +191,7 @@ def get_rate_limiter() -> RateLimiter:
     if _rate_limiter is None:
         from swx_core.config.settings import settings
 
-        redis_url = settings.REDIS_URL if settings.REDIS_ENABLED else None
+        redis_url = settings.redis_url if settings.REDIS_ENABLED else None
         _rate_limiter = RateLimiter(redis_url=redis_url)
     return _rate_limiter
 

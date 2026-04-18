@@ -84,11 +84,14 @@ class MemoryCache(CacheBackend):
 class RedisCache(CacheBackend):
     """Redis cache backend."""
 
-    def __init__(
-        self, redis_url: str = "redis://localhost:6379/0", prefix: str = "swx:"
-    ):
+    def __init__(self, redis_url: str | None = None, prefix: str = "swx:"):
         if not REDIS_AVAILABLE:
             raise ImportError("Redis is not installed. Install with: pip install redis")
+
+        if redis_url is None:
+            from swx_core.config.settings import settings
+
+            redis_url = settings.redis_url
 
         self._redis_url = redis_url
         self._prefix = prefix
@@ -152,9 +155,7 @@ def set_cache(cache: CacheBackend) -> None:
     _cache = cache
 
 
-def init_redis_cache(
-    redis_url: str = "redis://localhost:6379/0", prefix: str = "swx:"
-) -> None:
+def init_redis_cache(redis_url: str | None = None, prefix: str = "swx:") -> None:
     from swx_core.config.settings import settings
 
     global _cache
@@ -162,7 +163,10 @@ def init_redis_cache(
     if not settings.REDIS_ENABLED or not REDIS_AVAILABLE:
         _cache = MemoryCache()
         return
-    _cache = RedisCache(redis_url=redis_url, prefix=prefix)
+
+    # Use provided URL or settings.redis_url
+    actual_url = redis_url or settings.redis_url
+    _cache = RedisCache(redis_url=actual_url, prefix=prefix)
 
 
 def cache_key(*args, **kwargs) -> str:

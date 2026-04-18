@@ -251,14 +251,17 @@ class Settings(BaseSettings):
         default=True, description="Enable Redis (disable for development without Redis)"
     )
 
-    REDIS_URL_OVERRIDE: str | None = Field(
-        default=None, description="Override full Redis URL"
+    # Direct REDIS_URL env var support (takes precedence over components)
+    REDIS_URL: str | None = Field(
+        default=None,
+        description="Full Redis URL (takes precedence over REDIS_HOST/PORT/DB)",
     )
 
     @property
-    def REDIS_URL(self) -> str:
-        if self.REDIS_URL_OVERRIDE:
-            return self.REDIS_URL_OVERRIDE
+    def redis_url(self) -> str:
+        """Get Redis URL, respecting REDIS_URL env var precedence."""
+        if self.REDIS_URL:
+            return self.REDIS_URL
         if self.REDIS_PASSWORD:
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
