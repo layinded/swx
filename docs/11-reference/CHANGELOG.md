@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.3.14  
-**Last Updated:** 2026-03-31
+**Version:** 2.3.16  
+**Last Updated:** 2026-04-24
 
 ---
 
@@ -29,6 +29,19 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.3.16 (2026-04-24)
+
+**Bug Fixes**
+
+- ✅ Fixed circular import during module reload - Added `_loading_modules` tracking set to prevent re-entrant `importlib.reload()` calls when modules have mutual import dependencies (e.g., Route → Controller → Service → Repository → Model)
+- Modules being reloaded are now tracked in a global set, preventing recursive reload attempts that caused `ImportError` when partially-initialized modules tried to import from each other
+
+### Version 2.3.15 (2026-04-24)
+
+**Security**
+
+- ✅ Fixed Redis config not respecting environment variables - Redis settings now properly read from environment variables instead of hardcoded defaults
 
 ### Version 2.3.14 (2026-03-31)
 

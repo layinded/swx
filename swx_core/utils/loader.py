@@ -30,6 +30,10 @@ from swx_core.middleware.logging_middleware import logger
 from swx_core.middleware.session_middleware import setup_session_middleware
 from swx_core.config.discovery import discovery
 
+# Track modules currently being loaded to prevent circular imports during reload
+# This prevents re-entrant reloads when module A imports module B, and B imports A
+_loading_modules: set = set()
+
 
 def dynamic_import(base_path: str, package_name: str, recursive: bool = False) -> Dict[str, Any]:
     """
@@ -69,9 +73,19 @@ def dynamic_import(base_path: str, package_name: str, recursive: bool = False) -
             skip_reload = ".models." in full_module_name
 
             if full_module_name in sys.modules:
+                # Prevent circular imports during reload: skip if already being loaded
+                if full_module_name in _loading_modules:
+                    logger.debug(f"Skipping {full_module_name} - already in loading state")
+                    imported_modules[full_module_name] = sys.modules[full_module_name]
+                    continue
+
                 if not skip_reload:
-                    importlib.reload(sys.modules[full_module_name])
-                    logger.info(f"Reloaded module: {full_module_name}")
+                    _loading_modules.add(full_module_name)
+                    try:
+                        importlib.reload(sys.modules[full_module_name])
+                        logger.info(f"Reloaded module: {full_module_name}")
+                    finally:
+                        _loading_modules.discard(full_module_name)
             else:
                 module = importlib.import_module(full_module_name)
                 sys.modules[full_module_name] = module
