@@ -245,7 +245,7 @@ def _create_superuser():
             async with AsyncSessionLocal() as session:
                 # Check if user exists
                 result = await session.execute(
-                    text("SELECT id FROM users WHERE email = :email"),
+                    text("SELECT id FROM swx_users WHERE email = :email"),
                     {"email": email}
                 )
                 if result.fetchone():
