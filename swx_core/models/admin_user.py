@@ -47,7 +47,7 @@ class AdminUser(AdminUserBase, table=True):
         createdAt (datetime): Timestamp when the admin user was created.
     """
 
-    __tablename__ = "admin_user"
+    __tablename__ = "swx_admin_user"
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

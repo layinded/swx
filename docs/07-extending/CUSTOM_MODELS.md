@@ -346,6 +346,146 @@ alembic current
 
 ---
 
+## Extending SwX Framework Tables
+
+SwX framework tables use the `swx_` prefix to differentiate them from user-defined tables. Users should NOT directly modify framework tables. Instead, use one of these patterns:
+
+### Framework Tables (swx_ prefix)
+
+All framework tables are prefixed with `swx_`:
+- `swx_users` - User accounts
+- `swx_admin_user` - Admin accounts
+- `swx_role` - Roles
+- `swx_permission` - Permissions
+- `swx_team` - Teams
+- `swx_user_role` - User-role assignments
+- `swx_team_member` - Team memberships
+- `swx_role_permission` - Role-permission mappings
+- `swx_audit_log` - Audit logs
+- `swx_job` - Background jobs
+- `swx_language` - Translations
+- `swx_refresh_token` - Refresh tokens
+- `swx_policy` - ABAC policies
+- `swx_system_config` - System settings
+- `swx_billing_*` - Billing tables
+
+### Pattern 1: One-to-One Extension (Recommended)
+
+Create a separate table linked to the framework table:
+
+```python
+from swx_app/models/user_profile.py
+from sqlmodel import SQLModel, Field
+from uuid import UUID, uuid4
+from typing import Optional
+from datetime import datetime
+
+class UserProfile(SQLModel, table=True):
+    __tablename__ = "user_profile"
+    
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="swx_users.id", unique=True, index=True)
+    
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    phone: Optional[str] = None
+    preferences: dict = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+```
+
+### Pattern 2: Model Inheritance
+
+Extend a framework model with additional fields:
+
+```python
+from swx_app/models/extended_user.py
+from swx_core.models.user import User as BaseUser
+from sqlmodel import Field
+from typing import Optional
+
+class ExtendedUser(BaseUser, table=True):
+    __tablename__ = "extended_user"
+    
+    user_id: UUID = Field(foreign_key="swx_users.id", unique=True)
+    custom_field_1: Optional[str] = None
+    custom_field_2: Optional[int] = None
+```
+
+### Pattern 3: Composition via Service Layer
+
+Add business logic without modifying tables:
+
+```python
+from swx_app/services/user_service.py
+from swx_core.services.user_service import UserService as CoreUserService
+
+class ExtendedUserService(CoreUserService):
+    async def get_user_with_profile(self, db, user_id: UUID) -> dict:
+        user = await self.get(db, user_id)
+        profile = await self.get_profile(db, user_id)
+        return {**user.model_dump(), "profile": profile}
+    
+    async def get_profile(self, db, user_id: UUID):
+        return await db.exec(
+            select(UserProfile).where(UserProfile.user_id == user_id)
+        ).first()
+```
+
+### Pattern 4: Using Custom Mixins
+
+Create user tables using framework mixins:
+
+```python
+from swx_core.utils.mixins import FullModelMixin, AuditedModelMixin
+from sqlmodel import Field
+from typing import Optional
+
+class Product(FullModelMixin, table=True):
+    __tablename__ = "product"
+    
+    name: str = Field(max_length=255, index=True)
+    price: float = Field(gt=0)
+    description: Optional[str] = None
+```
+
+### Available Mixins
+
+| Mixin | Fields Provided |
+|-------|-----------------|
+| `TimestampMixin` | `created_at`, `updated_at` |
+| `SoftDeleteMixin` | `is_deleted`, `deleted_at` |
+| `UUIDPrimaryKeyMixin` | `id: UUID` |
+| `CreatedByMixin` | `created_by_id` |
+| `UpdatedByMixin` | `updated_by_id` |
+| `FullModelMixin` | UUID + Timestamps + SoftDelete |
+| `AuditedModelMixin` | FullModel + CreatedBy + UpdatedBy |
+
+### Foreign Key References to Framework Tables
+
+Always reference framework tables with the `swx_` prefix:
+
+```python
+class Order(SQLModel, table=True):
+    __tablename__ = "order"
+    
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="swx_users.id", index=True)
+    product_id: UUID = Field(foreign_key="product.id", index=True)
+    total: float
+```
+
+### Migration for Extending Users
+
+If you need to add columns to track additional user data, create a new table rather than modifying `swx_users`:
+
+1. Create a model with foreign key to `swx_users.id`
+2. Generate migration: `swx db revision -m "add_user_profile"`
+3. Apply migration: `swx db migrate`
+
+This approach keeps framework tables isolated and allows upgrades without data loss.
+
+---
+
 ## Next Steps
 
 - Read [Adding Features](./ADDING_FEATURES.md) for feature development

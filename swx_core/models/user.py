@@ -61,7 +61,7 @@ class User(UserBase, table=True):
         avatar_url (Optional[str]): URL to the user's profile picture.
     """
 
-    __tablename__ = "users"
+    __tablename__ = "swx_users"
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

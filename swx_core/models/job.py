@@ -85,7 +85,7 @@ class Job(JobBase, table=True):
     Jobs are idempotent and retryable. They track execution state,
     attempts, and errors for observability.
     """
-    __tablename__ = "job"
+    __tablename__ = "swx_job"
     __table_args__ = (
         Index("idx_job_status_scheduled", "status", "scheduled_at"),
         Index("idx_job_type_status", "job_type", "status"),

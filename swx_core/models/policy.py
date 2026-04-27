@@ -55,7 +55,7 @@ class Policy(Base, table=True):
     Policies evaluate conditions on actor, action, resource, and context
     to determine if access should be ALLOW, DENY, or CONDITIONAL_ALLOW.
     """
-    __tablename__ = "policy"
+    __tablename__ = "swx_policy"
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     policy_id: str = Field(unique=True, index=True)  # Human-readable ID (e.g., "team.update.owner")

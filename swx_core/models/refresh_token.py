@@ -46,7 +46,7 @@ class RefreshToken(RefreshTokenBase, table=True):
         user_email (str): Email associated with the token.
     """
 
-    __tablename__ = "refresh_token"
+    __tablename__ = "swx_refresh_token"
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

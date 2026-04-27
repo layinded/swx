@@ -39,7 +39,7 @@ class AuditLog(AuditLogBase, table=True):
     """
     Database model representing an audit log entry.
     """
-    __tablename__ = "audit_log"
+    __tablename__ = "swx_audit_log"
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

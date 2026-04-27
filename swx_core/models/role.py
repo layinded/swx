@@ -52,7 +52,7 @@ class Role(RoleBase, table=True):
         id (uuid.UUID): Unique role identifier.
     """
 
-    __tablename__ = "role"
+    __tablename__ = "swx_role"
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

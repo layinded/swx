@@ -83,7 +83,7 @@ class SystemConfig(SystemConfigBase, table=True):
     Stores runtime-tunable settings that can be changed without redeployment.
     Secrets and infrastructure settings remain in .env files.
     """
-    __tablename__ = "system_config"
+    __tablename__ = "swx_system_config"
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -127,11 +127,11 @@ class SystemConfigHistory(Base, table=True):
     
     Tracks all changes to settings for audit purposes.
     """
-    __tablename__ = "system_config_history"
+    __tablename__ = "swx_system_config_history"
     __table_args__ = {"extend_existing": True}
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    config_id: uuid.UUID = Field(foreign_key="system_config.id", index=True)
+    config_id: uuid.UUID = Field(foreign_key="swx_system_config.id", index=True)
     key: str = Field(index=True, max_length=255)
     old_value: Optional[str] = Field(default=None, max_length=5000)
     new_value: str = Field(max_length=5000)

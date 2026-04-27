@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.3.16  
-**Last Updated:** 2026-04-24
+**Version:** 2.4.0  
+**Last Updated:** 2026-04-27
 
 ---
 
@@ -29,6 +29,51 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.4.0 (2026-04-27)
+
+**Breaking Changes**
+
+- ⚠️ **Table Prefix Migration** - All framework tables now use `swx_` prefix to differentiate from user-defined tables
+- 21 framework tables renamed (e.g., `users` → `swx_users`, `role` → `swx_role`)
+- All foreign key references updated to use new table names
+- Migration script provided at `swx_core/database/migrations/add_swx_prefix.py`
+
+**New Features**
+
+- ✅ Added table prefix documentation to `CUSTOM_MODELS.md` explaining:
+  - How users can extend framework tables (4 patterns)
+  - Using one-to-one extension tables
+  - Model inheritance patterns
+  - Service layer composition
+  - Custom mixins for user tables
+- ✅ Migration template for existing deployments to rename tables
+
+**Table Changes (21 tables renamed)**
+
+| Old Name | New Name |
+|----------|----------|
+| `users` | `swx_users` |
+| `admin_user` | `swx_admin_user` |
+| `role` | `swx_role` |
+| `permission` | `swx_permission` |
+| `team` | `swx_team` |
+| `user_role` | `swx_user_role` |
+| `team_member` | `swx_team_member` |
+| `role_permission` | `swx_role_permission` |
+| `audit_log` | `swx_audit_log` |
+| `job` | `swx_job` |
+| `language` | `swx_language` |
+| `refresh_token` | `swx_refresh_token` |
+| `policy` | `swx_policy` |
+| `system_config` | `swx_system_config` |
+| `system_config_history` | `swx_system_config_history` |
+| `billing_account` | `swx_billing_account` |
+| `billing_feature` | `swx_billing_feature` |
+| `billing_plan` | `swx_billing_plan` |
+| `billing_plan_entitlement` | `swx_billing_plan_entitlement` |
+| `billing_subscription` | `swx_billing_subscription` |
+| `billing_usage_record` | `swx_billing_usage_record` |
 
 ### Version 2.3.16 (2026-04-24)
 

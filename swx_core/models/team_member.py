@@ -20,7 +20,7 @@ class TeamMemberBase(Base):
         role_id (uuid.UUID): The role this user has in the team.
     """
 
-    role_id: uuid.UUID = Field(foreign_key="role.id", index=True)
+    role_id: uuid.UUID = Field(foreign_key="swx_role.id", index=True)
 
 
 class TeamMember(TeamMemberBase, table=True):
@@ -36,7 +36,7 @@ class TeamMember(TeamMemberBase, table=True):
         user_id (uuid.UUID): Foreign key to the user.
     """
 
-    __tablename__ = "team_member"
+    __tablename__ = "swx_team_member"
     __table_args__ = (
         {"extend_existing": True},
         # Composite unique constraint: a user cannot be in the same team twice
@@ -45,8 +45,8 @@ class TeamMember(TeamMemberBase, table=True):
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    team_id: uuid.UUID = Field(foreign_key="team.id", index=True)
-    user_id: uuid.UUID = Field(foreign_key="users.id", index=True)
+    team_id: uuid.UUID = Field(foreign_key="swx_team.id", index=True)
+    user_id: uuid.UUID = Field(foreign_key="swx_users.id", index=True)
 
 
 class TeamMemberCreate(SQLModel):

@@ -35,7 +35,7 @@ class BillingAccount(Base, table=True):
     """
     Represents a billed entity (User, Team, or Org).
     """
-    __tablename__ = "billing_account"
+    __tablename__ = "swx_billing_account"
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     account_type: BillingAccountType = Field(index=True)
@@ -53,7 +53,7 @@ class Feature(Base, table=True):
     """
     Defines a gateable capability in the system.
     """
-    __tablename__ = "billing_feature"
+    __tablename__ = "swx_billing_feature"
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     key: str = Field(unique=True, index=True) # e.g., "api.calls"
@@ -68,7 +68,7 @@ class Plan(Base, table=True):
     """
     A collection of entitlements.
     """
-    __tablename__ = "billing_plan"
+    __tablename__ = "swx_billing_plan"
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     key: str = Field(unique=True, index=True) # e.g., "pro_v1"
@@ -84,11 +84,11 @@ class PlanEntitlement(Base, table=True):
     """
     Maps Features to Plans with specific limits.
     """
-    __tablename__ = "billing_plan_entitlement"
+    __tablename__ = "swx_billing_plan_entitlement"
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    plan_id: uuid.UUID = Field(foreign_key="billing_plan.id", index=True)
-    feature_id: uuid.UUID = Field(foreign_key="billing_feature.id", index=True)
+    plan_id: uuid.UUID = Field(foreign_key="swx_billing_plan.id", index=True)
+    feature_id: uuid.UUID = Field(foreign_key="swx_billing_feature.id", index=True)
     
     # Value can be a boolean string ("true"), a number ("1000"), or a config JSON
     value: str 
@@ -99,11 +99,11 @@ class Subscription(Base, table=True):
     """
     An active link between an account and a plan.
     """
-    __tablename__ = "billing_subscription"
+    __tablename__ = "swx_billing_subscription"
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    account_id: uuid.UUID = Field(foreign_key="billing_account.id", index=True)
-    plan_id: uuid.UUID = Field(foreign_key="billing_plan.id", index=True)
+    account_id: uuid.UUID = Field(foreign_key="swx_billing_account.id", index=True)
+    plan_id: uuid.UUID = Field(foreign_key="swx_billing_plan.id", index=True)
     
     status: SubscriptionStatus = Field(default=SubscriptionStatus.ACTIVE, index=True)
     
@@ -130,12 +130,12 @@ class UsageRecord(Base, table=True):
     """
     Tracks consumption of quota-based features.
     """
-    __tablename__ = "billing_usage_record"
+    __tablename__ = "swx_billing_usage_record"
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    account_id: uuid.UUID = Field(foreign_key="billing_account.id", index=True)
-    feature_id: uuid.UUID = Field(foreign_key="billing_feature.id", index=True)
-    subscription_id: uuid.UUID = Field(foreign_key="billing_subscription.id", index=True)
+    account_id: uuid.UUID = Field(foreign_key="swx_billing_account.id", index=True)
+    feature_id: uuid.UUID = Field(foreign_key="swx_billing_feature.id", index=True)
+    subscription_id: uuid.UUID = Field(foreign_key="swx_billing_subscription.id", index=True)
     
     quantity: int = Field(default=0)
     period_start: datetime = Field(index=True)

@@ -33,15 +33,15 @@ class RolePermission(RolePermissionBase, table=True):
         permission_id (uuid.UUID): Foreign key to the permission.
     """
 
-    __tablename__ = "role_permission"
+    __tablename__ = "swx_role_permission"
     __table_args__ = (
         {"extend_existing": True},
         # Composite unique constraint: a role cannot have the same permission twice
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    role_id: uuid.UUID = Field(foreign_key="role.id", index=True)
-    permission_id: uuid.UUID = Field(foreign_key="permission.id", index=True)
+    role_id: uuid.UUID = Field(foreign_key="swx_role.id", index=True)
+    permission_id: uuid.UUID = Field(foreign_key="swx_permission.id", index=True)
 
 
 class RolePermissionCreate(SQLModel):
