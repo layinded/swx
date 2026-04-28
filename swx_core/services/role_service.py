@@ -1,22 +1,42 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from swx_core.models.role import Role, RoleCreate, RoleUpdate
 from swx_core.models.role_permission import RolePermission
 from swx_core.repositories import role_repository, role_permission_repository, permission_repository
+from swx_core.events.dispatcher import EventBus, Event
+
 
 async def list_roles_service(session: AsyncSession, skip: int = 0, limit: int = 100) -> List[Role]:
     return await role_repository.get_all_roles(session, skip, limit)
 
-async def create_role_service(session: AsyncSession, role_in: RoleCreate) -> Role:
+
+async def create_role_service(
+    session: AsyncSession, 
+    role_in: RoleCreate,
+    event_context: Dict[str, Any] | None = None,
+) -> Role:
     existing = await role_repository.get_role_by_name(session, role_in.name)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Role with this name already exists",
         )
-    return await role_repository.create_role(session, role_in)
+    role = await role_repository.create_role(session, role_in)
+    
+    event_bus = EventBus()
+    await event_bus.emit(Event(
+        name="role.created",
+        payload={
+            "id": str(role.id),
+            "data": {"name": role.name, "description": role.description},
+            **({"context": event_context} if event_context else {}),
+        },
+    ))
+    
+    return role
+
 
 async def get_role_service(session: AsyncSession, role_id: UUID) -> Role:
     role = await role_repository.get_role_by_id(session, role_id)
@@ -27,16 +47,42 @@ async def get_role_service(session: AsyncSession, role_id: UUID) -> Role:
         )
     return role
 
-async def update_role_service(session: AsyncSession, role_id: UUID, role_in: RoleUpdate) -> Role:
+
+async def update_role_service(
+    session: AsyncSession, 
+    role_id: UUID, 
+    role_in: RoleUpdate,
+    event_context: Dict[str, Any] | None = None,
+) -> Role:
     role = await get_role_service(session, role_id)
     if role.is_system_role:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot update system roles",
         )
-    return await role_repository.update_role(session, role, role_in)
+    old_values = {"name": role.name, "description": role.description}
+    role = await role_repository.update_role(session, role, role_in)
+    new_values = {"name": role.name, "description": role.description}
+    
+    event_bus = EventBus()
+    await event_bus.emit(Event(
+        name="role.updated",
+        payload={
+            "id": str(role.id),
+            "old_values": old_values,
+            "new_values": new_values,
+            **({"context": event_context} if event_context else {}),
+        },
+    ))
+    
+    return role
 
-async def delete_role_service(session: AsyncSession, role_id: UUID) -> None:
+
+async def delete_role_service(
+    session: AsyncSession, 
+    role_id: UUID,
+    event_context: Dict[str, Any] | None = None,
+) -> None:
     role = await get_role_service(session, role_id)
     if role.is_system_role:
         raise HTTPException(
@@ -57,10 +103,26 @@ async def delete_role_service(session: AsyncSession, role_id: UUID) -> None:
         )
         
     await role_repository.delete_role(session, role)
+    
+    event_bus = EventBus()
+    await event_bus.emit(Event(
+        name="role.deleted",
+        payload={
+            "id": str(role_id),
+            "data": {"name": role.name},
+            **({"context": event_context} if event_context else {}),
+        },
+    ))
+
 
 # Role-Permission Management
 
-async def assign_permission_to_role_service(session: AsyncSession, role_id: UUID, permission_id: UUID) -> RolePermission:
+async def assign_permission_to_role_service(
+    session: AsyncSession, 
+    role_id: UUID, 
+    permission_id: UUID,
+    event_context: Dict[str, Any] | None = None,
+) -> RolePermission:
     role = await get_role_service(session, role_id)
     permission = await permission_repository.get_permission_by_id(session, permission_id)
     if not permission:
@@ -70,14 +132,43 @@ async def assign_permission_to_role_service(session: AsyncSession, role_id: UUID
     if existing:
         return existing
 
-    return await role_permission_repository.assign_permission_to_role(session, role_id, permission_id)
+    rp = await role_permission_repository.assign_permission_to_role(session, role_id, permission_id)
+    
+    event_bus = EventBus()
+    await event_bus.emit(Event(
+        name="role.permission_assigned",
+        payload={
+            "id": str(rp.id),
+            "data": {"role_id": str(role_id), "permission_id": str(permission_id)},
+            **({"context": event_context} if event_context else {}),
+        },
+    ))
+    
+    return rp
 
-async def remove_permission_from_role_service(session: AsyncSession, role_id: UUID, permission_id: UUID) -> None:
+
+async def remove_permission_from_role_service(
+    session: AsyncSession, 
+    role_id: UUID, 
+    permission_id: UUID,
+    event_context: Dict[str, Any] | None = None,
+) -> None:
     rp = await role_permission_repository.get_role_permission(session, role_id, permission_id)
     if not rp:
         raise HTTPException(status_code=404, detail="Role-permission mapping not found")
     
     await role_permission_repository.remove_permission_from_role(session, rp)
+    
+    event_bus = EventBus()
+    await event_bus.emit(Event(
+        name="role.permission_removed",
+        payload={
+            "id": str(rp.id),
+            "data": {"role_id": str(role_id), "permission_id": str(permission_id)},
+            **({"context": event_context} if event_context else {}),
+        },
+    ))
+
 
 async def list_role_permissions_service(session: AsyncSession, role_id: UUID) -> List[RolePermission]:
     await get_role_service(session, role_id) # Validate existence

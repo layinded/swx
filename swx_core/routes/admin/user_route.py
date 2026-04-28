@@ -100,6 +100,7 @@ async def create_user(
     user_in: UserCreate,
     request: Request,
     current_admin: AdminUserDep,
+    event_context: dict[str, Any] | None = None,
 ) -> Any:
     """
     Create a new user (Admin only).
@@ -108,6 +109,8 @@ async def create_user(
         session (SessionDep): The database session.
         user_in (UserCreate): The new user data.
         request (Request): The HTTP request object.
+        current_admin (AdminUserDep): The authenticated admin user.
+        event_context (dict[str, Any] | None): Additional context for user.created event.
 
     Returns:
         UserPublic: The created user's details.
@@ -117,7 +120,7 @@ async def create_user(
     """
     audit = get_audit_logger(session)
     try:
-        user = await register_controller(session, user_in, request)
+        user = await register_controller(session, user_in, request, event_context)
         if not user:
             raise HTTPException(status_code=400, detail="User creation failed")
         

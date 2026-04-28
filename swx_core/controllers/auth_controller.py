@@ -18,6 +18,7 @@ Methods:
 - `reset_password_controller()`: Resets a user's password and revokes existing tokens.
 """
 
+from typing import Any
 from fastapi import HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +85,12 @@ async def refresh_token_controller(
     return await refresh_access_token_service(session, request_data, request)
 
 
-async def register_controller(session: AsyncSession, user_in: UserCreate, request: Request):
+async def register_controller(
+    session: AsyncSession, 
+    user_in: UserCreate, 
+    request: Request,
+    event_context: dict[str, Any] | None = None,
+):
     """
     Registers a new user.
 
@@ -92,11 +98,15 @@ async def register_controller(session: AsyncSession, user_in: UserCreate, reques
         session: The database session.
         user_in (UserCreate): The user registration data.
         request (Request): The HTTP request object.
+        event_context (dict[str, Any] | None): Additional context for user.created event.
 
     Returns:
         User: The newly created user.
+    
+    Emits:
+        user.created: Automatically emitted via register_user_service
     """
-    return await register_user_service(session, user_in, request)
+    return await register_user_service(session, user_in, request, event_context)
 
 
 async def logout_controller(session: AsyncSession, request_data: TokenRefreshRequest, request: Request):

@@ -11,13 +11,17 @@ Methods:
 - `login_user_service()`: Handles user login for local accounts.
 - `login_social_user_service()`: Handles login via social authentication providers.
 - `refresh_access_token_service()`: Generates a new access token using a valid refresh token.
-- `register_user_service()`: Registers a new user.
+- `register_user_service()`: Registers a new user (emits user.created event).
 - `logout_service()`: Revokes the refresh token to log a user out.
 - `recover_password_service()`: Sends a password reset email.
 - `reset_password_service()`: Resets a user's password and revokes existing tokens.
+
+Events Emitted:
+- user.created: Emitted when a new user is registered (via register_user_service)
 """
 
 from datetime import timedelta
+from typing import Any
 from fastapi import HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -184,7 +188,12 @@ async def refresh_access_token_service(
     )
 
 
-async def register_user_service(session: AsyncSession, user_in: UserCreate, request: Request):
+async def register_user_service(
+    session: AsyncSession, 
+    user_in: UserCreate, 
+    request: Request,
+    event_context: dict[str, Any] | None = None,
+) -> User:
     """
     Registers a new user account.
 
@@ -192,11 +201,14 @@ async def register_user_service(session: AsyncSession, user_in: UserCreate, requ
         session (AsyncSession): The database session.
         user_in (UserCreate): The user registration data.
         request (Request): The HTTP request object.
+        event_context (dict[str, Any] | None): Additional context for user.created event.
 
     Returns:
         User: The newly created user.
+    
+    Emits:
+        user.created: Event with payload {id, data, context}
     """
-    # Check if user already exists
     existing_user = await get_user_by_email(session=session, email=user_in.email)
     if existing_user:
         raise HTTPException(
@@ -204,18 +216,33 @@ async def register_user_service(session: AsyncSession, user_in: UserCreate, requ
         )
     
     try:
-        return await create_user(session=session, user_create=user_in)
+        user = await create_user(session=session, user_create=user_in)
+        
+        # Emit user.created event with context
+        from swx_core.events.dispatcher import EventBus, Event
+        event_bus = EventBus()
+        payload = {
+            "id": str(user.id),
+            "data": {
+                "email": user.email,
+                "full_name": user.full_name,
+                "auth_provider": user.auth_provider,
+            },
+        }
+        if event_context:
+            payload["context"] = event_context
+        
+        await event_bus.emit(Event(name="user.created", payload=payload))
+        
+        return user
     except Exception as e:
-        # Log the actual error for debugging
         from swx_core.middleware.logging_middleware import logger
         logger.error(f"Error creating user: {e}")
-        # Check if it's a unique constraint violation
         error_str = str(e).lower()
         if "unique" in error_str or "duplicate" in error_str or "already exists" in error_str:
             raise HTTPException(
                 status_code=400, detail=translate(request, "user_already_exists")
             )
-        # Re-raise for other errors
         raise HTTPException(
             status_code=400, detail=f"Failed to create user: {str(e)}"
         )
