@@ -183,6 +183,14 @@ def bootstrap_app(
         except Exception as e:
             logger.error(f"Failed to boot {provider.__class__.__name__}: {e}")
 
+    # Phase 3: Register user event listeners from app/listeners/
+    if discovery.app_exists() and discovery.has_listeners():
+        logger.info("Registering event listeners...")
+        try:
+            register_event_listeners(container)
+        except Exception as e:
+            logger.error(f"Failed to register event listeners: {e}")
+
     logger.info(f"Application bootstrapped with {len(provider_instances)} providers")
 
     return container
