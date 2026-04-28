@@ -2,6 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.0] - 2026-04-28
+
+### Added
+- **Event Context Enhancement**: BaseService CRUD methods now accept `event_context` parameter for additional context in event payloads
+- **before_emit Hook**: Async hook called before event emission to enhance payload with computed/async context
+- **after_emit Hook**: Async hook called after event emission for side effects
+- **Structured Event Payloads**: Events now support `{"id": ..., "data": ..., "context": ...}` structure
+
+### Changed
+- **BaseService.create()**: Added `event_context: Dict[str, Any] | None` parameter
+- **BaseService.update()**: Added `event_context` parameter
+- **BaseService.delete()**: Added `event_context` parameter
+- **BaseService.soft_delete()**: Added `event_context` parameter
+- **BaseService.restore()**: Added `event_context` parameter
+- **BaseService.bulk_create()**: Added `event_context` parameter
+
+### Example Usage
+```python
+# Before: Workaround with duplicate events
+user = await user_service.create(data)
+await event_bus.dispatch("user.created", payload={...context...})
+
+# After: Single event with context
+user = await user_service.create(
+    data={"email": "user@example.com", "password": "secret"},
+    event_context={
+        "user_type": "patient",
+        "hospital_id": hospital_id,
+        "registration_source": "mobile_app",
+    },
+)
+
+# With before_emit hook for computed context
+class UserService(BaseService[User]):
+    async def before_emit(self, event_name, payload, instance):
+        if event_name == "user.created" and instance:
+            payload["context"] = {
+                **payload.get("context", {}),
+                "user_type": await self._determine_user_type(instance),
+            }
+        return payload
+```
+
+### Industrial Standard Compliance
+- Follows Django Signals pattern (`sender + **kwargs`)
+- Follows Flask/Blinker pattern (explicit context injection)
+- Follows SQLAlchemy event hooks (before/after pattern)
+- Follows production SaaS patterns (aden-hive/hive, ricequant/rqalpha)
+
+### Tests
+- **New Tests**: `tests/services/test_base_service_event_context.py` with 10 comprehensive tests
+- **Coverage**: event_context propagation, before_emit/after_emit hooks, backward compatibility
+
 ## [2.5.0] - 2025-04-28
 
 ### Added
