@@ -9,6 +9,12 @@ from swx_core.events.dispatcher import (
     event_bus,
 )
 from swx_core.events.listener import Listener, QueueableListener
+from swx_core.events.listener_loader import (
+    discover_listeners,
+    register_listener,
+    load_listeners_from_path,
+    load_all_listeners,
+)
 
 __all__ = [
     "EventBus",
@@ -17,4 +23,8 @@ __all__ = [
     "Listener",
     "QueueableListener",
     "event_bus",
+    "discover_listeners",
+    "register_listener",
+    "load_listeners_from_path",
+    "load_all_listeners",
 ]

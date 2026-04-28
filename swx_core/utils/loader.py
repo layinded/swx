@@ -158,6 +158,54 @@ def load_all_modules() -> None:
         print(f"App directory '{discovery.app_name}' not found. Skipping app modules.")
 
 
+def load_all_listeners() -> None:
+    """
+    Load and register all event listeners from core and app directories.
+    
+    This should be called during application startup, after models and services
+    are loaded but before handling requests.
+    
+    Listener locations:
+    - Core: swx_core/events/listeners/
+    - App: swx_app/listeners/
+    
+    Example:
+        `load_all_listeners()` -> Discovers and registers all Listener subclasses.
+    """
+    from swx_core.events.listener_loader import load_listeners_from_path
+    
+    total_registered = 0
+    
+    # Core listeners
+    core_listeners_path = discovery.core_base / "events" / "listeners"
+    if core_listeners_path.exists():
+        count = load_listeners_from_path(
+            str(core_listeners_path),
+            "swx_core.events.listeners"
+        )
+        if count:
+            print(f"Registered {count} core listeners")
+            total_registered += count
+    
+    # App listeners
+    if discovery.app_exists():
+        app_listeners_path = discovery.app_base / "listeners"
+        if app_listeners_path.exists():
+            app_listeners_module = f"{discovery.app_name}.listeners"
+            count = load_listeners_from_path(
+                str(app_listeners_path),
+                app_listeners_module
+            )
+            if count:
+                print(f"Registered {count} app listeners")
+                total_registered += count
+    
+    if total_registered == 0:
+        print("No listeners found to register")
+    else:
+        print(f"Total listeners registered: {total_registered}")
+
+
 def load_middleware(app: FastAPI) -> None:
     """
     Dynamically loads middleware from `swx_core/middleware` and app middleware directory (if exists).
