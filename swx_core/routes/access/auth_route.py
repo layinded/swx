@@ -19,6 +19,7 @@ Methods:
 - `reset_password()`: Resets a user's password and revokes active tokens.
 """
 
+from typing import Any
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -129,7 +130,12 @@ async def refresh_token(
 
 
 @router.post("/register", response_model=UserPublic, operation_id="register_new_user")
-async def register(session: SessionDep, user_in: UserCreate, request: Request):
+async def register(
+    session: SessionDep, 
+    user_in: UserCreate, 
+    request: Request,
+    event_context: dict[str, Any] | None = None,
+):
     """
     Registers a new user.
 
@@ -137,13 +143,14 @@ async def register(session: SessionDep, user_in: UserCreate, request: Request):
         session: The database session.
         user_in (UserCreate): The user registration data.
         request (Request): The HTTP request object.
+        event_context (dict[str, Any] | None): Additional context for user.created event.
 
     Returns:
         UserPublic: The newly created user.
     """
     audit = get_audit_logger(session)
     try:
-        user = await register_controller(session, user_in, request)
+        user = await register_controller(session, user_in, request, event_context)
         await audit.log_event(
             action="user.register",
             actor_type=ActorType.USER,

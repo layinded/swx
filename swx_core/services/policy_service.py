@@ -2,9 +2,14 @@
 Policy Service
 --------------
 Business logic for Policy management.
+
+Events Emitted:
+- policy.created: Emitted when a new policy is created
+- policy.updated: Emitted when a policy is updated
+- policy.deleted: Emitted when a policy is deleted
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
@@ -12,6 +17,7 @@ from fastapi import HTTPException, status
 from swx_core.models.policy import Policy
 from swx_core.repositories import policy_repository
 from swx_core.services.policy.policy_registry import PolicyRegistry
+from swx_core.events.dispatcher import EventBus, Event
 
 
 async def list_policies_service(
@@ -52,7 +58,9 @@ async def get_policy_service(
 
 
 async def create_policy_service(
-    session: AsyncSession, policy: Policy
+    session: AsyncSession, 
+    policy: Policy,
+    event_context: Dict[str, Any] | None = None,
 ) -> Policy:
     """Create a new policy."""
     # Check if policy_id already exists in database
@@ -69,11 +77,26 @@ async def create_policy_service(
             detail=f"Policy ID '{policy.policy_id}' conflicts with a system policy"
         )
     
-    return await policy_repository.create_policy(session, policy)
+    created_policy = await policy_repository.create_policy(session, policy)
+    
+    event_bus = EventBus()
+    await event_bus.emit(Event(
+        name="policy.created",
+        payload={
+            "id": str(created_policy.id),
+            "data": {"policy_id": policy.policy_id, "name": policy.name},
+            **({"context": event_context} if event_context else {}),
+        },
+    ))
+    
+    return created_policy
 
 
 async def update_policy_service(
-    session: AsyncSession, policy_id: str, policy_data: dict
+    session: AsyncSession, 
+    policy_id: str, 
+    policy_data: dict,
+    event_context: Dict[str, Any] | None = None,
 ) -> Policy:
     """Update a policy."""
     # Check if it's a system policy
@@ -83,6 +106,9 @@ async def update_policy_service(
             detail="Cannot update system policies"
         )
     
+    old_policy = await policy_repository.get_policy_by_id(session, policy_id)
+    old_values = {"name": old_policy.name, "description": old_policy.description} if old_policy else {}
+    
     policy = await policy_repository.update_policy(session, policy_id, policy_data)
     if not policy:
         raise HTTPException(
@@ -90,11 +116,26 @@ async def update_policy_service(
             detail=f"Policy '{policy_id}' not found"
         )
     
+    new_values = {"name": policy.name, "description": policy.description}
+    
+    event_bus = EventBus()
+    await event_bus.emit(Event(
+        name="policy.updated",
+        payload={
+            "id": str(policy.id),
+            "old_values": old_values,
+            "new_values": new_values,
+            **({"context": event_context} if event_context else {}),
+        },
+    ))
+    
     return policy
 
 
 async def delete_policy_service(
-    session: AsyncSession, policy_id: str
+    session: AsyncSession, 
+    policy_id: str,
+    event_context: Dict[str, Any] | None = None,
 ) -> None:
     """Delete a policy (cannot delete system policies)."""
     # Check if it's a system policy
@@ -104,9 +145,22 @@ async def delete_policy_service(
             detail="Cannot delete system policies"
         )
     
+    policy = await policy_repository.get_policy_by_id(session, policy_id)
+    policy_name = policy.name if policy else policy_id
+    
     deleted = await policy_repository.delete_policy(session, policy_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Policy '{policy_id}' not found"
         )
+    
+    event_bus = EventBus()
+    await event_bus.emit(Event(
+        name="policy.deleted",
+        payload={
+            "id": policy_id,
+            "data": {"name": policy_name},
+            **({"context": event_context} if event_context else {}),
+        },
+    ))

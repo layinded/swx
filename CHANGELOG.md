@@ -2,6 +2,125 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.0] - 2026-04-28
+
+### Added
+- **Comprehensive Event Emission**: All SwX services now emit domain events for CRUD operations
+- **Event Context Parameter**: All service methods accept `event_context` parameter for additional metadata
+- **Typed Event Base Classes**: New `TypedEvent` base class for type-safe event handling
+
+### Services with Event Emission
+
+#### Authentication & User Management
+- **auth_service.py**: `register_user_service()` now emits `user.created` event
+- **user_service.py**: 
+  - `update_user_profile_service()` emits `user.updated` event
+  - `update_password_service()` emits `user.password_changed` event
+  - `delete_user_service()` emits `user.deleted` event
+
+#### Role & Permission Management
+- **role_service.py**:
+  - `create_role_service()` emits `role.created` event
+  - `update_role_service()` emits `role.updated` event
+  - `delete_role_service()` emits `role.deleted` event
+  - `assign_permission_to_role_service()` emits `role.permission_assigned` event
+  - `remove_permission_from_role_service()` emits `role.permission_removed` event
+
+- **permission_service.py**:
+  - `create_permission_service()` emits `permission.created` event
+  - `update_permission_service()` emits `permission.updated` event
+  - `delete_permission_service()` emits `permission.deleted` event
+
+#### Team Management
+- **team_service.py**:
+  - `create_team_service()` emits `team.created` event
+  - `update_team_service()` emits `team.updated` event
+  - `delete_team_service()` emits `team.deleted` event
+  - `add_team_member_service()` emits `team.member_added` event
+  - `remove_team_member_service()` emits `team.member_removed` event
+
+#### User-Role Management
+- **user_role_service.py**:
+  - `assign_role_to_user_service()` emits `user_role.assigned` event
+  - `remove_role_from_user_service()` emits `user_role.removed` event
+
+#### Policy Management
+- **policy_service.py**:
+  - `create_policy_service()` emits `policy.created` event
+  - `update_policy_service()` emits `policy.updated` event
+  - `delete_policy_service()` emits `policy.deleted` event
+
+### Event Payload Structure
+
+All events follow a consistent payload structure:
+
+```python
+# Create/Update/Delete events
+{
+    "id": "uuid-string",
+    "data": {"field": "value"},           # Resource data
+    "context": {"key": "value"}            # Optional context
+}
+
+# Update events (additional fields)
+{
+    "id": "uuid-string",
+    "old_values": {"field": "old_value"},
+    "new_values": {"field": "new_value"},
+    "context": {"key": "value"}            # Optional context
+}
+```
+
+### Example Usage
+
+```python
+# User registration with context
+user = await register_controller(
+    session=session,
+    user_in=user_create,
+    request=request,
+    event_context={
+        "user_type": "patient",
+        "hospital_id": hospital_id,
+        "registration_source": "mobile_app",
+    },
+)
+
+# Role creation with context
+role = await create_role_service(
+    session=session,
+    role_in=role_create,
+    event_context={"created_by": admin_id},
+)
+```
+
+### Tests
+- **New Tests**: `tests/services/test_service_event_emissions.py` with comprehensive event tests
+- **New Tests**: `tests/services/test_user_created_event.py` for user registration events
+- **Coverage**: 23 tests covering all service event emissions
+
+### Breaking Changes
+- None - all changes are backward compatible
+
+### Migration Guide
+No migration required. Event emission is automatic. To receive additional context:
+
+1. Pass `event_context` parameter to any service method:
+   ```python
+   await create_role_service(session, role_in, event_context={"created_by": user_id})
+   ```
+
+2. Listen for events using EventBus:
+   ```python
+   from swx_core.events import EventBus
+   
+   @EventBus.on("role.created")
+   async def on_role_created(event):
+       role_id = event.payload["id"]
+       context = event.payload.get("context", {})
+       created_by = context.get("created_by")
+   ```
+
 ## [2.6.0] - 2026-04-28
 
 ### Added
