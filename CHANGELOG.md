@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.3] - 2026-04-29
+
+### Fixed - CRITICAL
+- **user.created Event Not Emitted** - Fixed `register_user_service()` creating a local `EventBus()` instance instead of using the global `event_bus` singleton. Events are now emitted to the correct bus where listeners are registered.
+- **Event Context Empty Dict Handling** - Changed `if event_context:` to `if event_context is not None:` to correctly handle empty dict.
+
+### Added
+- **Discovery Diagnostic Logging** - Added DEBUG-level logs explaining why Phase 3 listener registration might be skipped
+- **diagnose_discovery() Function** - New helper to debug discovery configuration:
+  ```python
+  from swx_core.bootstrap import diagnose_discovery
+  diagnose_discovery()  # Returns app_exists, has_listeners, phase_3_will_run
+  ```
+
+### Changed
+- **Bootstrap Phase 3** - Now logs DEBUG message when skipping listener registration, showing which directory is missing
+
 ## [2.7.2] - 2026-04-29
 
 ### Added

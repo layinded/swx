@@ -184,12 +184,23 @@ def bootstrap_app(
             logger.error(f"Failed to boot {provider.__class__.__name__}: {e}")
 
     # Phase 3: Register user event listeners from app/listeners/
-    if discovery.app_exists() and discovery.has_listeners():
+    app_exists = discovery.app_exists()
+    has_listeners = discovery.has_listeners()
+    
+    if app_exists and has_listeners:
         logger.info("Registering event listeners...")
         try:
             register_event_listeners(container)
         except Exception as e:
             logger.error(f"Failed to register event listeners: {e}")
+    elif not app_exists:
+        logger.debug(
+            f"Skipping listener registration: app directory not found at {discovery.app_base}"
+        )
+    elif not has_listeners:
+        logger.debug(
+            f"Skipping listener registration: listeners directory not found at {discovery.app_listeners_path}"
+        )
 
     logger.info(f"Application bootstrapped with {len(provider_instances)} providers")
 
@@ -293,3 +304,20 @@ def resolve(name: str):
         Resolved service instance
     """
     return get_container().make(name)
+
+
+def diagnose_discovery() -> dict:
+    """
+    Diagnose discovery configuration for debugging.
+    
+    Returns:
+        Dict with discovery status for app and listeners.
+    """
+    return {
+        "app_name": discovery.app_name,
+        "app_base": str(discovery.app_base),
+        "app_exists": discovery.app_exists(),
+        "listeners_path": str(discovery.app_listeners_path),
+        "has_listeners": discovery.has_listeners(),
+        "phase_3_will_run": discovery.app_exists() and discovery.has_listeners(),
+    }
