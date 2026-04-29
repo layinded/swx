@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from swx_core.models.permission import Permission, PermissionCreate, PermissionUpdate
 from swx_core.repositories import permission_repository
-from swx_core.events.dispatcher import EventBus, Event
+from swx_core.events.dispatcher import event_bus, Event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -24,7 +24,6 @@ async def create_permission_service(
         )
     permission = await permission_repository.create_permission(session, permission_in)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="permission.created",
         payload={
@@ -58,7 +57,6 @@ async def update_permission_service(
     permission = await permission_repository.update_permission(session, permission, permission_in)
     new_values = {"name": permission.name, "description": permission.description}
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="permission.updated",
         payload={
@@ -93,7 +91,6 @@ async def delete_permission_service(
         
     await permission_repository.delete_permission(session, permission)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="permission.deleted",
         payload={

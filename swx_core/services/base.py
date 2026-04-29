@@ -16,7 +16,7 @@ import uuid
 from typing import TypeVar, Generic, Dict, Any, Optional, List
 
 from swx_core.repositories.base import BaseRepository
-from swx_core.events import EventBus, Event
+from swx_core.events import event_bus, Event
 from swx_core.models.base import Base
 
 
@@ -65,7 +65,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
             repository: The repository instance for data access
         """
         self.repository = repository
-        self.event_bus = EventBus()
+        self.event_bus = event_bus
     
     # =========================================================================
     # Read Operations

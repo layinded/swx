@@ -35,7 +35,7 @@ from swx_core.repositories.user_repository import (
     get_all_users,
 )
 from swx_core.utils.language_helper import translate
-from swx_core.events.dispatcher import EventBus, Event
+from swx_core.events.dispatcher import event_bus, Event
 
 
 async def update_user_profile_service(
@@ -62,7 +62,6 @@ async def update_user_profile_service(
     updated_user = await update_user(session=session, db_user=current_user, user_in=user_in)
     new_values = {"email": updated_user.email, "full_name": updated_user.full_name}
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="user.updated",
         payload={
@@ -147,7 +146,6 @@ async def update_password_service(
             status_code=400, detail=translate(request, "password_update_failed")
         )
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="user.password_changed",
         payload={
@@ -190,7 +188,6 @@ async def delete_user_service(
             status_code=400, detail=translate(request, "user_deletion_failed")
         )
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="user.deleted",
         payload={

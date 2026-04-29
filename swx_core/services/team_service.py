@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from swx_core.models.team import Team, TeamCreate, TeamUpdate
 from swx_core.models.team_member import TeamMember, TeamMemberCreate
 from swx_core.repositories import team_repository, user_repository, role_repository
-from swx_core.events.dispatcher import EventBus, Event
+from swx_core.events.dispatcher import event_bus, Event
 
 
 async def list_teams_service(session: AsyncSession, skip: int = 0, limit: int = 100) -> List[Team]:
@@ -19,7 +19,6 @@ async def create_team_service(
 ) -> Team:
     team = await team_repository.create_team(session, team_in)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="team.created",
         payload={
@@ -50,7 +49,6 @@ async def update_team_service(
     team = await team_repository.update_team(session, team, team_in)
     new_values = {"name": team.name, "description": team.description}
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="team.updated",
         payload={
@@ -78,7 +76,6 @@ async def delete_team_service(
         
     await team_repository.delete_team(session, team)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="team.deleted",
         payload={
@@ -112,7 +109,6 @@ async def add_team_member_service(
         
     member = await team_repository.add_team_member(session, member_in)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="team.member_added",
         payload={
@@ -136,7 +132,6 @@ async def remove_team_member_service(
     
     await team_repository.remove_team_member(session, member)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="team.member_removed",
         payload={

@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.4] - 2026-04-29
+
+### Fixed - CRITICAL
+- **All Services: Local EventBus Instance Bug** - Fixed ALL services creating local `EventBus()` instances instead of using the global `event_bus` singleton. This affected:
+  - `role_service.py` (5 occurrences)
+  - `user_service.py` (3 occurrences)
+  - `permission_service.py` (3 occurrences)
+  - `team_service.py` (5 occurrences)
+  - `user_role_service.py` (2 occurrences)
+  - `policy_service.py` (3 occurrences)
+  - `base.py` (BaseService class)
+  
+  **Impact**: ALL events emitted by these services were going to empty buses with NO registered listeners. Fix ensures all events go to the global singleton where listeners are registered.
+
+### Changed
+- All services now import and use `event_bus` singleton from `swx_core.events.dispatcher`
+- BaseService now stores reference to global `event_bus` instead of creating new instance
+
 ## [2.7.3] - 2026-04-29
 
 ### Fixed - CRITICAL
