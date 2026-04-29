@@ -219,8 +219,7 @@ async def register_user_service(
         user = await create_user(session=session, user_create=user_in)
         
         # Emit user.created event with context
-        from swx_core.events.dispatcher import EventBus, Event
-        event_bus = EventBus()
+        from swx_core.events.dispatcher import event_bus, Event
         payload = {
             "id": str(user.id),
             "data": {
@@ -229,7 +228,7 @@ async def register_user_service(
                 "auth_provider": user.auth_provider,
             },
         }
-        if event_context:
+        if event_context is not None:
             payload["context"] = event_context
         
         await event_bus.emit(Event(name="user.created", payload=payload))
