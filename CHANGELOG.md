@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.1] - 2026-04-29
+
+### Fixed
+- **Critical: Event Hashability** - Fixed `unhashable type: 'Event'` bug by adding `__hash__` method to Event class
+- **Critical: TypedEvent Hashability** - Added `__hash__` method to TypedEvent class for use in sets/dicts
+- **Wildcard Pattern Matching** - Fixed bug where `user.*` pattern matched all events instead of only `user.created`, `user.deleted`, etc.
+- **Event Context Handling** - Fixed empty dict `event_context={}` being treated as `None` (now correctly adds `"context": {}` to payload)
+
+### Added
+- **TypedEvent `__hash__` method** - TypedEvent objects can now be used in sets and as dict keys
+- **ListenerRegistration.pattern field** - Stores pattern for wildcard listeners (supports `*`, `user.*`, `*.created`)
+- **EventBus._matches_pattern()** - Pattern matching logic for wildcard event listeners
+- **Comprehensive edge case tests** - 25 new tests for event emission edge cases
+
+### Changed
+- **Event context parameter** - Changed from `if event_context else` to `if event_context is not None else` across all services to correctly handle empty dict
+
 ## [2.7.0] - 2026-04-28
 
 ### Added

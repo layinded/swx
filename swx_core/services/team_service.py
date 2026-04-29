@@ -25,7 +25,7 @@ async def create_team_service(
         payload={
             "id": str(team.id),
             "data": {"name": team.name, "description": team.description},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -57,7 +57,7 @@ async def update_team_service(
             "id": str(team.id),
             "old_values": old_values,
             "new_values": new_values,
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -84,7 +84,7 @@ async def delete_team_service(
         payload={
             "id": str(team_id),
             "data": {"name": team.name},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
 
@@ -118,7 +118,7 @@ async def add_team_member_service(
         payload={
             "id": str(member.id),
             "data": {"team_id": str(member_in.team_id), "user_id": str(member_in.user_id), "role_id": str(member_in.role_id)},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -142,7 +142,7 @@ async def remove_team_member_service(
         payload={
             "id": str(member_id),
             "data": {"team_id": str(member.team_id), "user_id": str(member.user_id)},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
 

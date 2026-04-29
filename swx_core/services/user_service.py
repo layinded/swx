@@ -69,7 +69,7 @@ async def update_user_profile_service(
             "id": str(updated_user.id),
             "old_values": old_values,
             "new_values": new_values,
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -153,7 +153,7 @@ async def update_password_service(
         payload={
             "id": str(current_user.id),
             "data": {"email": current_user.email},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -196,7 +196,7 @@ async def delete_user_service(
         payload={
             "id": user_id,
             "data": {"email": user_email},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
