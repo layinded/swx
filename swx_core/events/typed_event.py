@@ -27,14 +27,12 @@ from swx_core.events.dispatcher import Event
 
 
 @dataclass
-class TypedEvent(Event):
+class TypedEvent:
     """
     Type-safe event base class with convenient accessors.
     
-    Extends the base Event class with:
-    - event_type: Class-level event name (e.g., "user.created")
-    - Type-safe property accessors for payload fields
-    - Helper methods for creating typed events from raw payloads
+    Note: This is a separate dataclass from Event to avoid inheritance issues.
+    It wraps an Event instance rather than inheriting.
     
     Example:
         class UserCreatedEvent(TypedEvent):
@@ -61,6 +59,14 @@ class TypedEvent(Event):
     """
     
     event_type: ClassVar[str] = "typed.event"
+    name: str
+    payload: Dict[str, Any]
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+    stopped: bool = False
+    
+    def __hash__(self) -> int:
+        """Make TypedEvent hashable for use in sets and dict keys."""
+        return hash((self.name, id(self.payload), self.timestamp))
     
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "TypedEvent":

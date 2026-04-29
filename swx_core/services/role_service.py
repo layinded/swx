@@ -26,13 +26,16 @@ async def create_role_service(
     role = await role_repository.create_role(session, role_in)
     
     event_bus = EventBus()
+    payload = {
+        "id": str(role.id),
+        "data": {"name": role.name, "description": role.description},
+    }
+    if event_context is not None:
+        payload["context"] = event_context
+    
     await event_bus.emit(Event(
         name="role.created",
-        payload={
-            "id": str(role.id),
-            "data": {"name": role.name, "description": role.description},
-            **({"context": event_context} if event_context else {}),
-        },
+        payload=payload,
     ))
     
     return role
@@ -71,7 +74,7 @@ async def update_role_service(
             "id": str(role.id),
             "old_values": old_values,
             "new_values": new_values,
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -110,7 +113,7 @@ async def delete_role_service(
         payload={
             "id": str(role_id),
             "data": {"name": role.name},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
 
@@ -140,7 +143,7 @@ async def assign_permission_to_role_service(
         payload={
             "id": str(rp.id),
             "data": {"role_id": str(role_id), "permission_id": str(permission_id)},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -165,7 +168,7 @@ async def remove_permission_from_role_service(
         payload={
             "id": str(rp.id),
             "data": {"role_id": str(role_id), "permission_id": str(permission_id)},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
 

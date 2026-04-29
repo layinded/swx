@@ -85,7 +85,7 @@ async def create_policy_service(
         payload={
             "id": str(created_policy.id),
             "data": {"policy_id": policy.policy_id, "name": policy.name},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -125,7 +125,7 @@ async def update_policy_service(
             "id": str(policy.id),
             "old_values": old_values,
             "new_values": new_values,
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -161,6 +161,6 @@ async def delete_policy_service(
         payload={
             "id": policy_id,
             "data": {"name": policy_name},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))

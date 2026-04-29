@@ -32,7 +32,7 @@ async def assign_role_to_user_service(
         payload={
             "id": str(user_role.id),
             "data": {"user_id": str(assignment.user_id), "role_id": str(assignment.role_id)},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -59,7 +59,7 @@ async def remove_role_from_user_service(
         payload={
             "id": str(user_role_id),
             "data": {"user_id": user_id, "role_id": role_id},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
 

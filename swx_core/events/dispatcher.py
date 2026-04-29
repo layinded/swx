@@ -28,7 +28,7 @@ class EventPriority:
     LOWEST = 1
 
 
-@dataclass
+@dataclass(eq=True, frozen=False)
 class Event:
     """
     Base event class.
@@ -42,6 +42,10 @@ class Event:
     timestamp: datetime = field(default_factory=datetime.utcnow)
     stopped: bool = False
     _metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def __hash__(self) -> int:
+        """Make Event hashable for use in sets and dict keys."""
+        return hash((self.name, id(self.payload), self.timestamp))
 
     def stop(self) -> None:
         """Stop event propagation."""
@@ -80,6 +84,7 @@ class ListenerRegistration:
     queue_name: str = "default"
     async_listener: bool = False
     once: bool = False
+    pattern: str | None = None
 
 
 class EventBus:
@@ -138,6 +143,7 @@ class EventBus:
         )
 
         if event == "*" or "*" in event:
+            registration.pattern = event
             self._wildcard_listeners.append(registration)
             self._wildcard_listeners.sort(key=lambda r: r.priority, reverse=True)
         else:
@@ -299,17 +305,40 @@ class EventBus:
         """Get all listeners for an event including wildcards."""
         listeners = list(self._listeners.get(event, []))
 
-        # Add wildcard listeners that match
         for reg in self._wildcard_listeners:
-            # For now, include all wildcard listeners
-            # Pattern matching can be added later
             if reg not in listeners:
-                listeners.append(reg)
+                if reg.pattern and self._matches_pattern(event, reg.pattern):
+                    listeners.append(reg)
 
-        # Sort by priority
         listeners.sort(key=lambda r: r.priority, reverse=True)
-
         return listeners
+
+    def _matches_pattern(self, event: str, pattern: str) -> bool:
+        """
+        Check if event name matches a pattern.
+        
+        Patterns:
+        - "*" matches all events
+        - "user.*" matches "user.created", "user.deleted", etc.
+        - "*.created" matches "user.created", "role.created", etc.
+        """
+        if pattern == "*":
+            return True
+        
+        if "*" not in pattern:
+            return event == pattern
+        
+        pattern_parts = pattern.split(".")
+        event_parts = event.split(".")
+        
+        if len(pattern_parts) != len(event_parts):
+            return False
+        
+        for p_part, e_part in zip(pattern_parts, event_parts):
+            if p_part != "*" and p_part != e_part:
+                return False
+        
+        return True
 
     async def _execute_listener(
         self, registration: ListenerRegistration, event: Event

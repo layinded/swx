@@ -30,7 +30,7 @@ async def create_permission_service(
         payload={
             "id": str(permission.id),
             "data": {"name": permission.name, "description": permission.description},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -65,7 +65,7 @@ async def update_permission_service(
             "id": str(permission.id),
             "old_values": old_values,
             "new_values": new_values,
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
     
@@ -99,6 +99,6 @@ async def delete_permission_service(
         payload={
             "id": str(permission_id),
             "data": {"name": permission.name},
-            **({"context": event_context} if event_context else {}),
+            **({"context": event_context} if event_context is not None else {}),
         },
     ))
