@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from swx_core.models.role import Role, RoleCreate, RoleUpdate
 from swx_core.models.role_permission import RolePermission
 from swx_core.repositories import role_repository, role_permission_repository, permission_repository
-from swx_core.events.dispatcher import EventBus, Event
+from swx_core.events.dispatcher import event_bus, Event
 
 
 async def list_roles_service(session: AsyncSession, skip: int = 0, limit: int = 100) -> List[Role]:
@@ -25,7 +25,6 @@ async def create_role_service(
         )
     role = await role_repository.create_role(session, role_in)
     
-    event_bus = EventBus()
     payload = {
         "id": str(role.id),
         "data": {"name": role.name, "description": role.description},
@@ -67,7 +66,6 @@ async def update_role_service(
     role = await role_repository.update_role(session, role, role_in)
     new_values = {"name": role.name, "description": role.description}
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="role.updated",
         payload={
@@ -107,7 +105,6 @@ async def delete_role_service(
         
     await role_repository.delete_role(session, role)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="role.deleted",
         payload={
@@ -137,7 +134,6 @@ async def assign_permission_to_role_service(
 
     rp = await role_permission_repository.assign_permission_to_role(session, role_id, permission_id)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="role.permission_assigned",
         payload={
@@ -162,7 +158,6 @@ async def remove_permission_from_role_service(
     
     await role_permission_repository.remove_permission_from_role(session, rp)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="role.permission_removed",
         payload={

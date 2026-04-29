@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from swx_core.models.user_role import UserRole, UserRoleCreate
 from swx_core.repositories import user_role_repository, user_repository, role_repository
-from swx_core.events.dispatcher import EventBus, Event
+from swx_core.events.dispatcher import event_bus, Event
 
 
 async def assign_role_to_user_service(
@@ -26,7 +26,6 @@ async def assign_role_to_user_service(
     
     user_role = await user_role_repository.assign_role_to_user(session, assignment)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="user_role.assigned",
         payload={
@@ -53,7 +52,6 @@ async def remove_role_from_user_service(
     
     await user_role_repository.remove_role_from_user(session, ur)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="user_role.removed",
         payload={

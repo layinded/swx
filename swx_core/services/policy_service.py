@@ -17,7 +17,7 @@ from fastapi import HTTPException, status
 from swx_core.models.policy import Policy
 from swx_core.repositories import policy_repository
 from swx_core.services.policy.policy_registry import PolicyRegistry
-from swx_core.events.dispatcher import EventBus, Event
+from swx_core.events.dispatcher import event_bus, Event
 
 
 async def list_policies_service(
@@ -79,7 +79,6 @@ async def create_policy_service(
     
     created_policy = await policy_repository.create_policy(session, policy)
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="policy.created",
         payload={
@@ -118,7 +117,6 @@ async def update_policy_service(
     
     new_values = {"name": policy.name, "description": policy.description}
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="policy.updated",
         payload={
@@ -155,7 +153,6 @@ async def delete_policy_service(
             detail=f"Policy '{policy_id}' not found"
         )
     
-    event_bus = EventBus()
     await event_bus.emit(Event(
         name="policy.deleted",
         payload={
