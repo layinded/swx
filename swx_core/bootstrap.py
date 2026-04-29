@@ -256,12 +256,14 @@ def register_event_listeners(container: Container) -> None:
                         priority=getattr(listener_instance, "priority", 50),
                         queueable=getattr(listener_instance, "queueable", False),
                     )
-                    logger.debug(
-                        f"Registered listener: {attr_name} for {listener_instance.event}"
+                    logger.info(
+                        f"Registered listener: {attr_name} -> '{listener_instance.event}' "
+                        f"(priority={getattr(listener_instance, 'priority', 50)}, "
+                        f"queueable={getattr(listener_instance, 'queueable', False)})"
                     )
 
         except Exception as e:
-            logger.warning(f"Failed to load listener {name}: {e}")
+            logger.error(f"Failed to load listener {name}: {e}", exc_info=True)
 
 
 def get_registered_services() -> dict:

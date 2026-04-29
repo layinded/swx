@@ -447,5 +447,160 @@ await event_bus.emit(
 await event_bus.emit_async(
     event: str,
     payload: Any = None
+```
+
+---
+
+## Troubleshooting
+
+### Listeners Not Being Registered
+
+**Symptom**: `event_bus.has_listeners("user.created")` returns `False`
+
+**Check 1: Bootstrap Called**
+```python
+# Ensure bootstrap_app() is called
+from swx_core import bootstrap
+container = bootstrap(app)  # This registers listeners
+```
+
+**Check 2: Directory Structure**
+```bash
+ls -la swx_app/listeners/
+# Should see __init__.py and listener files
+```
+
+**Check 3: Listener Class Requirements**
+- Must inherit from `Listener`
+- Must implement `async def handle(self, event)`
+- Must not be abstract (no `@abstractmethod`)
+- Must not be `Listener` class itself
+
+**Check 4: Print Event Bus Status**
+```python
+from swx_core.events import print_event_bus_status
+print_event_bus_status()
+```
+
+### Events Not Reaching Listeners
+
+**Symptom**: Event dispatched but listeners don't execute
+
+**Check 1: Pattern Matching**
+```python
+from swx_core.events import test_pattern
+
+# Verify pattern matches
+test_pattern("user.*", "user.created")  # Should be True
+test_pattern("user.*", "role.created")   # Should be False
+```
+
+**Check 2: Trace Event Execution**
+```python
+from swx_core.events import trace_event
+
+# See which listeners WOULD receive the event
+trace_event("user.created")
+# ['Listener1 (priority=100)', 'Listener2 (priority=50)', ...]
+```
+
+**Check 3: Enable Debug Logging**
+```python
+import logging
+logging.getLogger("swx_core.events").setLevel(logging.DEBUG)
+```
+
+### Debug Utilities
+
+SwX provides debug utilities to inspect the event system:
+
+```python
+from swx_core.events import (
+    list_all_listeners,
+    test_pattern,
+    trace_event,
+    print_event_bus_status,
+    get_listener_count,
+    verify_listener_registered,
+)
+
+# List all registered listeners
+listeners = list_all_listeners()
+
+# Test if a pattern matches an event
+test_pattern("user.*", "user.created")  # True
+
+# Trace which listeners would receive an event
+trace_event("user.created")
+
+# Print comprehensive event bus status
+print_event_bus_status()
+
+# Get total listener count
+count = get_listener_count()
+
+# Verify a specific listener is registered
+verify_listener_registered("UserEventListener")  # True/False
+```
+
+### Manual Registration Workaround
+
+If auto-discovery fails, register listeners manually:
+
+```python
+from swx_core.events import event_bus
+from swx_app.listeners.user_listener import UserEventListener
+
+@app.on_event("startup")
+async def startup_event():
+    listener = UserEventListener()
+    event_bus.listen(
+        listener.event,
+        listener.handle,
+        priority=listener.priority
+    )
+```
+
+## Events Emitted by SwX
+
+SwX services automatically emit these events:
+
+| Service | Event Name | Trigger |
+|---------|-----------|---------|
+| auth_service | `user.created` | User registration |
+| user_service | `user.updated` | Profile update |
+| user_service | `user.password_changed` | Password change |
+| user_service | `user.deleted` | User deletion |
+| role_service | `role.created` | Role creation |
+| role_service | `role.updated` | Role update |
+| role_service | `role.deleted` | Role deletion |
+| permission_service | `permission.created` | Permission creation |
+| team_service | `team.created`, `team.member_added` | Team operations |
+
+## Event Payload Structure
+
+```python
+# Create events
+{
+    "id": "uuid-string",
+    "data": {"field": "value", ...},
+    "context": {"user_id": "...", ...}  # Optional context
+}
+
+# Update events
+{
+    "id": "uuid-string",
+    "old_values": {"field": "previous"},
+    "new_values": {"field": "updated"},
+    "context": {...}
+}
+
+# Delete events
+{
+    "id": "uuid-string",
+    "data": {"name": "deleted-resource"},
+    "context": {...}
+}
+```
 ) -> List[Event]
 ```

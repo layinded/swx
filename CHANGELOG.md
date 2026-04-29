@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.2] - 2026-04-29
+
+### Added
+- **Event Dispatch Logging** - INFO-level logging for event dispatch with listener count, execution times, and completion status
+- **Listener Registration Logging** - INFO-level logging when listeners are registered with pattern, priority, and queueable details
+- **Event Debug Utilities** - New `swx_core.events.debug` module with inspection tools:
+  - `list_all_listeners()` - List all registered listeners grouped by event
+  - `test_pattern()` - Test wildcard pattern matching
+  - `trace_event()` - Trace which listeners receive an event
+  - `print_event_bus_status()` - Print comprehensive event bus status
+  - `get_listener_count()` - Count registered listeners
+  - `verify_listener_registered()` - Verify a listener is registered
+- **Example Listeners** - Template project includes example listener implementations in `swx_app/listeners/example_listeners.py`
+
+### Changed
+- **Listener registration logging** - Changed from DEBUG to INFO level for visibility
+- **Event dispatch logging** - Added detailed timing and listener invocation logging
+
+### Fixed
+- **Listener visibility** - Listeners now log at INFO level when registered during bootstrap
+
+### Documentation
+- **Event System Guide** - Added troubleshooting section to `docs/04-core-concepts/EVENT_SYSTEM.md`
+- **Debug utilities documentation** - Documented all debug utilities with examples
+- **Pattern matching examples** - Added wildcard pattern examples and tests
+
 ## [2.7.1] - 2026-04-29
 
 ### Fixed

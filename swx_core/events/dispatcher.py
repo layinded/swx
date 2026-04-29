@@ -233,6 +233,10 @@ class EventBus:
         Returns:
             Event object with metadata
         """
+        import time
+        
+        start_time = time.monotonic()
+        
         # Create event object
         event_obj = Event(name=event, payload=payload, **kwargs)
 
@@ -243,18 +247,38 @@ class EventBus:
 
         # Get all listeners
         listeners = self._get_listeners_for_event(event)
+        
+        # Log dispatch start
+        logger.info(f"Dispatching event: '{event}' to {len(listeners)} listener(s)")
+        if logger.level <= 10:  # DEBUG level
+            logger.debug(f"Event payload: {payload}")
 
         # Execute listeners
         to_remove = []
+        invoked_count = 0
         for registration in listeners:
             if event_obj.is_stopped():
+                logger.debug(f"Event '{event}' propagation stopped")
                 break
 
             try:
+                listener_name = getattr(registration.listener, '__name__', str(registration.listener))
+                logger.debug(
+                    f"Invoking listener: {listener_name} "
+                    f"(priority={registration.priority}, queueable={registration.queueable})"
+                )
+                
+                listener_start = time.monotonic()
+                
                 if registration.queueable:
                     await self._queue_listener(event_obj, registration)
                 else:
                     await self._execute_listener(registration, event_obj)
+                
+                listener_duration = time.monotonic() - listener_start
+                logger.debug(f"Listener {listener_name} completed in {listener_duration:.3f}s")
+                
+                invoked_count += 1
 
                 if registration.once:
                     to_remove.append(registration)
@@ -270,6 +294,10 @@ class EventBus:
         for reg in to_remove:
             self._forget_registration(event, reg)
 
+        # Log dispatch completion
+        duration = time.monotonic() - start_time
+        logger.info(f"Event '{event}' completed - {invoked_count} listener(s) invoked in {duration:.3f}s")
+        
         return event_obj
 
     def dispatch_sync(self, event: str, payload: Any = None, **kwargs) -> Event:
