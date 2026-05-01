@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.6] - 2026-05-01
+
+### Fixed - Database Migration Auto-Generation
+- **swx_job Table Not Created** - Setup command now auto-generates initial migration if none exist
+  - `swx setup` detects empty migrations/versions/ directory
+  - Automatically runs `alembic revision --autogenerate -m "initial"`
+  - Creates all framework tables including `swx_job`, `swx_users`, `swx_role`, etc.
+  
+### Changed
+- `_setup_database()` in `framework.py` now generates initial migration on fresh projects
+- Users no longer need to manually run `swx db revision "initial"` first
+
 ## [2.7.5] - 2026-05-01
 
 ### Fixed - Import/Module Issues
