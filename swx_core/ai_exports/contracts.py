@@ -1,32 +1,4 @@
-#MY|"""
-#ZX|SwX AI-Aware Layer - Contract Registry Exporter
-#XK|============================================
-#RW|
-#HZ|Exports ABC interfaces, method signatures, and override instructions.
-#MX|"""
-#HN|
-#XW|import inspect
-#SN|from typing import Any, Dict, List, Optional
-#VB|from pathlib import Path
-#TJ|
-#MQ|# Safe imports with fallbacks
-#MQ|try:
-#XN|    from swx_core.repositories.base import BaseRepository
-except ImportError:
-#XN|    BaseRepository = None
-#XN|try:
-#WT|    from swx_core.services.base import BaseService
-except ImportError:
-#WT|    BaseService = None
-#WT|try:
-#YW|    from swx_core.controllers.base import BaseController
-except ImportError:
-#YW|    BaseController = None
-#YW|try:
-#VP|    from swx_core.providers.base import ServiceProvider
-except ImportError:
-#VP|    ServiceProvider = None
-#VP|
+"""
 SwX AI-Aware Layer - Contract Registry Exporter
 ============================================
 
@@ -37,10 +9,25 @@ import inspect
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
-from swx_core.repositories.base import BaseRepository
-from swx_core.services.base import BaseService
-from swx_core.controllers.base import BaseController
-from swx_core.providers.base import ServiceProvider
+try:
+    from swx_core.repositories.base import BaseRepository
+except ImportError:
+    BaseRepository = None
+
+try:
+    from swx_core.services.base import BaseService
+except ImportError:
+    BaseService = None
+
+try:
+    from swx_core.controllers.base import BaseController
+except ImportError:
+    BaseController = None
+
+try:
+    from swx_core.providers.base import ServiceProvider
+except ImportError:
+    ServiceProvider = None
 
 
 def get_contracts_export(
@@ -51,19 +38,18 @@ def get_contracts_export(
     
     contracts = []
     
-    # BaseRepository contract
-    contracts.append(_extract_repository_contract(BaseRepository))
+    if BaseRepository:
+        contracts.append(_extract_repository_contract(BaseRepository))
     
-    # BaseService contract
-    contracts.append(_extract_service_contract(BaseService))
+    if BaseService:
+        contracts.append(_extract_service_contract(BaseService))
     
-    # BaseController contract
-    contracts.append(_extract_controller_contract(BaseController))
+    if BaseController:
+        contracts.append(_extract_controller_contract(BaseController))
     
-    # ServiceProvider contract
-    contracts.append(_extract_provider_contract(ServiceProvider))
+    if ServiceProvider:
+        contracts.append(_extract_provider_contract(ServiceProvider))
     
-    # Filter if specific interface requested
     if interface:
         contracts = [c for c in contracts if c["name"] == interface]
     
@@ -202,10 +188,10 @@ def _get_return_type(method) -> str:
 def _get_repo_override_instructions(method_name: str) -> str:
     """Get override instructions for repository methods."""
     instructions = {
-        "find_by_id": "Query database by primary key. Return None if not found. Do not raise exceptions.",
+        "find_by_id": "Query database by primary key. Return None if not found.",
         "find_all": "Apply filters and pagination. Return empty list if no results.",
-        "create": "Create new record from data dict. Return created instance with generated ID.",
-        "update": "Update existing record. Return updated instance or None if not found.",
+        "create": "Create new record from data dict. Return created instance.",
+        "update": "Update existing record. Return updated instance or None.",
         "delete": "Delete record by ID. Return True if deleted, False if not found.",
         "search": "Perform full-text search. Return matching records.",
         "paginate": "Return paginated results with total count."
@@ -229,10 +215,10 @@ def _get_controller_override_instructions(method_name: str) -> str:
     """Get override instructions for controller methods."""
     instructions = {
         "get": "Handle GET single entity. Return 404 if not found.",
-        "create": "Handle POST create. Validate request body. Return 201 on success.",
+        "create": "Handle POST create. Validate request body. Return 201.",
         "update": "Handle PUT/PATCH update. Return 404 if not found.",
         "delete": "Handle DELETE. Return 204 on success.",
-        "list": "Handle GET list with query parameters for filtering/pagination."
+        "list": "Handle GET list with query parameters."
     }
     return instructions.get(method_name, "Implement the endpoint.")
 
@@ -240,7 +226,7 @@ def _get_controller_override_instructions(method_name: str) -> str:
 def _get_provider_override_instructions(method_name: str) -> str:
     """Get override instructions for provider methods."""
     instructions = {
-        "register": "Register service bindings with container. Use bind(), singleton(), scoped().",
-        "boot": "Boot services after all providers registered. Use for initialization that requires other services."
+        "register": "Register service bindings with container.",
+        "boot": "Boot services after all providers registered."
     }
     return instructions.get(method_name, "Implement the method.")

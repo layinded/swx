@@ -204,9 +204,12 @@ def _setup_database():
         return
     
     try:
-        # Check if migrations directory exists
         if not os.path.exists("migrations"):
             click.secho("⚠️  No migrations directory found", fg="yellow")
+            return
+        
+        if not os.path.exists("alembic.ini"):
+            click.secho("⚠️  No alembic.ini found. Run 'alembic init migrations' first.", fg="yellow")
             return
         
         versions_dir = os.path.join("migrations", "versions")
@@ -217,19 +220,11 @@ def _setup_database():
             has_migrations = len(migration_files) > 0
         
         if not has_migrations:
-            click.secho("📝 No migrations found, generating initial migration...", fg="cyan")
-            result = subprocess.run(
-                ["alembic", "revision", "--autogenerate", "-m", "initial"],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode != 0:
-                click.secho(f"⚠️  Could not generate migration: {result.stderr[:200]}", fg="yellow")
-                click.secho("💡 Run 'swx db revision \"initial\"' manually after connecting to database", fg="cyan")
-                return
-            click.secho("✅ Initial migration generated", fg="green")
+            click.secho("📝 No migrations found.", fg="cyan")
+            click.secho("💡 For fresh projects: swx db revision \"initial\"", fg="cyan")
+            click.secho("💡 For existing projects: Use existing migrations or skip autogenerate", fg="cyan")
+            return
         
-        # Run migrations
         result = subprocess.run(
             ["alembic", "upgrade", "head"],
             capture_output=True,
