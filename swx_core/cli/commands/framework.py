@@ -209,6 +209,26 @@ def _setup_database():
             click.secho("⚠️  No migrations directory found", fg="yellow")
             return
         
+        versions_dir = os.path.join("migrations", "versions")
+        has_migrations = False
+        if os.path.exists(versions_dir):
+            migration_files = [f for f in os.listdir(versions_dir) 
+                             if f.endswith(".py") and not f.startswith("_")]
+            has_migrations = len(migration_files) > 0
+        
+        if not has_migrations:
+            click.secho("📝 No migrations found, generating initial migration...", fg="cyan")
+            result = subprocess.run(
+                ["alembic", "revision", "--autogenerate", "-m", "initial"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0:
+                click.secho(f"⚠️  Could not generate migration: {result.stderr[:200]}", fg="yellow")
+                click.secho("💡 Run 'swx db revision \"initial\"' manually after connecting to database", fg="cyan")
+                return
+            click.secho("✅ Initial migration generated", fg="green")
+        
         # Run migrations
         result = subprocess.run(
             ["alembic", "upgrade", "head"],
