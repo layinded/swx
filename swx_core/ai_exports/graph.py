@@ -1,16 +1,4 @@
-#MY|"""
-#NS|SwX AI-Aware Layer - Dependency Graph Exporter
-#XK|============================================
-#RW|
-#RK|Exports service, event, provider, and plugin dependency graphs.
-#MX|"""
-#HN|
-#TZ|import json
-#BT|from typing import Any, Dict, List
-#SK|
-#BT|# Safe import
-#BT|from swx_core.ai_exports.architecture import get_architecture
-#TX|
+"""
 SwX AI-Aware Layer - Dependency Graph Exporter
 ============================================
 
@@ -103,7 +91,6 @@ def _build_service_graph(architecture: dict) -> Dict[str, Any]:
     edges = []
     seen = set()
     
-    # Add providers as nodes
     for provider in architecture.get("providers", []):
         nodes.append({
             "id": provider["name"],
@@ -112,7 +99,6 @@ def _build_service_graph(architecture: dict) -> Dict[str, Any]:
             "type": "service"
         })
         
-        # Add binding edges
         for binding in architecture.get("bindings", []):
             if provider["name"] in binding.get("concrete", "").lower():
                 edges.append({
@@ -134,14 +120,12 @@ def _build_event_graph(architecture: dict) -> Dict[str, Any]:
     nodes = []
     edges = []
     
-    # Add dispatcher
     nodes.append({
         "id": "event_dispatcher",
         "label": "EventDispatcher",
         "type": "dispatcher"
     })
     
-    # Add listeners
     events = architecture.get("events", {})
     for listener in events.get("listeners", []):
         event_name = listener.get("event", "unknown")
@@ -181,7 +165,6 @@ def _build_provider_graph(architecture: dict) -> Dict[str, Any]:
             "type": "provider"
         })
         
-        # Add edges to dependencies (bindings)
         for binding in provider.get("bindings", []):
             edges.append({
                 "source": provider["name"],
@@ -201,7 +184,6 @@ def _get_service_edges(architecture: dict) -> List[Dict[str, str]]:
     
     edges = []
     
-    # Map services to their dependencies
     service_deps = {
         "database": ["config"],
         "event": ["database"],

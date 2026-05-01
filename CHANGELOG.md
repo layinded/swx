@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.7] - 2026-05-01
+
+### Fixed - CRITICAL
+- **SyntaxError in ai_exports/graph.py** - Removed corrupt prefixes (#MY|, #NS|, etc.) causing unterminated string literal
+- **SyntaxError in ai_exports/contracts.py** - Same corruption fix
+- **swx CLI now works** - Fixed blocking import error
+
+### Changed
+- Removed autogenerate from `swx setup` to prevent issues with existing projects
+- `swx setup` now provides manual instructions instead of auto-generating migrations
+- Safer for projects with custom tables that reference core tables
+
+### Bug Fixes
+- ai_exports files no longer have corrupt line prefixes
+- Existing projects with migrations can safely run `swx setup`
+
 ## [2.7.6] - 2026-05-01
 
 ### Fixed - Database Migration Auto-Generation
