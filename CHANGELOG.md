@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.5] - 2026-05-01
+
+### Fixed - Import/Module Issues
+- **Broken Import in CLI Framework** - Fixed `swx_core/cli/commands/framework.py:239` importing from non-existent `swx_core.database.core`. Changed to `swx_core.database.db`.
+- **Database Module Exports** - Added exports to `swx_core/database/__init__.py` for cleaner imports:
+  - `AsyncSessionLocal`, `SessionLocal` - session factories
+  - `async_engine`, `engine` - database engines
+  - `get_async_db`, `get_db`, `get_session` - dependency injectors
+  - `SessionDep`, `SyncSessionDep` - type annotations
+
+### Documentation
+- Confirmed cache functions are correctly located at `swx_core.utils.cache` (not `swx_core.cache`)
+- Confirmed BaseRepository is at `swx_core.repositories.base` (not `swx_core.repository`)
+
 ## [2.7.4] - 2026-04-29
 
 ### Fixed - CRITICAL

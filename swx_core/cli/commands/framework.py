@@ -236,7 +236,7 @@ def _create_superuser():
     
     try:
         # Try to import and run the seed script
-        from swx_core.database.core import get_engine, AsyncSessionLocal
+        from swx_core.database.db import AsyncSessionLocal, async_engine
         from swx_core.models.user import User
         from swx_core.security.hashing import Hasher
         from sqlalchemy import text
