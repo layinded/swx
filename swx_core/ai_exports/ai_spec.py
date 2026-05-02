@@ -5,7 +5,7 @@ SwX AI-Aware Layer - Versioned AI Specification
 Exports versioned AI specification for compatibility.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 
@@ -17,7 +17,7 @@ def get_ai_spec() -> Dict[str, Any]:
         "architecture_schema_version": "2.0.0",
         "change_safety_model_version": "1.0.0",
         "swx_version": "2.0.0",
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "compatibility": {
             "min_ai_spec_version": "1.0.0",
             "max_ai_spec_version": "1.0.0",

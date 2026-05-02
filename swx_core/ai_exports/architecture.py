@@ -10,7 +10,7 @@ import json
 import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Try imports, fall back to defaults if unavailable
 try:
@@ -309,7 +309,7 @@ class ArchitectureIntrospector:
         """Export complete architecture."""
         return {
             "version": "2.0.0",
-            "exported_at": datetime.now().isoformat(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
             "swx_version": __version__,
             "providers": self.get_providers(),
             "bindings": self.get_bindings(),

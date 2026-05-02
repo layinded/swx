@@ -19,7 +19,7 @@ Features:
 import json
 import os
 from typing import Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from functools import lru_cache
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,13 +70,13 @@ class SettingsService:
         # Check cache first
         if key in _settings_cache:
             value, cached_at = _settings_cache[key]
-            if datetime.utcnow() - cached_at < _cache_ttl:
+            if datetime.now(timezone.utc) - cached_at < _cache_ttl:
                 return value
         
         # Try database
         db_value = await self._get_from_db(key, value_type)
         if db_value is not None:
-            _settings_cache[key] = (db_value, datetime.utcnow())
+            _settings_cache[key] = (db_value, datetime.now(timezone.utc))
             return db_value
         
         # Try environment
@@ -84,7 +84,7 @@ class SettingsService:
         if env_value is not None:
             # Convert based on value_type or infer
             converted = self._convert_value(env_value, value_type)
-            _settings_cache[key] = (converted, datetime.utcnow())
+            _settings_cache[key] = (converted, datetime.now(timezone.utc))
             return converted
         
         # Use default

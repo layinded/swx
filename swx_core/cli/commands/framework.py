@@ -19,7 +19,7 @@ import json
 import shutil
 import subprocess
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -132,7 +132,7 @@ def _get_default_env() -> str:
     secret_key = secrets.token_urlsafe(32)
     
     return f"""# SwX Framework Environment Configuration
-# Generated on {datetime.now().isoformat()}
+# Generated on {datetime.now(timezone.utc).isoformat()}
 
 # Application
 APP_NAME=SwX-API
@@ -260,7 +260,7 @@ def _create_superuser():
             async with AsyncSessionLocal() as session:
                 # Check if user exists
                 result = await session.execute(
-                    text("SELECT id FROM swx_users WHERE email = :email"),
+                    text("SELECT id FROM swx_users WHERE swx_users.email = :email"),
                     {"email": email}
                 )
                 if result.fetchone():
@@ -361,7 +361,7 @@ def down(message: str):
     
     maintenance_data = {
         "message": message,
-        "started_at": datetime.now().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
     }
     
     with open(MAINTENANCE_FILE, "w") as f:
@@ -369,7 +369,7 @@ def down(message: str):
     
     click.secho("⛔ Application is now in maintenance mode", fg="yellow", bold=True)
     click.secho(f"   Message: {message}", fg="white")
-    click.secho(f"   Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", fg="white")
+    click.secho(f"   Started: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}", fg="white")
     click.secho("\nUse 'swx up' to bring the application back online.", fg="cyan")
 
 
@@ -871,7 +871,7 @@ def _update_plugin_manifest(name: str, url: str, version: str):
     manifest["plugins"][name] = {
         "url": url,
         "version": version,
-        "installed_at": datetime.now().isoformat(),
+        "installed_at": datetime.now(timezone.utc).isoformat(),
     }
     
     if name not in manifest["enabled"]:

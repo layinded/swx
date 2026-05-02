@@ -227,12 +227,12 @@ class ProductService(BaseService[Product, ProductRepository]):
 
 | Method | Description |
 |--------|-------------|
-| `create(data, emit_event, validate)` | Create with validation & events |
-| `update(id, data, emit_event, validate)` | Update with validation & events |
-| `delete(id, emit_event)` | Hard delete |
-| `soft_delete(id, emit_event)` | Soft delete |
-| `restore(id, emit_event)` | Restore soft-deleted |
-| `bulk_create(data_list, emit_event)` | Create multiple records |
+| `create(data, emit_event, validate, event_context)` | Create with validation & events |
+| `update(id, data, emit_event, validate, event_context)` | Update with validation & events |
+| `delete(id, emit_event, event_context)` | Hard delete |
+| `soft_delete(id, emit_event, event_context)` | Soft delete |
+| `restore(id, emit_event, event_context)` | Restore soft-deleted |
+| `bulk_create(data_list, emit_event, event_context)` | Create multiple records |
 
 #### Count Operations
 
@@ -331,6 +331,101 @@ async def on_product_created(event):
 # - {model}.bulk_updated
 # - {model}.bulk_deleted
 ```
+
+#### Event Context (v2.6+)
+
+Pass additional context to events that isn't part of the input data:
+
+```python
+# User registration with context
+user = await user_service.create(
+    data={"email": "user@example.com", "password": "secret"},
+    event_context={
+        "user_type": "patient",
+        "hospital_id": hospital_id,
+        "registration_source": "mobile_app",
+    },
+)
+
+# Listener receives context
+@EventBus.on("user.created")
+async def on_user_created(event):
+    user_id = event.payload['id']
+    data = event.payload['data']
+    context = event.payload.get('context', {})
+    
+    user_type = context.get('user_type', 'standard')
+    hospital_id = context.get('hospital_id')
+    
+    if user_type == "doctor":
+        await initiate_approval_workflow(user_id, hospital_id)
+```
+
+#### Event Payload Structure
+
+```python
+# Create event payload
+{
+    "id": "uuid-string",
+    "data": {"email": "...", "name": "..."},
+    "context": {"user_type": "patient", "hospital_id": "..."}  # Optional
+}
+
+# Update event payload
+{
+    "id": "uuid-string",
+    "old_values": {"status": "draft"},
+    "new_values": {"status": "published"},
+    "context": {"updated_by": "admin"}  # Optional
+}
+
+# Delete event payload
+{
+    "id": "uuid-string",
+    "context": {"deleted_by": "admin", "reason": "gdpr_request"}  # Optional
+}
+```
+
+#### before_emit Hook (v2.6+)
+
+Enhance events with computed/async context:
+
+```python
+class UserService(BaseService[User]):
+    
+    async def before_emit(self, event_name, payload, instance):
+        """Add computed context before event emission."""
+        if event_name == "user.created" and instance:
+            payload["context"] = {
+                **payload.get("context", {}),
+                "user_type": await self._determine_user_type(instance),
+                "permissions": await self._get_default_permissions(),
+            }
+        return payload
+```
+
+#### after_emit Hook (v2.6+)
+
+Execute side effects after event emission:
+
+```python
+class OrderService(BaseService[Order]):
+    
+    async def after_emit(self, event_name, payload, instance):
+        """Execute side effects after event."""
+        if event_name == "order.created":
+            await self._send_confirmation_email(instance)
+            await self._update_inventory(instance)
+```
+
+#### Industrial Standards Compliance
+
+| Framework | Pattern | Implementation |
+|-----------|---------|----------------|
+| Django Signals | `sender + **kwargs` | event_context parameter |
+| Flask/Blinker | Named arguments | Explicit event_context |
+| SQLAlchemy Events | before/after hooks | before_emit/after_emit |
+| Production SaaS | Context dict in payload | `{id, data, context}` structure |
 
 ---
 
