@@ -8,7 +8,7 @@ Register these handlers at application startup.
 
 import uuid
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, and_
 
@@ -174,7 +174,6 @@ async def alert_send_handler(session: AsyncSession, payload: Dict[str, Any]) -> 
         from swx_core.services.channels.models import (
             AlertSeverity, AlertSource, AlertActorType, Alert
         )
-from datetime import datetime, timezone, timedelta
         
         # Extract alert details from payload
         severity = AlertSeverity(payload.get("severity", "INFO"))
@@ -234,7 +233,6 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
     
     Aggregates audit logs for reporting and analysis.
     """
-    from datetime import datetime, timedelta
     from sqlmodel import func, desc
     
     # Parse date range
