@@ -3,7 +3,7 @@ Built-in Authentication Events.
 """
 
 from swx_core.events.dispatcher import Event, event_bus
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 
@@ -23,7 +23,7 @@ class UserRegistered(Event):
                 "user_id": user_id,
                 "email": email,
                 "auth_provider": auth_provider,
-                "registered_at": datetime.utcnow().isoformat()
+                "registered_at": datetime.now(timezone.utc).isoformat()
             },
             **kwargs
         )
@@ -49,7 +49,7 @@ class UserLoggedIn(Event):
                 "ip_address": ip_address,
                 "user_agent": user_agent,
                 "auth_method": auth_method,
-                "logged_in_at": datetime.utcnow().isoformat()
+                "logged_in_at": datetime.now(timezone.utc).isoformat()
             },
             **kwargs
         )
@@ -80,7 +80,7 @@ class UserPasswordChanged(Event):
             payload={
                 "user_id": user_id,
                 "revoked_sessions": revoked_sessions,
-                "changed_at": datetime.utcnow().isoformat()
+                "changed_at": datetime.now(timezone.utc).isoformat()
             },
             **kwargs
         )
@@ -102,7 +102,7 @@ class UserDeactivated(Event):
                 "user_id": user_id,
                 "reason": reason,
                 "deactivated_by": deactivated_by,
-                "deactivated_at": datetime.utcnow().isoformat()
+                "deactivated_at": datetime.now(timezone.utc).isoformat()
             },
             **kwargs
         )
@@ -137,7 +137,7 @@ class UserRoleChanged(Event):
                 "old_roles": old_roles,
                 "new_roles": new_roles,
                 "changed_by": changed_by,
-                "changed_at": datetime.utcnow().isoformat()
+                "changed_at": datetime.now(timezone.utc).isoformat()
             },
             **kwargs
         )
@@ -159,7 +159,7 @@ class TokenRevoked(Event):
                 "token_id": token_id,
                 "user_id": user_id,
                 "reason": reason,
-                "revoked_at": datetime.utcnow().isoformat()
+                "revoked_at": datetime.now(timezone.utc).isoformat()
             },
             **kwargs
         )

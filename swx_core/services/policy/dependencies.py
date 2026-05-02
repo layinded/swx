@@ -22,7 +22,7 @@ from swx_core.services.policy.actor import ActorType as PolicyActorType
 from swx_core.services.settings_service import get_settings_service
 from swx_core.config.settings import settings as env_settings
 from swx_core.middleware.logging_middleware import logger
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 async def build_actor_from_user(
@@ -175,7 +175,7 @@ def require_policy(
         
         # Build context
         context = PolicyContext(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             ip_address=request.client.host if request and request.client else None,
             user_agent=request.headers.get("user-agent") if request else None,
             environment=environment,

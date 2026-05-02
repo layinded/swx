@@ -91,7 +91,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -127,7 +127,7 @@ class JSONFormatter(logging.Formatter):
     """Custom log formatter that outputs logs in JSON format."""
     def format(self, record):
         log_record = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "message": record.getMessage(),
             "file": record.filename,
