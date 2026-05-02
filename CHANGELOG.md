@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.8] - 2026-05-01
+
+### Fixed - CRITICAL
+- **Job Runner SQL Bug** - Fixed unqualified column reference `job.status` → `swx_job.status` in PostgreSQL query
+  - Error: `missing FROM-clause entry for table "job"` in PostgreSQL
+  - File: `swx_core/services/job/job_runner.py:202`
+  - Fix: Changed `text("job.status = ANY(...)")` → `text("swx_job.status = ANY(...)")`
+  - Impact: Background job processing was completely broken, workers spammed errors
+
+### Fixed
+- **get_current_user Export** - Added `get_current_user` and `UserDep` to `swx_core.auth.__init__.py`
+  - Users can now: `from swx_core.auth import get_current_user`
+  - Previously required workaround: `from swx_core.auth.user import get_current_user`
+
+### Documentation
+- **AdminUser Import Path** - Confirmed correct path: `from swx_core.models import AdminUser`
+  - No `swx_core.models.admin` module exists - AdminUser is in `admin_user.py`
+
 ## [2.7.7] - 2026-05-01
 
 ### Fixed - CRITICAL
