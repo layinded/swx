@@ -8,6 +8,8 @@ Rules:
 - No infinite retries (max_attempts)
 - Exponential backoff for retries
 - Dead-letter queue for permanently failed jobs
+- Safe session management with proper cleanup
+- Timeout protection for long-running jobs
 """
 
 import asyncio
@@ -17,7 +19,6 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, Callable, Awaitable
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update, text
-from sqlmodel import Session
 
 from swx_core.models.job import Job, JobStatus
 from swx_core.database.db import AsyncSessionLocal
@@ -50,6 +51,16 @@ def get_worker_id() -> str:
     return f"{hostname}-{uuid.uuid4().hex[:8]}"
 
 
+def _utc_now() -> datetime:
+    """Get current UTC timezone-aware datetime."""
+    return datetime.now(timezone.utc)
+
+
+def _utc_now_naive() -> datetime:
+    """Get current UTC timezone-naive datetime for database comparisons."""
+    return datetime.utcnow()
+
+
 class JobRunner:
     """
     Background job runner with locking, retry, and dead-letter handling.
@@ -59,6 +70,7 @@ class JobRunner:
     - Locks jobs to prevent double execution
     - Retries with exponential backoff
     - Moves failed jobs to dead-letter queue
+    - Timeout protection for job execution
     """
     
     def __init__(
@@ -66,15 +78,23 @@ class JobRunner:
         worker_id: Optional[str] = None,
         poll_interval: int = 5,
         lock_timeout: int = 300,  # 5 minutes
-        max_concurrent: int = 10
+        max_concurrent: int = 10,
+        execution_timeout: int = 3600  # 1 hour default timeout
     ):
         self.worker_id = worker_id or get_worker_id()
         self.poll_interval = poll_interval
         self.lock_timeout = lock_timeout
         self.max_concurrent = max_concurrent
+        self.execution_timeout = execution_timeout
         self.running = False
-        self.active_jobs: Dict[uuid.UUID, asyncio.Task] = {}
+        self._active_jobs_lock = asyncio.Lock()
+        self._active_jobs: Dict[uuid.UUID, asyncio.Task] = {}
         logger.info(f"JobRunner initialized with worker_id: {self.worker_id}")
+    
+    @property
+    def active_jobs(self) -> Dict[uuid.UUID, asyncio.Task]:
+        """Thread-safe access to active jobs dict."""
+        return self._active_jobs
     
     async def start(self) -> None:
         """Start the job runner."""
@@ -97,12 +117,15 @@ class JobRunner:
         logger.info("JobRunner stopping...")
         
         # Wait for active jobs to complete (with timeout)
-        if self.active_jobs:
-            logger.info(f"Waiting for {len(self.active_jobs)} active jobs to complete...")
-            await asyncio.wait_for(
-                asyncio.gather(*self.active_jobs.values(), return_exceptions=True),
-                timeout=30
-            )
+        if self._active_jobs:
+            logger.info(f"Waiting for {len(self._active_jobs)} active jobs to complete...")
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._active_jobs.values(), return_exceptions=True),
+                    timeout=30
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Timed out waiting for active jobs to complete")
         
         logger.info("JobRunner stopped")
     
@@ -111,7 +134,7 @@ class JobRunner:
         while self.running:
             try:
                 # Only poll if we have capacity
-                if len(self.active_jobs) < self.max_concurrent:
+                if len(self._active_jobs) < self.max_concurrent:
                     await self._process_next_job()
                 else:
                     await asyncio.sleep(1)  # Wait if at capacity
@@ -134,18 +157,20 @@ class JobRunner:
         """Release locks that have timed out."""
         async with AsyncSessionLocal() as session:
             try:
-                now = datetime.now(timezone.utc)
-                cutoff = (now - timedelta(seconds=self.lock_timeout)).replace(tzinfo=None)
+                now = _utc_now()
+                cutoff = now - timedelta(seconds=self.lock_timeout)
+                cutoff_naive = cutoff.replace(tzinfo=None)
+                
                 stmt = (
                     update(Job)
                     .where(
                         and_(
-                            Job.status == JobStatus.RUNNING.value,
-                            Job.locked_at < cutoff
+                            Job.status == JobStatus.running.value,
+                            Job.locked_at < cutoff_naive
                         )
                     )
                     .values(
-                        status=JobStatus.QUEUED.value,
+                        status=JobStatus.queued.value,
                         locked_at=None,
                         locked_by=None
                     )
@@ -155,93 +180,115 @@ class JobRunner:
                 if count > 0:
                     await session.commit()
                     logger.info(f"Released {count} stale locks")
+                else:
+                    await session.commit()
             except Exception as e:
                 logger.error(f"Error releasing stale locks: {e}", exc_info=True)
                 await session.rollback()
     
     async def _process_next_job(self) -> None:
         """Process the next available job."""
-        async with AsyncSessionLocal() as session:
-            try:
-                # Find next job to process
-                job = await self._acquire_job(session)
-                if not job:
-                    return
-                
-                # Process job in background
-                task = asyncio.create_task(self._execute_job(job.id))
-                self.active_jobs[job.id] = task
-                
-                # Clean up completed tasks
-                task.add_done_callback(lambda t: self.active_jobs.pop(job.id, None))
-                
-            except Exception as e:
-                logger.error(f"Error acquiring job: {e}", exc_info=True)
-                await session.rollback()
+        try:
+            job_id = await self._acquire_job()
+            if not job_id:
+                return
+            
+            # Process job in background
+            task = asyncio.create_task(self._execute_job_with_timeout(job_id))
+            
+            async with self._active_jobs_lock:
+                self._active_jobs[job_id] = task
+            
+            # Clean up completed tasks
+            def cleanup_callback(t: asyncio.Task, jid: uuid.UUID = job_id) -> None:
+                asyncio.create_task(self._remove_active_job(jid))
+            
+            task.add_done_callback(cleanup_callback)
+            
+        except Exception as e:
+            logger.error(f"Error acquiring job: {e}", exc_info=True)
     
-    async def _acquire_job(self, session: AsyncSession) -> Optional[Job]:
+    async def _remove_active_job(self, job_id: uuid.UUID) -> None:
+        """Thread-safe removal of job from active jobs dict."""
+        async with self._active_jobs_lock:
+            self._active_jobs.pop(job_id, None)
+    
+    async def _execute_job_with_timeout(self, job_id: uuid.UUID) -> None:
+        """Execute a job with timeout protection."""
+        try:
+            await asyncio.wait_for(
+                self._execute_job(job_id),
+                timeout=self.execution_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Job {job_id} timed out after {self.execution_timeout}s")
+            await self._mark_job_timeout(job_id)
+    
+    async def _acquire_job(self) -> Optional[uuid.UUID]:
         """
         Acquire and lock the next available job.
         
         Uses database-level locking to prevent double execution.
+        Returns job_id only (not the job object) to avoid session attachment issues.
         """
-        try:
-            now = datetime.now(timezone.utc)
-            # Use naive UTC for scheduled_at comparison to avoid asyncpg
-            # "can't subtract offset-naive and offset-aware datetimes" with TIMESTAMP WITHOUT TZ.
-            now_naive = now.replace(tzinfo=None)
+        async with AsyncSessionLocal() as session:
+            try:
+                now_naive = _utc_now_naive()
 
-            # Find next job: pending/queued, scheduled_at <= now, ordered by priority.
-            # Use raw SQL for status filter so we send 'pending'/'queued' literals;
-            # ORM enum binding sends enum names ('PENDING'/'QUEUED'), which violate
-            # PostgreSQL jobstatus enum (lowercase values).
-            stmt = (
-                select(Job)
-                .where(
-                    and_(
-                        text("swx_job.status = ANY(ARRAY['pending','queued']::jobstatus[])"),
-                        or_(
-                            Job.scheduled_at.is_(None),
-                            Job.scheduled_at <= now_naive
-                        ),
-                        Job.attempts < Job.max_attempts
+                # Find next job: pending/queued, scheduled_at <= now, ordered by priority.
+                # Use raw SQL for status filter so we send 'pending'/'queued' literals;
+                # ORM enum binding sends enum names ('PENDING'/'QUEUED'), which violate
+                # PostgreSQL jobstatus enum (lowercase values).
+                stmt = (
+                    select(Job)
+                    .where(
+                        and_(
+                            text("swx_job.status = ANY(ARRAY['pending','queued']::jobstatus[])"),
+                            or_(
+                                Job.scheduled_at.is_(None),
+                                Job.scheduled_at <= now_naive
+                            ),
+                            Job.attempts < Job.max_attempts
+                        )
                     )
+                    .order_by(Job.priority.asc(), Job.created_at.asc())
+                    .limit(1)
+                    .with_for_update(skip_locked=True)  # Skip locked rows
                 )
-                .order_by(Job.priority.asc(), Job.created_at.asc())
-                .limit(1)
-                .with_for_update(skip_locked=True)  # Skip locked rows
-            )
-            
-            result = await session.execute(stmt)
-            job = result.scalar_one_or_none()
-            
-            if not job:
+                
+                result = await session.execute(stmt)
+                job = result.scalar_one_or_none()
+                
+                if not job:
+                    return None
+                
+                # Store job_id before any operations
+                job_id = job.id
+                
+                # Lock the job
+                job.status = JobStatus.running
+                job.locked_at = now_naive
+                job.locked_by = self.worker_id
+                job.started_at = now_naive
+                job.attempts += 1
+                
+                session.add(job)
+                await session.commit()
+                
+                logger.info(f"Acquired job {job_id} (type: {job.job_type}, attempt: {job.attempts})")
+                return job_id
+                
+            except Exception as e:
+                logger.error(f"Error acquiring job: {e}", exc_info=True)
+                await session.rollback()
                 return None
-            
-            # Lock the job
-            job.status = JobStatus.RUNNING
-            job.locked_at = now
-            job.locked_by = self.worker_id
-            job.started_at = now
-            job.attempts += 1
-            
-            session.add(job)
-            await session.commit()
-            await session.refresh(job)
-            
-            logger.info(f"Acquired job {job.id} (type: {job.job_type}, attempt: {job.attempts})")
-            return job
-            
-        except Exception as e:
-            logger.error(f"Error acquiring job: {e}", exc_info=True)
-            await session.rollback()
-            return None
     
     async def _execute_job(self, job_id: uuid.UUID) -> None:
         """Execute a job with error handling and retry logic."""
         async with AsyncSessionLocal() as session:
+            job: Optional[Job] = None
             try:
-                # Get job
+                # Get fresh copy of job from database
                 job = await session.get(Job, job_id)
                 if not job:
                     logger.error(f"Job {job_id} not found")
@@ -257,20 +304,26 @@ class JobRunner:
                 
                 # Execute handler
                 logger.info(f"Executing job {job.id} (type: {job.job_type}, attempt: {job.attempts})")
+                
+                result = await handler(session, job.payload)
+                
+                # Validate handler result
+                if result is not None and not isinstance(result, dict):
+                    logger.warning(f"Job {job.id} handler returned non-dict result: {type(result)}")
+                    result = {"result": str(result)}
+                
+                # Mark as completed
+                job.status = JobStatus.completed
+                job.completed_at = _utc_now_naive()
+                job.result = result if result else {}
+                job.locked_at = None
+                job.locked_by = None
+                
+                session.add(job)
+                await session.commit()
+                
+                # Audit log (in separate try to not affect job completion)
                 try:
-                    result = await handler(session, job.payload)
-                    
-                    # Mark as completed
-                    job.status = JobStatus.COMPLETED
-                    job.completed_at = datetime.now(timezone.utc)
-                    job.result = result
-                    job.locked_at = None
-                    job.locked_by = None
-                    
-                    session.add(job)
-                    await session.commit()
-                    
-                    # Audit log
                     audit = get_audit_logger(session)
                     await audit.log_event(
                         action="job.completed",
@@ -281,20 +334,49 @@ class JobRunner:
                         outcome=AuditOutcome.SUCCESS,
                         context={"job_type": job.job_type, "attempts": job.attempts}
                     )
-                    
-                    logger.info(f"Job {job.id} completed successfully")
-                    
-                except Exception as e:
-                    error_msg = str(e)
-                    logger.error(f"Job {job.id} failed: {error_msg}", exc_info=True)
-                    
+                except Exception as audit_error:
+                    logger.warning(f"Failed to log audit for job {job.id}: {audit_error}")
+                
+                logger.info(f"Job {job.id} completed successfully")
+                
+            except asyncio.CancelledError:
+                # Job was cancelled, don't retry
+                logger.warning(f"Job {job_id} was cancelled")
+                if job:
+                    try:
+                        job.status = JobStatus.cancelled
+                        job.locked_at = None
+                        job.locked_by = None
+                        session.add(job)
+                        await session.commit()
+                    except Exception:
+                        await session.rollback()
+                raise
+                
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Job {job_id} failed: {error_msg}", exc_info=True)
+                
+                # Refresh job from DB if we have it
+                if job:
+                    try:
+                        await session.refresh(job)
+                    except Exception:
+                        # Job might not be in session, get fresh copy
+                        job = await session.get(Job, job_id)
+                
+                if not job:
+                    logger.error(f"Job {job_id} could not be retrieved for retry handling")
+                    return
+                
+                try:
                     # Check if should retry
                     if job.attempts < job.max_attempts:
                         # Retry with exponential backoff
                         backoff_seconds = 2 ** job.attempts  # 2, 4, 8, 16...
-                        scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=backoff_seconds)
+                        scheduled_at = _utc_now_naive() + timedelta(seconds=backoff_seconds)
                         
-                        job.status = JobStatus.QUEUED
+                        job.status = JobStatus.queued
                         job.scheduled_at = scheduled_at
                         job.last_error = {"error": error_msg, "attempt": job.attempts}
                         job.locked_at = None
@@ -307,35 +389,75 @@ class JobRunner:
                     else:
                         # Max attempts reached - move to dead letter
                         await self._mark_job_failed(session, job, error_msg)
+                        
+                except Exception as retry_error:
+                    logger.error(f"Error handling job {job_id} retry: {retry_error}", exc_info=True)
+                    await session.rollback()
+    
+    async def _mark_job_timeout(self, job_id: uuid.UUID) -> None:
+        """Mark a job as timed out."""
+        async with AsyncSessionLocal() as session:
+            try:
+                job = await session.get(Job, job_id)
+                if not job:
+                    return
                 
+                error_msg = f"Job timed out after {self.execution_timeout} seconds"
+                
+                # Check if should retry
+                if job.attempts < job.max_attempts:
+                    backoff_seconds = 2 ** job.attempts
+                    scheduled_at = _utc_now_naive() + timedelta(seconds=backoff_seconds)
+                    
+                    job.status = JobStatus.queued
+                    job.scheduled_at = scheduled_at
+                    job.last_error = {"error": error_msg, "attempt": job.attempts}
+                    job.locked_at = None
+                    job.locked_by = None
+                    
+                    session.add(job)
+                    await session.commit()
+                    logger.info(f"Job {job_id} timeout: scheduled for retry")
+                else:
+                    await self._mark_job_failed(session, job, error_msg)
+                    
             except Exception as e:
-                logger.error(f"Error executing job {job_id}: {e}", exc_info=True)
+                logger.error(f"Error marking job {job_id} as timed out: {e}", exc_info=True)
                 await session.rollback()
     
     async def _mark_job_failed(self, session: AsyncSession, job: Job, error_msg: str) -> None:
         """Mark a job as failed (dead letter)."""
-        job.status = JobStatus.DEAD_LETTER
-        job.completed_at = datetime.now(timezone.utc)
-        job.last_error = {"error": error_msg, "attempt": job.attempts, "final": True}
-        job.locked_at = None
-        job.locked_by = None
-        
-        session.add(job)
-        await session.commit()
-        
-        # Audit log
-        audit = get_audit_logger(session)
-        await audit.log_event(
-            action="job.failed",
-            actor_type=ActorType.SYSTEM,
-            actor_id=self.worker_id,
-            resource_type="job",
-            resource_id=str(job.id),
-            outcome=AuditOutcome.FAILURE,
-            context={"job_type": job.job_type, "error": error_msg, "attempts": job.attempts}
-        )
-        
-        logger.warning(f"Job {job.id} moved to dead-letter queue after {job.attempts} attempts")
+        try:
+            job.status = JobStatus.dead_letter
+            job.completed_at = _utc_now_naive()
+            job.last_error = {"error": error_msg, "attempt": job.attempts, "final": True}
+            job.locked_at = None
+            job.locked_by = None
+            
+            session.add(job)
+            await session.commit()
+            
+            # Audit log
+            try:
+                audit = get_audit_logger(session)
+                await audit.log_event(
+                    action="job.failed",
+                    actor_type=ActorType.SYSTEM,
+                    actor_id=self.worker_id,
+                    resource_type="job",
+                    resource_id=str(job.id),
+                    outcome=AuditOutcome.FAILURE,
+                    context={"job_type": job.job_type, "error": error_msg, "attempts": job.attempts}
+                )
+            except Exception as audit_error:
+                logger.warning(f"Failed to log audit for failed job {job.id}: {audit_error}")
+            
+            logger.warning(f"Job {job.id} moved to dead-letter queue after {job.attempts} attempts")
+            
+        except Exception as e:
+            logger.error(f"Error marking job {job.id} as failed: {e}", exc_info=True)
+            await session.rollback()
+            raise
 
 
 # Global job runner instance
