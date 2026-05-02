@@ -199,7 +199,7 @@ class JobRunner:
                 select(Job)
                 .where(
                     and_(
-                        text("job.status = ANY(ARRAY['pending','queued']::jobstatus[])"),
+                        text("swx_job.status = ANY(ARRAY['pending','queued']::jobstatus[])"),
                         or_(
                             Job.scheduled_at.is_(None),
                             Job.scheduled_at <= now_naive
