@@ -5,7 +5,7 @@ Reusable mixins for SQLAlchemy models.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, Boolean, DateTime, func, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -22,11 +22,11 @@ class TimestampMixin:
             name: str
     """
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=datetime.utcnow,
         sa_column=Column(DateTime, server_default=func.now(), nullable=False)
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=datetime.utcnow,
         sa_column=Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     )
 
@@ -56,12 +56,10 @@ class SoftDeleteMixin:
     )
     
     def soft_delete(self) -> None:
-        """Mark the record as deleted."""
         self.is_deleted = True
-        self.deleted_at = datetime.now(timezone.utc)
+        self.deleted_at = datetime.utcnow()
     
     def restore(self) -> None:
-        """Restore a soft-deleted record."""
         self.is_deleted = False
         self.deleted_at = None
 

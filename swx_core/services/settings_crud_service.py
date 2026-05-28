@@ -5,7 +5,7 @@ Service layer for system settings CRUD operations with validation and audit.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -217,7 +217,7 @@ async def update_setting_service(
         config.metadata_ = setting_in.metadata
     
     config.updated_by = updated_by
-    config.updated_at = datetime.now(timezone.utc)
+    config.updated_at = datetime.utcnow()
     
     # Create history record
     history = SystemConfigHistory(
