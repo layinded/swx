@@ -111,7 +111,7 @@ async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]
                 if subscription.status != new_status:
                     subscription.status = new_status
                     if new_status == SubscriptionStatus.CANCELED:
-                        subscription.ended_at = datetime.now(timezone.utc)
+                        subscription.ended_at = datetime.utcnow()
                     session.add(subscription)
                     await session.commit()
                     logger.info(f"Updated subscription {subscription.id} status to {new_status}")

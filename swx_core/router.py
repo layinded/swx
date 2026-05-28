@@ -7,10 +7,9 @@ Uses configurable discovery for app paths.
 
 import sys
 import warnings
-from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from swx_core.config.settings import settings
 from swx_core.utils.loader import dynamic_import, load_all_modules
@@ -76,34 +75,20 @@ def router_module(
     if not user_defined_prefix.startswith("/"):
         user_defined_prefix = "/" + user_defined_prefix
 
-    # Strip the router's own prefix from each route path to avoid duplication
-    route_prefix_strip = user_defined_prefix.rstrip("/")
-    for route in module.router.routes:
-        if route.path.startswith(route_prefix_strip):
-            route.path = route.path[len(route_prefix_strip) :]
-            if not route.path.startswith("/"):
-                route.path = "/" + route.path
-
-    # Clear the router's own prefix to prevent FastAPI from appending it again.
-    module.router.prefix = ""
-
-    # Prepend the global API prefix and version (e.g. "/api/v1") to the user-defined/default prefix.
+    # Build the version prefix for include_router (NOT including user_defined_prefix)
+    # FastAPI will compose: include_prefix + router.prefix + route.path
     if version:
-        include_prefix = (
-            f"{settings.ROUTE_PREFIX.rstrip('/')}/{version}{user_defined_prefix}"
-        )
+        include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}/{version}"
     else:
-        include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}{user_defined_prefix}"
+        include_prefix = settings.ROUTE_PREFIX.rstrip('/')
 
-    # NOTE: Admin route protection is now explicit.
-    # Admin routes must use AdminUserDep dependency explicitly.
-    # Implicit protection based on path name has been removed for security.
-    # If you see this message, ensure your admin routes use:
-    #   from swx_core.auth.admin.dependencies import AdminUserDep
-    #   @router.get("/admin/...", dependencies=[Depends(AdminUserDep)])
+    # Set the user-defined prefix on the router (FastAPI will compose it with include_prefix)
+    module.router.prefix = user_defined_prefix
 
     # Create a tag for OpenAPI docs based on the final prefix.
-    tag_parts = [part.capitalize() for part in include_prefix.split("/") if part]
+    # The actual path will be: include_prefix + user_defined_prefix
+    full_path = f"{include_prefix}{user_defined_prefix}"
+    tag_parts = [part.capitalize() for part in full_path.split("/") if part]
     if full_module_name.startswith("swx_core"):
         tag_prefix = "Core API"
     else:
@@ -112,9 +97,10 @@ def router_module(
     tag = f"{tag_prefix} - {' - '.join(tag_parts)}"
 
     try:
+        # FastAPI composes: include_prefix + router.prefix + route.path
         main_router.include_router(module.router, prefix=include_prefix, tags=[tag])
         print(
-            f"✅ Registered route: '{full_module_name}' → '{include_prefix}' with tag '{tag}'"
+            f"✅ Registered route: '{full_module_name}' → '{full_path}' with tag '{tag}'"
         )
     except Exception as e:
         print(f"❌ ERROR: Failed to register router from '{full_module_name}': {e}")

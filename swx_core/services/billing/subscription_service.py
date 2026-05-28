@@ -85,7 +85,7 @@ class SubscriptionService:
         active_subs = result.scalars().all()
         for sub in active_subs:
             sub.status = SubscriptionStatus.CANCELED
-            sub.ended_at = datetime.now(timezone.utc)
+            sub.ended_at = datetime.utcnow()
             self.session.add(sub)
 
         # 3. Create new subscription
@@ -93,8 +93,8 @@ class SubscriptionService:
             account_id=account_id,
             plan_id=plan.id,
             status=SubscriptionStatus.ACTIVE,
-            current_period_start=datetime.now(timezone.utc),
-            current_period_end=datetime.now(timezone.utc) + timedelta(days=30),  # Default 30 days
+            current_period_start=datetime.utcnow(),
+            current_period_end=datetime.utcnow() + timedelta(days=30),  # Default 30 days
             stripe_subscription_id=stripe_subscription_id
         )
         self.session.add(subscription)
@@ -114,10 +114,10 @@ class SubscriptionService:
 
         if immediate:
             subscription.status = SubscriptionStatus.CANCELED
-            subscription.ended_at = datetime.now(timezone.utc)
+            subscription.ended_at = datetime.utcnow()
         else:
             subscription.cancel_at_period_end = True
-            subscription.canceled_at = datetime.now(timezone.utc)
+            subscription.canceled_at = datetime.utcnow()
 
         self.session.add(subscription)
         await self.session.commit()

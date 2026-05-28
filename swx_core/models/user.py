@@ -7,6 +7,7 @@ Features:
 - Stores user authentication details.
 - Supports multiple authentication providers.
 - Includes schemas for user creation, updates, and password management.
+- Includes automatic timestamp tracking (created_at, updated_at).
 
 Schemas:
 - `User`: Represents a stored user in the database.
@@ -22,8 +23,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from pydantic import EmailStr
-from sqlalchemy import Column, String, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, String, text, DateTime
+from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
 
@@ -59,6 +60,8 @@ class User(UserBase, table=True):
         auth_provider (str): The authentication provider (default: 'local').
         provider_id (Optional[str]): External authentication provider ID.
         avatar_url (Optional[str]): URL to the user's profile picture.
+        created_at (datetime): Timestamp when user was created.
+        updated_at (datetime): Timestamp when user was last updated.
     """
 
     __tablename__ = "swx_users"
@@ -69,6 +72,14 @@ class User(UserBase, table=True):
     auth_provider: str = Field(default="local", max_length=50)
     provider_id: Optional[str] = Field(default=None, unique=True, max_length=255)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column=Column(DateTime, server_default=func.now(), nullable=False)
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column=Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    )
 
 
 class UserCreate(SQLModel):
@@ -113,12 +124,16 @@ class UserPublic(UserBase):
         auth_provider (str): Authentication provider (e.g., 'local', 'google').
         avatar_url (Optional[str]): Profile picture URL.
         preferred_language (str): User's selected language.
+        created_at (datetime): Timestamp when user was created.
+        updated_at (datetime): Timestamp when user was last updated.
     """
 
     id: uuid.UUID
     auth_provider: str
     avatar_url: Optional[str] = None
     preferred_language: str
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

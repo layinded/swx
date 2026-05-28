@@ -17,7 +17,7 @@ Usage:
 
 import uuid
 from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import BinaryExpression
@@ -320,9 +320,9 @@ class BaseRepository(Generic[ModelType]):
         async with AsyncSessionLocal() as session:
             # Set timestamps if model has them
             if hasattr(self.model, "created_at") and "created_at" not in data:
-                data["created_at"] = datetime.now(timezone.utc)
+                data["created_at"] = datetime.utcnow()
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
-                data["updated_at"] = datetime.now(timezone.utc)
+                data["updated_at"] = datetime.utcnow()
 
             instance = self.model(**data)
             session.add(instance)
@@ -342,7 +342,7 @@ class BaseRepository(Generic[ModelType]):
         """
         async with AsyncSessionLocal() as session:
             instances = []
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
 
             for data in data_list:
                 # Set timestamps if model has them
@@ -384,7 +384,7 @@ class BaseRepository(Generic[ModelType]):
 
             # Set updated_at timestamp
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
-                data["updated_at"] = datetime.now(timezone.utc)
+                data["updated_at"] = datetime.utcnow()
 
             # Update fields
             for field, value in data.items():
@@ -416,7 +416,7 @@ class BaseRepository(Generic[ModelType]):
             result = await session.execute(query)
             instances = list(result.scalars().all())
 
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
                 data["updated_at"] = now
 

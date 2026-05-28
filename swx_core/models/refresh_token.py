@@ -34,7 +34,7 @@ class RefreshTokenBase(Base):
 
     token: str = Field(..., nullable=False)  # Required refresh token
     expires_at: datetime = Field(nullable=False)  # Expiry timestamp
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))  # Defaults to current UTC time
+    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())  # Naive UTC for database compatibility
 
 
 class RefreshToken(RefreshTokenBase, table=True):
