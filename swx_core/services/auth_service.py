@@ -21,7 +21,7 @@ Events Emitted:
 """
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, Callable, Awaitable
 from fastapi import HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -193,22 +193,69 @@ async def register_user_service(
     user_in: UserCreate, 
     request: Request,
     event_context: dict[str, Any] | None = None,
+    pre_register_hook: Callable[[UserCreate, dict[str, Any]], Awaitable[UserCreate]] | None = None,
+    post_register_hook: Callable[[User, dict[str, Any]], Awaitable[User | None]] | None = None,
 ) -> User:
     """
-    Registers a new user account.
+    Registers a new user account with optional lifecycle hooks.
 
     Args:
         session (AsyncSession): The database session.
         user_in (UserCreate): The user registration data.
         request (Request): The HTTP request object.
-        event_context (dict[str, Any] | None): Additional context for user.created event.
+        event_context (dict[str, Any] | None): Additional context for user.created event
+            and lifecycle hooks. Passed to both pre_register_hook and post_register_hook.
+        pre_register_hook (Callable | None): Async function called BEFORE user creation.
+            Receives (user_in, event_context) and must return modified UserCreate.
+            Use for: validation, tenant assignment, data enrichment.
+            Example:
+                async def my_pre_hook(user_in: UserCreate, ctx: dict) -> UserCreate:
+                    user_in.tenant_id = ctx.get("tenant_id")
+                    return user_in
+        post_register_hook (Callable | None): Async function called AFTER user creation.
+            Receives (user, event_context) and can return modified User or None.
+            Use for: organization setup, tenant creation, welcome emails, audit logging.
+            Example:
+                async def my_post_hook(user: User, ctx: dict) -> User:
+                    await create_organization(user.id, ctx.get("org_name"))
+                    return user
 
     Returns:
-        User: The newly created user.
+        User: The newly created user (possibly modified by post_register_hook).
+
+    Raises:
+        HTTPException: If user already exists or registration fails.
     
     Emits:
         user.created: Event with payload {id, data, context}
+
+    Hook Execution Order:
+        1. pre_register_hook (modify UserCreate before creation)
+        2. create_user (database insert)
+        3. post_register_hook (side effects after creation)
+        4. emit user.created event
+        5. return user
+
+    Example:
+        async def setup_tenant(user: User, ctx: dict) -> User:
+            org = await create_organization(user.id, ctx.get("organization_name"))
+            await assign_user_to_org(user.id, org.id)
+            return user
+
+        user = await register_user_service(
+            session=session,
+            user_in=user_data,
+            request=request,
+            event_context={"organization_name": "Acme Corp", "tenant_id": "tenant-123"},
+            post_register_hook=setup_tenant,
+        )
     """
+    context = event_context or {}
+    
+    # Pre-registration hook: validate/modify input before user creation
+    if pre_register_hook:
+        user_in = await pre_register_hook(user_in, context)
+    
     existing_user = await get_user_by_email(session=session, email=user_in.email)
     if existing_user:
         raise HTTPException(
@@ -217,6 +264,12 @@ async def register_user_service(
     
     try:
         user = await create_user(session=session, user_create=user_in)
+        
+        # Post-registration hook: side effects after user creation
+        if post_register_hook:
+            result = await post_register_hook(user, context)
+            if result is not None:
+                user = result
         
         # Emit user.created event with context
         from swx_core.events.dispatcher import event_bus, Event
