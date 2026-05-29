@@ -30,17 +30,6 @@ from swx_core.models.base import Base
 
 
 class UserBase(Base):
-    """
-    Base model for shared user fields.
-
-    Attributes:
-        email (EmailStr): Unique email address.
-        is_active (bool): Indicates if the user account is active.
-        is_superuser (bool): Determines if the user has admin privileges.
-        full_name (Optional[str]): The user's full name (optional).
-        preferred_language (str): Preferred language for UI interaction.
-    """
-
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     is_active: bool = True
     is_superuser: bool = False
@@ -48,6 +37,7 @@ class UserBase(Base):
     preferred_language: str = Field(
         default="en", sa_column=Column(String(5), server_default=text("'en'"))
     )
+    tenant_id: Optional[uuid.UUID] = Field(default=None, index=True, foreign_key="swx_team.id")
 
 
 class User(UserBase, table=True):

@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.16] - 2026-05-29
+
+### Added - Multi-Tenant Support
+- **TenantAwareRepository** - Base repository with automatic tenant filtering via context variables
+  - Automatically filters queries by `tenant_id` or `team_id` from request context
+  - Supports super-admin bypass for accessing all tenants
+  - Auto-injects tenant context on create operations
+- **TenantContextMiddleware** - Middleware for extracting and setting tenant context
+  - Extracts tenant from `X-Tenant-ID` header or authenticated user
+  - Implements context cleanup in finally block to prevent leakage
+  - Exempts auth and health endpoints
+- **TenantAwareController** - Base controller with tenant context injection
+  - Extends BaseController with automatic tenant data injection
+  - Works with TenantAwareRepository for full tenant isolation
+- **EntitlementService** - Service for quota enforcement and feature entitlements
+  - `require_quota()` - Check if owner has remaining quota
+  - `require_feature()` - Check access to boolean features
+  - `QuotaExceededError` exception with feature/limit/current details
+  - Dependency helpers: `require_quota_dependency()`, `require_feature_dependency()`
+- **PostgreSQL RLS Support** - Row-Level Security integration
+  - `swx_core/database/rls.py` - SQLAlchemy event listeners for RLS
+  - `swx_core/database/migrations/rls_template.sql` - Migration template for enabling RLS
+
+### Changed
+- **User Model** - Added `tenant_id` field to `UserBase` for multi-tenant support
+- **Auth Dependencies** - `get_current_user()` now sets tenant context for downstream use
+- **Repositories** - Added `TenantAwareRepository` export to `__init__.py`
+- **Controllers** - Added `TenantAwareController` export to `__init__.py`
+- **Middleware** - Added `TenantContextMiddleware` export to `__init__.py`
+
+### New Modules
+- `swx_core/core/tenant.py` - ContextVar-based tenant context management
+- `swx_core/core/__init__.py` - Core module exports
+- `swx_core/repositories/tenant_aware.py` - TenantAwareRepository implementation
+- `swx_core/controllers/tenant_aware.py` - TenantAwareController implementation
+- `swx_core/middleware/tenant_middleware.py` - TenantContextMiddleware implementation
+- `swx_core/services/billing/quota_service.py` - EntitlementService implementation
+
 ## [2.7.15] - 2026-05-29
 
 ### Fixed - CRITICAL
