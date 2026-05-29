@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.19] - 2026-05-29
+
+### Fixed
+- **Post-registration hook exception handling** - Hook failures no longer mask successful
+  user creation with a 400 error. Post-hook exceptions are now caught and logged as
+  warnings, and the `user.created` event is always emitted regardless of hook outcome.
+  Previously, a failing post-hook would prevent the event from firing and return a 400
+  error even though the user was successfully created.
+
 ## [2.7.18] - 2026-05-29
 
 ### Fixed - CRITICAL
