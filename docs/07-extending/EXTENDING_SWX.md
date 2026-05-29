@@ -1,8 +1,7 @@
 # Extending SwX-API
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26  
-**Updated:** CLI resource generation documented
+**Version:** 2.7.15
+**Last Updated:** 2026-05-29
 
 ---
 
@@ -110,6 +109,81 @@ swx_app/
 - Models in `swx_core/models/` automatically registered
 - Models in `swx_app/models/` automatically registered
 - Models discovered at startup
+
+---
+
+## Route Module Structure
+
+Each route directory must have an `__init__.py` with a **module-level `router` variable** for proper discovery and mounting.
+
+### Route Directory Pattern
+
+```
+swx_app/routes/
+├── __init__.py           # Exports module-level router
+├── v1/
+│   ├── __init__.py       # Aggregates all v1 routers
+│   ├── product_route.py
+│   └── order_route.py
+└── v2/
+    ├── __init__.py       # Aggregates all v2 routers
+    └── product_route.py
+```
+
+### `__init__.py` Pattern (CRITICAL)
+
+Each `__init__.py` must create a module-level `router` that aggregates sub-routers:
+
+```python
+# swx_app/routes/v1/__init__.py
+from fastapi import APIRouter
+from .product_route import router as product_router
+from .order_route import router as order_router
+
+# CRITICAL: Module-level router variable
+router = APIRouter()
+router.include_router(product_router)
+router.include_router(order_router)
+
+__all__ = ["router"]
+```
+
+### Why This Matters
+
+Without the module-level `router` variable:
+- Routes appear "registered" in logs but **return 404**
+- SwX's route discovery expects `__init__.py` to export `router`
+- Individual route files define their own `router`, but `__init__.py` must aggregate them
+
+### Example: Auth Routes Directory
+
+```python
+# swx_app/routes/auth/__init__.py
+from fastapi import APIRouter
+from .login_route import router as login_router
+from .register_route import router as register_router
+from .password_route import router as password_router
+
+router = APIRouter()
+router.include_router(login_router)
+router.include_router(register_router)
+router.include_router(password_router)
+```
+
+### Individual Route File Pattern
+
+```python
+# swx_app/routes/auth/login_route.py
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/login", tags=["auth"])
+
+@router.post("/")
+async def login(...):
+    ...
+
+# No __all__ needed - imported via __init__.py
+```
 
 ---
 

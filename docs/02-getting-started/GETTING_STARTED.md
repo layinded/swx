@@ -1,7 +1,7 @@
 # Getting Started with SwX-API
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.7.15
+**Last Updated:** 2026-05-29
 
 ---
 
