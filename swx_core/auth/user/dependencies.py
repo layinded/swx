@@ -23,6 +23,7 @@ from swx_core.models.user import User
 from swx_core.utils.language_helper import translate
 from swx_core.services.alert_engine import alert_engine
 from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertActorType
+from swx_core.core.tenant import set_current_tenant, set_super_admin
 
 # OAuth2 Bearer token authentication for user endpoints
 user_oauth2 = OAuth2PasswordBearer(
@@ -101,6 +102,12 @@ async def get_current_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=translate(request, "inactive_user") or "User account is inactive",
         )
+
+    if user.tenant_id:
+        set_current_tenant(user.tenant_id)
+    
+    if user.is_superuser:
+        set_super_admin(True)
 
     return user
 

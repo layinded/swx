@@ -26,6 +26,7 @@ from swx_core.middleware.sentry_middleware import (
     setup_sentry_middleware,
     apply_middleware as apply_sentry_middleware,
 )
+from swx_core.middleware.tenant_middleware import TenantContextMiddleware
 
 try:
     from swx_core.middleware.metrics_middleware import (
@@ -82,6 +83,9 @@ __all__ = [
     # Sentry
     "setup_sentry_middleware",
     "apply_sentry_middleware",
+    
+    # Tenant Context
+    "TenantContextMiddleware",
     
     # Metrics (optional)
     "MetricsMiddleware",
