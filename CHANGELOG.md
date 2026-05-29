@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.15] - 2026-05-29
+
+### Fixed - CRITICAL
+- **Routes Not Mounted** - Fixed routes not accessible despite being logged as registered
+  - Root cause: `__init__.py` files in routes subdirectories only imported routers but didn't create module-level `router` variable
+  - Fix: Added `router = APIRouter()` + `router.include_router()` aggregations in each `__init__.py`
+  - Affected files: `swx_core/routes/access/__init__.py`, `swx_core/routes/admin/__init__.py`, `swx_core/routes/user/__init__.py`, `swx_core/routes/utils/__init__.py`
+  - Impact: All routes from swx_core/routes/* now properly accessible
+
+### Fixed
+- **Router Prefix Handling** - Fixed v2.7.14 bug where router prefixes were incorrectly stripped
+- **User Model Timestamps** - Added `created_at` and `updated_at` fields to User model
+- **Timezone-Aware DateTime** - Fixed `datetime.now(timezone.utc)` causing PostgreSQL errors for TIMESTAMP WITHOUT TIME ZONE columns
+  - Changed to `datetime.utcnow()` for naive datetime compatibility
+
+### Documentation
+- **Router Module Pattern** - Documented requirement for module-level `router` variable in route `__init__.py` files
+
 ## [2.7.8] - 2026-05-01
 
 ### Fixed - CRITICAL
