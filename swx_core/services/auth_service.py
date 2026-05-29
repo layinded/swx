@@ -264,29 +264,6 @@ async def register_user_service(
     
     try:
         user = await create_user(session=session, user_create=user_in)
-        
-        # Post-registration hook: side effects after user creation
-        if post_register_hook:
-            result = await post_register_hook(user, context)
-            if result is not None:
-                user = result
-        
-        # Emit user.created event with context
-        from swx_core.events.dispatcher import event_bus, Event
-        payload = {
-            "id": str(user.id),
-            "data": {
-                "email": user.email,
-                "full_name": user.full_name,
-                "auth_provider": user.auth_provider,
-            },
-        }
-        if event_context is not None:
-            payload["context"] = event_context
-        
-        await event_bus.emit(Event(name="user.created", payload=payload))
-        
-        return user
     except Exception as e:
         from swx_core.middleware.logging_middleware import logger
         logger.error(f"Error creating user: {e}")
@@ -298,6 +275,35 @@ async def register_user_service(
         raise HTTPException(
             status_code=400, detail=f"Failed to create user: {str(e)}"
         )
+    
+    # Post-registration hook: side effects after user creation
+    # Run outside the create_user try block so hook failures don't
+    # mask a successful user creation with a 400 error.
+    if post_register_hook:
+        try:
+            result = await post_register_hook(user, context)
+            if result is not None:
+                user = result
+        except Exception as hook_error:
+            from swx_core.middleware.logging_middleware import logger
+            logger.warning(f"Post-registration hook failed for user {user.id}: {hook_error}")
+    
+    # Emit user.created event with context
+    from swx_core.events.dispatcher import event_bus, Event
+    payload = {
+        "id": str(user.id),
+        "data": {
+            "email": user.email,
+            "full_name": user.full_name,
+            "auth_provider": user.auth_provider,
+        },
+    }
+    if event_context is not None:
+        payload["context"] = event_context
+    
+    await event_bus.emit(Event(name="user.created", payload=payload))
+    
+    return user
 
 
 async def logout_service(session: AsyncSession, request_data: TokenRefreshRequest, request: Request):
