@@ -126,9 +126,16 @@ PASSWORD_RESET_SECRET_KEY=your-password-reset-secret-key
 PROJECT_NAME=SwX-API
 ENVIRONMENT=local
 ROUTE_PREFIX=/api
+CORE_ROUTE_PREFIX=  # Empty = core routes at /api/auth, or "/v1" for /api/v1/auth
 ```
 
 ### Optional Variables
+
+**Route Configuration:**
+```env
+CORE_ROUTE_PREFIX=  # Optional: prefix for core routes (see Routing docs)
+API_VERSIONS=v1,v2  # Supported API versions
+```
 
 **Redis:**
 ```env

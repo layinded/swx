@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     Attributes:
         PROJECT_NAME (str): Name of the project.
         ROUTE_PREFIX (str): Base API route prefix.
+        CORE_ROUTE_PREFIX (str): Prefix for core framework routes (e.g., "" for /api/auth or "/v1" for /api/v1/auth).
         API_VERSIONS (List[str]): List of supported API versions.
         DEFAULT_API_VERSION (str): Default API version.
         BACKEND_HOST (str): Backend service host URL.
@@ -61,6 +62,11 @@ class Settings(BaseSettings):
     # API Configuration
     PROJECT_NAME: str
     ROUTE_PREFIX: str = Field("/api", description="Base API route prefix")
+    CORE_ROUTE_PREFIX: str = Field(
+        "",
+        description="Prefix for core framework routes. Empty string puts core routes at /api/auth. "
+        "Set to '/v1' to mount core routes at /api/v1/auth for consistency with app versioned routes.",
+    )
     API_VERSIONS: List[str] = Field(["v1", "v2"], description="Supported API versions")
     DEFAULT_API_VERSION: str = Field("v1", description="Default API version")
     STRICT_ROUTE_LOADING: bool = Field(

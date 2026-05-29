@@ -78,8 +78,14 @@ def router_module(
     # Build the version prefix for include_router (NOT including user_defined_prefix)
     # FastAPI will compose: include_prefix + router.prefix + route.path
     if version:
+        # Versioned app routes: /api/v1/auth
         include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}/{version}"
+    elif settings.CORE_ROUTE_PREFIX:
+        # Core routes with custom prefix: /api/v1/auth (when CORE_ROUTE_PREFIX="/v1")
+        core_prefix = settings.CORE_ROUTE_PREFIX.strip('/')
+        include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}/{core_prefix}"
     else:
+        # Core routes default: /api/auth
         include_prefix = settings.ROUTE_PREFIX.rstrip('/')
 
     # Set the user-defined prefix on the router (FastAPI will compose it with include_prefix)

@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.17] - 2026-05-29
+
+### Added - Registration Extension Points
+- **Lifecycle Hooks for Registration** - `register_user_service()` now accepts hook parameters:
+  - `pre_register_hook` - Async function called BEFORE user creation for validation/tenant assignment
+  - `post_register_hook` - Async function called AFTER user creation for organization setup/side effects
+  - Hook execution order: pre → create → post → emit event → return user
+  - Both hooks receive `event_context` for passing custom data
+- **CORE_ROUTE_PREFIX Setting** - Configurable prefix for core framework routes:
+  - Default: `""` (empty string) - core routes at `/api/auth`
+  - Set to `"/v1"` for `/api/v1/auth` to match versioned app routes
+  - Enables apps to mount core routes consistently with their API versioning
+
+### New Documentation
+- **Registration Hooks** - `docs/04-core-concepts/REGISTRATION_HOOKS.md`
+  - Complete guide to registration extension points
+  - Examples: multi-tenant registration, invitation-based signup, enterprise SSO
+  - Comparison of hooks vs events vs service override approaches
+- **Route Configuration** - `docs/02-getting-started/ROUTE_CONFIGURATION.md`
+  - Route prefix configuration explained
+  - Migration guide for swx_app compatibility
+  - Troubleshooting common routing issues
+
+### Changed
+- **Router** - Core routes respect `CORE_ROUTE_PREFIX` setting for URL mounting
+- **Settings** - Added `CORE_ROUTE_PREFIX` field with default empty string
+- **GETTING_STARTED.md** - Added `CORE_ROUTE_PREFIX` to environment variables documentation
+
 ## [2.7.16] - 2026-05-29
 
 ### Added - Multi-Tenant Support
