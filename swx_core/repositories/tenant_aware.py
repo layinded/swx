@@ -2,6 +2,7 @@
 Tenant-Aware Repository
 ----------------------
 Repository with automatic tenant filtering via context variables.
+Supports both context-var-based and explicit tenant_id patterns.
 """
 
 import uuid
@@ -27,23 +28,37 @@ class TenantAwareRepository(BaseRepository[ModelType]):
         tenant_field: str = "tenant_id",
         team_field: str = "team_id",
         session: Optional[AsyncSession] = None,
+        explicit_tenant_id: Optional[str] = None,
+        explicit_team_id: Optional[str] = None,
     ):
         super().__init__(model)
         self.tenant_field = tenant_field
         self.team_field = team_field
         self._external_session = session
+        self._explicit_tenant_id = explicit_tenant_id
+        self._explicit_team_id = explicit_team_id
     
     def _get_session(self):
         if self._external_session:
             return self._external_session
         return AsyncSessionLocal()
     
+    def _get_tenant_id(self):
+        if self._explicit_tenant_id:
+            return self._explicit_tenant_id
+        return get_current_tenant_id()
+    
+    def _get_team_id(self):
+        if self._explicit_team_id:
+            return self._explicit_team_id
+        return get_current_team_id()
+    
     def _apply_tenant_filter(self, query, use_team: bool = False):
-        if is_super_admin():
+        if is_super_admin() and not self._explicit_tenant_id:
             return query
         
-        tenant_id = get_current_tenant_id()
-        team_id = get_current_team_id()
+        tenant_id = self._get_tenant_id()
+        team_id = self._get_team_id()
         
         if use_team and team_id and hasattr(self.model, self.team_field):
             return query.where(getattr(self.model, self.team_field) == team_id)
@@ -57,8 +72,8 @@ class TenantAwareRepository(BaseRepository[ModelType]):
         return query
     
     def _inject_tenant_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        tenant_id = get_current_tenant_id()
-        team_id = get_current_team_id()
+        tenant_id = self._get_tenant_id()
+        team_id = self._get_team_id()
         
         result = data.copy()
         

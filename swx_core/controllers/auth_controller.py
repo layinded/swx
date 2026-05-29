@@ -35,6 +35,7 @@ from swx_core.services.auth_service import (
     reset_password_service,
     login_social_user_service,
 )
+from swx_core.core.hooks import registration_hooks
 
 
 async def login_controller(
@@ -106,7 +107,14 @@ async def register_controller(
     Emits:
         user.created: Automatically emitted via register_user_service
     """
-    return await register_user_service(session, user_in, request, event_context)
+    return await register_user_service(
+        session,
+        user_in,
+        request,
+        event_context=event_context,
+        pre_register_hook=registration_hooks.pre_register,
+        post_register_hook=registration_hooks.post_register,
+    )
 
 
 async def logout_controller(session: AsyncSession, request_data: TokenRefreshRequest, request: Request):
