@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.18] - 2026-05-29
+
+### Fixed - CRITICAL
+- **Core routes not mounted** - Fixed `dynamic_import` returning package `__init__.py` modules
+  alongside individual route files, causing double registration and 404 errors.
+  Package modules in route directories are now skipped; only leaf route files are registered.
+- **Auth route prefix doubling** - Fixed `/api/auth/auth/` double prefix caused by `__init__.py`
+  aggregation routers being processed alongside individual route files.
+- **Misleading "No core routes found" warning** - Fixed `for...else` bug in `router.py` that
+  printed "No core routes found" even when routes were successfully loaded.
+
+### Added
+- **Registration Hook Registry** - `swx_core.core.hooks.registration_hooks` singleton for
+  configuring pre/post registration hooks at app startup. The auth route endpoint now
+  automatically uses registered hooks, solving the "hooks not exposed via HTTP API" issue.
+- **Explicit tenant_id in TenantAwareRepository** - New `explicit_tenant_id` and `explicit_team_id`
+  constructor parameters allow bypassing context vars for apps that pass tenant explicitly:
+  ```python
+  repo = TenantAwareRepository(Product, explicit_tenant_id="tenant-123")
+  ```
+
+### Changed
+- **TenantAwareRepository** - `_apply_tenant_filter` now respects explicit tenant/team IDs over
+  context vars. Super-admin bypass only applies when no explicit ID is set.
+- **Auth controller** - `register_controller` now passes `registration_hooks.pre_register` and
+  `registration_hooks.post_register` to `register_user_service`.
+
 ## [2.7.17] - 2026-05-29
 
 ### Added - Registration Extension Points

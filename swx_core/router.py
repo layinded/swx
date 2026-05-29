@@ -124,8 +124,8 @@ core_routes_dict = dynamic_import(
 if core_routes_dict:
     for full_module_name, module in core_routes_dict.items():
         router_module(module, full_module_name, router)
-    else:
-        print("⚠️ No core routes found in swx_core/routes.")
+else:
+    print("⚠️ No core routes found in swx_core/routes.")
 
 
 # ------------------------------------------------------------------------------

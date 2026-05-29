@@ -91,8 +91,15 @@ def dynamic_import(base_path: str, package_name: str, recursive: bool = False) -
                 sys.modules[full_module_name] = module
                 logger.info(f"Loaded new module: {full_module_name}")
 
-            # Store using full module name as key
-            imported_modules[full_module_name] = sys.modules[full_module_name]
+            # For route directories: skip package (__init__) modules to prevent
+            # double registration. Individual route files are loaded separately
+            # and their routers are self-contained with proper prefixes.
+            # Package __init__.py files aggregate sub-routers, which causes
+            # duplicate routes when both the package and its sub-modules are processed.
+            is_route_dir = ".routes." in full_module_name
+            if not (is_route_dir and is_pkg):
+                # Store using full module name as key
+                imported_modules[full_module_name] = sys.modules[full_module_name]
 
             # Recursive Import for Nested Folders
             if recursive and is_pkg:
