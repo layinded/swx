@@ -1,3 +1,5 @@
+from fastapi import APIRouter
+
 from .auth_route import router as auth_router
 from .billing_feature_route import router as billing_feature_router
 from .billing_plan_route import router as billing_plan_router
@@ -10,3 +12,17 @@ from .team_route import router as team_router
 from .user_role_route import router as user_role_router
 from .user_route import router as user_router
 from .audit_route import router as audit_router
+
+router = APIRouter()
+router.include_router(auth_router)
+router.include_router(billing_feature_router)
+router.include_router(billing_plan_router)
+router.include_router(job_router)
+router.include_router(permission_router)
+router.include_router(policy_router)
+router.include_router(role_router)
+router.include_router(settings_router)
+router.include_router(team_router)
+router.include_router(user_role_router)
+router.include_router(user_router)
+router.include_router(audit_router)
