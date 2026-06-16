@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.20] - 2026-06-16
+
+### Fixed - CRITICAL
+- **`bootstrap_app()` crash on FastAPI 0.115.0+** - Fixed `AttributeError: '_IncludedRouter'
+  object has no attribute 'path'` on line 123 of `bootstrap.py`. FastAPI 0.115.0+ wraps
+  included sub-routers in `_IncludedRouter` objects that lack a `.path` attribute. Added
+  the same `hasattr(r, "path")` guard that line 119 already had, safely skipping wrapper
+  objects. Without this fix, the server crashes on every startup when using
+  `include_router()` with FastAPI >= 0.115.0.
+
 ## [2.7.19] - 2026-05-29
 
 ### Fixed
