@@ -77,6 +77,31 @@ def _discover_user_providers() -> List[str]:
     return providers
 
 
+def _extract_route_paths(router_obj) -> set:
+    """
+    Extract all path strings from a router or app, handling _IncludedRouter wrappers.
+
+    FastAPI 0.115.0+ wraps included sub-routers in ``_IncludedRouter`` objects that
+    lack a ``.path`` attribute but expose the original router via ``.original_router``.
+    This function recursively drills into those wrappers so that no real route is
+    silently skipped.
+
+    Args:
+        router_obj: A FastAPI app, APIRouter, or any object with a ``.routes`` list.
+
+    Returns:
+        Set of path strings for every concrete route found.
+    """
+    paths: set = set()
+    for route in getattr(router_obj, "routes", []):
+        if hasattr(route, "path"):
+            paths.add(route.path)
+        elif hasattr(route, "original_router"):
+            # _IncludedRouter in FastAPI 0.115.0+
+            paths.update(_extract_route_paths(route.original_router))
+    return paths
+
+
 def bootstrap_app(
     app=None,
     providers: Optional[List[str]] = None,
@@ -116,11 +141,11 @@ def bootstrap_app(
         app.state.container = container
 
         # Register core routes if not already registered (check app routes directly)
-        existing_route_paths = {r.path for r in app.routes if hasattr(r, "path")}
+        existing_route_paths = _extract_route_paths(app)
 
         if core_router.routes:
             # Check if any routes from core_router are already in app
-            core_paths = {r.path for r in core_router.routes if hasattr(r, "path")}
+            core_paths = _extract_route_paths(core_router)
             if not core_paths.issubset(existing_route_paths):
                 app.include_router(core_router)
                 logger.info("Registered core routes with app")
