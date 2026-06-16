@@ -120,7 +120,7 @@ def bootstrap_app(
 
         if core_router.routes:
             # Check if any routes from core_router are already in app
-            core_paths = {r.path for r in core_router.routes}
+            core_paths = {r.path for r in core_router.routes if hasattr(r, "path")}
             if not core_paths.issubset(existing_route_paths):
                 app.include_router(core_router)
                 logger.info("Registered core routes with app")
