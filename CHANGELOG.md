@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.21] - 2026-06-16
+
+### Fixed - CRITICAL
+- **v2.7.20 regression: routes not mounted (404)** - The v2.7.20 `hasattr(r, "path")`
+  guard prevented the crash but silently skipped all `_IncludedRouter` objects,
+  leaving `core_paths` empty. Since `set().issubset(...)` is always `True`,
+  `app.include_router(core_router)` was never called and all endpoints returned 404.
+  Replaced both inline comprehensions (lines 119 and 123) with a new
+  `_extract_route_paths()` helper that recursively drills into
+  `_IncludedRouter.original_router` to collect real path strings.
+
+### Added
+- **`_extract_route_paths()` helper** in `bootstrap.py` - Recursively extracts route
+  paths from a router/app, handling both plain routes (`.path`) and FastAPI 0.115.0+
+  `_IncludedRouter` wrappers (`.original_router`).
+
+### Tests
+- 8 new tests in `tests/bootstrap/test_bootstrap_routes.py` covering:
+  - Plain route extraction
+  - Nested `_IncludedRouter` recursive extraction
+  - Deeply nested routers (3+ levels)
+  - Empty router edge case
+  - Full FastAPI app with included sub-routers
+  - Core routes actually mounted on fresh app (v2.7.20 regression)
+  - No double-registration on repeated `bootstrap_app` calls
+  - `core_router` yields real paths (not empty)
+
 ## [2.7.20] - 2026-06-16
 
 ### Fixed - CRITICAL
