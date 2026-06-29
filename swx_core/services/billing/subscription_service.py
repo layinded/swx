@@ -6,8 +6,9 @@ Handles subscription lifecycle management.
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
 from sqlmodel import select, and_
 
 from swx_core.models.billing import (
@@ -15,7 +16,8 @@ from swx_core.models.billing import (
     BillingAccountType, 
     Subscription, 
     SubscriptionStatus, 
-    Plan
+    Plan,
+    BILLING_INTERVAL_DAYS,
 )
 from swx_core.middleware.logging_middleware import logger
 
@@ -72,7 +74,7 @@ class SubscriptionService:
         result = await self.session.execute(stmt)
         plan = result.scalar_one_or_none()
         if not plan:
-            raise ValueError(f"Plan with key '{plan_key}' not found.")
+            raise HTTPException(status_code=404, detail=f"Plan '{plan_key}' not found")
 
         # 2. Deactivate existing active subscriptions
         stmt = select(Subscription).where(
@@ -80,12 +82,12 @@ class SubscriptionService:
                 Subscription.account_id == account_id,
                 Subscription.status == SubscriptionStatus.ACTIVE
             )
-        )
+        ).with_for_update()
         result = await self.session.execute(stmt)
         active_subs = result.scalars().all()
         for sub in active_subs:
             sub.status = SubscriptionStatus.CANCELED
-            sub.ended_at = datetime.utcnow()
+            sub.ended_at = datetime.now(timezone.utc)
             self.session.add(sub)
 
         # 3. Create new subscription
@@ -93,8 +95,8 @@ class SubscriptionService:
             account_id=account_id,
             plan_id=plan.id,
             status=SubscriptionStatus.ACTIVE,
-            current_period_start=datetime.utcnow(),
-            current_period_end=datetime.utcnow() + timedelta(days=30),  # Default 30 days
+            current_period_start=datetime.now(timezone.utc),
+            current_period_end=datetime.now(timezone.utc) + timedelta(days=BILLING_INTERVAL_DAYS.get(plan.billing_interval, 30)),
             stripe_subscription_id=stripe_subscription_id
         )
         self.session.add(subscription)
@@ -114,20 +116,36 @@ class SubscriptionService:
 
         if immediate:
             subscription.status = SubscriptionStatus.CANCELED
-            subscription.ended_at = datetime.utcnow()
+            subscription.ended_at = datetime.now(timezone.utc)
         else:
             subscription.cancel_at_period_end = True
-            subscription.canceled_at = datetime.utcnow()
+            subscription.canceled_at = datetime.now(timezone.utc)
 
         self.session.add(subscription)
         await self.session.commit()
         logger.info(f"Subscription {subscription_id} canceled (immediate={immediate})")
 
-    async def sync_stripe_subscription(self, stripe_data: dict):
+    async def sync_stripe_subscription(self, stripe_data: dict[str, object]):
         """
         Syncs a subscription state from Stripe webhook data.
         """
         stripe_id = stripe_data.get("id")
+        if not isinstance(stripe_id, str):
+            return
+
+        current_period_start = stripe_data.get("current_period_start")
+        current_period_end = stripe_data.get("current_period_end")
+        if not isinstance(current_period_start, (int, float)) or not isinstance(current_period_end, (int, float)):
+            return
+
+        stripe_status = stripe_data.get("status")
+        if not isinstance(stripe_status, str):
+            stripe_status = "active"
+
+        cancel_at_period_end = stripe_data.get("cancel_at_period_end", False)
+        if not isinstance(cancel_at_period_end, bool):
+            cancel_at_period_end = False
+
         status_map = {
             "active": SubscriptionStatus.ACTIVE,
             "past_due": SubscriptionStatus.PAST_DUE,
@@ -143,10 +161,10 @@ class SubscriptionService:
         subscription = result.scalar_one_or_none()
         
         if subscription:
-            subscription.status = status_map.get(stripe_data.get("status"), SubscriptionStatus.ACTIVE)
-            subscription.current_period_start = datetime.fromtimestamp(stripe_data.get("current_period_start"), tz=timezone.utc).replace(tzinfo=None)
-            subscription.current_period_end = datetime.fromtimestamp(stripe_data.get("current_period_end"), tz=timezone.utc).replace(tzinfo=None)
-            subscription.cancel_at_period_end = stripe_data.get("cancel_at_period_end", False)
+            subscription.status = status_map.get(stripe_status, SubscriptionStatus.ACTIVE)
+            subscription.current_period_start = datetime.fromtimestamp(current_period_start, tz=timezone.utc).replace(tzinfo=None)
+            subscription.current_period_end = datetime.fromtimestamp(current_period_end, tz=timezone.utc).replace(tzinfo=None)
+            subscription.cancel_at_period_end = cancel_at_period_end
             
             self.session.add(subscription)
             await self.session.commit()

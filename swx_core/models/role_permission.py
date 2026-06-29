@@ -8,6 +8,8 @@ This table maps roles to their associated permissions.
 """
 
 import uuid
+from sqlalchemy import Column, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlmodel import Field, SQLModel, Relationship
 from swx_core.models.base import Base
 
@@ -33,15 +35,29 @@ class RolePermission(RolePermissionBase, table=True):
         permission_id (uuid.UUID): Foreign key to the permission.
     """
 
-    __tablename__ = "swx_role_permission"
+    __tablename__ = "swx_role_permission"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (
         {"extend_existing": True},
         # Composite unique constraint: a role cannot have the same permission twice
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    role_id: uuid.UUID = Field(foreign_key="swx_role.id", index=True)
-    permission_id: uuid.UUID = Field(foreign_key="swx_permission.id", index=True)
+    role_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_role.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        )
+    )
+    permission_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_permission.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        )
+    )
 
 
 class RolePermissionCreate(SQLModel):

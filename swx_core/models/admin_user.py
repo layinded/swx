@@ -10,7 +10,7 @@ This enforces clear separation between admin and user domains.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from pydantic import EmailStr
 from sqlmodel import Field, SQLModel
@@ -54,7 +54,7 @@ class AdminUser(AdminUserBase, table=True):
     hashed_password: Optional[str] = Field(default=None, max_length=255)
     auth_provider: str = Field(default="local", max_length=50)
     provider_id: Optional[str] = Field(default=None, unique=True, max_length=255)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AdminUserCreate(SQLModel):

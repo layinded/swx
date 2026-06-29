@@ -11,7 +11,10 @@ This enables:
 """
 
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
+from sqlalchemy import Column, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
 
@@ -24,11 +27,21 @@ class TeamBase(Base):
         name (str): Team name.
         description (Optional[str]): Team description.
         tenant_id (Optional[uuid.UUID]): For multi-tenant support, the tenant this team belongs to.
+        owner_id (Optional[uuid.UUID]): Team owner user ID.
     """
 
     name: str = Field(index=True, max_length=255)
     description: Optional[str] = Field(default=None, max_length=500)
     tenant_id: Optional[uuid.UUID] = Field(default=None, index=True)
+    owner_id: Optional[uuid.UUID] = Field(
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_users.id", ondelete="SET NULL"),
+            index=True,
+            nullable=True,
+        )
+    )
 
 
 class Team(TeamBase, table=True):
@@ -42,10 +55,12 @@ class Team(TeamBase, table=True):
         id (uuid.UUID): Unique team identifier.
     """
 
-    __tablename__ = "swx_team"
+    __tablename__ = "swx_team"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class TeamCreate(SQLModel):
@@ -56,11 +71,13 @@ class TeamCreate(SQLModel):
         name (str): Team name.
         description (Optional[str]): Team description.
         tenant_id (Optional[uuid.UUID]): Optional tenant ID for multi-tenant support.
+        owner_id (Optional[uuid.UUID]): Optional owner user ID.
     """
 
     name: str = Field(max_length=255)
     description: Optional[str] = Field(default=None, max_length=500)
     tenant_id: Optional[uuid.UUID] = None
+    owner_id: Optional[uuid.UUID] = None
 
 
 class TeamUpdate(SQLModel):
@@ -70,10 +87,12 @@ class TeamUpdate(SQLModel):
     Attributes:
         name (Optional[str]): Updated team name.
         description (Optional[str]): Updated team description.
+        owner_id (Optional[uuid.UUID]): Updated owner user ID.
     """
 
     name: Optional[str] = Field(default=None, max_length=255)
     description: Optional[str] = Field(default=None, max_length=500)
+    owner_id: Optional[uuid.UUID] = None
 
 
 class TeamPublic(TeamBase):
@@ -82,9 +101,13 @@ class TeamPublic(TeamBase):
 
     Attributes:
         id (uuid.UUID): Unique team identifier.
+        created_at (datetime): Team creation timestamp.
+        updated_at (datetime): Team last update timestamp.
     """
 
     id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

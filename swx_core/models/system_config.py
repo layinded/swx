@@ -18,7 +18,8 @@ import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
-from sqlalchemy import Column, String, Text, JSON
+from sqlalchemy import Column, ForeignKey, JSON, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
 
@@ -83,7 +84,7 @@ class SystemConfig(SystemConfigBase, table=True):
     Stores runtime-tunable settings that can be changed without redeployment.
     Secrets and infrastructure settings remain in .env files.
     """
-    __tablename__ = "swx_system_config"
+    __tablename__ = "swx_system_config"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -96,7 +97,7 @@ class SystemConfigCreate(SQLModel):
     value_type: SettingValueType = SettingValueType.STRING
     category: SettingCategory = SettingCategory.GENERAL
     description: Optional[str] = Field(default=None, max_length=1000)
-    metadata: Optional[dict[str, Any]] = None
+    metadata: Optional[dict[str, Any]] = None  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 class SystemConfigUpdate(SQLModel):
@@ -104,7 +105,7 @@ class SystemConfigUpdate(SQLModel):
     value: Optional[str] = Field(default=None, max_length=5000)
     description: Optional[str] = Field(default=None, max_length=1000)
     is_active: Optional[bool] = None
-    metadata: Optional[dict[str, Any]] = None
+    metadata: Optional[dict[str, Any]] = None  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 class SystemConfigPublic(SQLModel):
@@ -118,7 +119,7 @@ class SystemConfigPublic(SQLModel):
     is_active: bool
     updated_at: datetime
     updated_by: Optional[str]
-    metadata: dict[str, Any]
+    metadata: dict[str, Any]  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 class SystemConfigHistory(Base, table=True):
@@ -127,11 +128,18 @@ class SystemConfigHistory(Base, table=True):
     
     Tracks all changes to settings for audit purposes.
     """
-    __tablename__ = "swx_system_config_history"
+    __tablename__ = "swx_system_config_history"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    config_id: uuid.UUID = Field(foreign_key="swx_system_config.id", index=True)
+    config_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_system_config.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        )
+    )
     key: str = Field(index=True, max_length=255)
     old_value: Optional[str] = Field(default=None, max_length=5000)
     new_value: str = Field(max_length=5000)

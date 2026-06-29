@@ -14,6 +14,8 @@ Supports:
 
 import uuid
 from typing import Optional
+from sqlalchemy import Column, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
 
@@ -27,7 +29,15 @@ class UserRoleBase(Base):
         resource_id (Optional[uuid.UUID]): If set, this role is scoped to a specific resource.
     """
 
-    team_id: Optional[uuid.UUID] = Field(default=None, foreign_key="swx_team.id", index=True)
+    team_id: Optional[uuid.UUID] = Field(
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_team.id", ondelete="RESTRICT"),
+            index=True,
+            nullable=True,
+        )
+    )
     resource_id: Optional[uuid.UUID] = Field(default=None, index=True)
 
 
@@ -43,7 +53,7 @@ class UserRole(UserRoleBase, table=True):
         resource_id (Optional[uuid.UUID]): If set, this role is scoped to a specific resource.
     """
 
-    __tablename__ = "swx_user_role"
+    __tablename__ = "swx_user_role"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (
         {"extend_existing": True},
         # Composite unique constraint: a user cannot have the same role twice in the same scope
@@ -52,8 +62,22 @@ class UserRole(UserRoleBase, table=True):
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    user_id: uuid.UUID = Field(foreign_key="swx_users.id", index=True)
-    role_id: uuid.UUID = Field(foreign_key="swx_role.id", index=True)
+    user_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_users.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        )
+    )
+    role_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_role.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        )
+    )
 
 
 class UserRoleCreate(SQLModel):
