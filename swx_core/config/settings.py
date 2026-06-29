@@ -323,45 +323,6 @@ class Settings(BaseSettings):
 
     @property
     def is_monitoring_available(self) -> bool:
-        if not self.MONITORING_ENABLED:
-            return False
-        try:
-            import sentry_sdk
-
-            return sentry_sdk is not None
-        except ImportError:
-            return False
-
-    @property
-    def is_jobs_available(self) -> bool:
-        if not self.JOBS_ENABLED:
-            return False
-        try:
-            import celery
-
-            return celery is not None
-        except ImportError:
-            return False
-
-    @property
-    def is_ai_available(self) -> bool:
-        if not self.AI_ENABLED:
-            return False
-        try:
-            import pgai
-
-            return pgai is not None
-        except ImportError:
-            return False
-        try:
-            import stripe
-
-            return stripe is not None
-        except ImportError:
-            return False
-
-    @property
-    def is_monitoring_available(self) -> bool:
         """Check if monitoring is available (enabled + sentry installed)."""
         if not self.MONITORING_ENABLED:
             return False
