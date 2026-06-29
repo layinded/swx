@@ -108,6 +108,7 @@ new_access_token = await refresh_access_token_service(
 - Single-use (optional)
 - User audience only
 - Email-based subject
+- **Inactive user check (v2.7.22):** Password recovery now rejects requests for inactive users (`is_active=False`), preventing disabled accounts from resetting passwords
 
 **Usage:**
 ```python

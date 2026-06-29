@@ -1,6 +1,6 @@
 # Multi-Tenant Support
 
-SwX-Core v2.7.16+ provides comprehensive multi-tenant support through context-aware repositories, controllers, and middleware.
+SwX-Core v2.7.22+ provides comprehensive multi-tenant support through context-aware repositories, controllers, and middleware.
 
 ---
 
@@ -125,6 +125,7 @@ with super_admin_context():
 ### Features
 
 - Automatic tenant filtering on all read operations
+- **Fail-closed tenant isolation** — when no tenant context is set, queries return no rows instead of all rows (v2.7.22)
 - Auto-injection of tenant_id on create operations
 - Super-admin bypass support
 - Team-scoped filtering
