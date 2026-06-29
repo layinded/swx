@@ -2,10 +2,13 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import and_, select
+from swx_core.models.billing import BillingAccount, BillingAccountType, Subscription, UsageRecord
 from swx_core.models.team import Team, TeamCreate, TeamUpdate
 from swx_core.models.team_member import TeamMember, TeamMemberCreate
 from swx_core.repositories import team_repository, user_repository, role_repository
 from swx_core.events.dispatcher import event_bus, Event
+from swx_core.services.billing.subscription_service import SubscriptionService
 
 
 async def list_teams_service(session: AsyncSession, skip: int = 0, limit: int = 100) -> List[Team]:
@@ -18,6 +21,11 @@ async def create_team_service(
     event_context: Dict[str, Any] | None = None,
 ) -> Team:
     team = await team_repository.create_team(session, team_in)
+    subscription_service = SubscriptionService(session)
+    await subscription_service.get_or_create_account(
+        owner_id=team.id,
+        account_type=BillingAccountType.TEAM,
+    )
     
     await event_bus.emit(Event(
         name="team.created",
@@ -73,7 +81,40 @@ async def delete_team_service(
     members = await team_repository.list_team_members(session, team_id)
     if members:
         raise HTTPException(status_code=400, detail="Cannot delete team with members")
-        
+
+    billing_accounts_stmt = select(BillingAccount.id).where(
+        and_(
+            BillingAccount.owner_id == team_id,
+            BillingAccount.account_type == BillingAccountType.TEAM,
+        )
+    )
+    billing_accounts_result = await session.execute(billing_accounts_stmt)
+    billing_account_ids = list(billing_accounts_result.scalars().all())
+
+    if billing_account_ids:
+        for billing_account_id in billing_account_ids:
+            subscriptions_stmt = select(Subscription).where(
+                Subscription.account_id == billing_account_id
+            )
+            subscriptions_result = await session.execute(subscriptions_stmt)
+            subscriptions = list(subscriptions_result.scalars().all())
+
+            for subscription in subscriptions:
+                usage_records_stmt = select(UsageRecord).where(
+                    UsageRecord.subscription_id == subscription.id
+                )
+                usage_records_result = await session.execute(usage_records_stmt)
+                usage_records = list(usage_records_result.scalars().all())
+
+                for usage_record in usage_records:
+                    await session.delete(usage_record)
+
+                await session.delete(subscription)
+
+            billing_account = await session.get(BillingAccount, billing_account_id)
+            if billing_account:
+                await session.delete(billing_account)
+         
     await team_repository.delete_team(session, team)
     
     await event_bus.emit(Event(

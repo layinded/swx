@@ -7,8 +7,8 @@ Supports both context-var-based and explicit tenant_id patterns.
 
 import uuid
 from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
-from datetime import datetime
-from sqlalchemy import select, func, or_, and_
+from datetime import datetime, timezone
+from sqlalchemy import select, func, or_, and_, false as sa_false
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import BinaryExpression
 
@@ -69,7 +69,8 @@ class TenantAwareRepository(BaseRepository[ModelType]):
         if team_id and hasattr(self.model, self.team_field):
             return query.where(getattr(self.model, self.team_field) == team_id)
         
-        return query
+        # No tenant context available — return no results instead of all results
+        return query.where(sa_false())
     
     def _inject_tenant_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         tenant_id = self._get_tenant_id()
@@ -178,7 +179,7 @@ class TenantAwareRepository(BaseRepository[ModelType]):
                 return None
             
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
-                data["updated_at"] = datetime.utcnow()
+                data["updated_at"] = datetime.now(timezone.utc)
             
             for field, value in data.items():
                 if hasattr(instance, field):

@@ -7,7 +7,7 @@ Defines interfaces for the event dispatcher and listeners.
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import IntEnum
 
 
@@ -29,7 +29,7 @@ class EventInterface:
     """
     name: str
     payload: Any = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     stopped: bool = False
     _metadata: Dict[str, Any] = field(default_factory=dict)
     

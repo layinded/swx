@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.22] - 2026-06-29
+
+### Fixed - CRITICAL
+- **Bug 8: Un awaited `get_password_hash()` in `user_repository.py`** — `hashed_password = get_password_hash(password)`
+  was called without `await`, silently returning a coroutine object instead of a hash.
+- **Bug 1: No session injection in BaseRepository** — Added optional `session` parameter to
+  `BaseRepository.__init__()` and `_session_context()` async context manager. Callers can now
+  inject a session for Unit of Work / multi-operation transactions. Without a session, behavior
+  is unchanged (auto-created per-operation session).
+
+### Fixed - HIGH
+- **Bug 12: Tenant filter leak** — `_apply_tenant_filter()` in `tenant_aware.py` returned the
+  unfiltered query when no tenant context was available, exposing all records. Now returns
+  `query.where(sa_false())` (no rows) instead.
+- **Bug 10: Insecure CORS defaults** — `setup_cors_middleware()` defaulted to `allow_origins=["*"]`
+  with `allow_credentials=True`, which browsers reject and is insecure. Changed default to
+  `allow_origins=[]` with `allow_credentials=False`; credentials enabled only when origins
+  are explicitly configured.
+- **Bug 9: Rate-limit skip paths too broad** — Removed `/api/admin/`, `/api/auth`,
+  `/api/user/profile`, `/api/qa_article`, `/api/oauth` from skip_paths. Only health/docs
+  endpoints remain unrate-limited.
+- **Bug 20: Subscription race condition** — Added `.with_for_update()` to the active-subscription
+  SELECT in `subscription_service.py`, preventing concurrent subscription creation under load.
+- **Bug 28: ValueError in subscription service** — Changed `raise ValueError(...)` to
+  `raise HTTPException(status_code=404, ...)` in `SubscriptionService.create_subscription()`
+  so invalid plan keys return a proper 404 instead of an unhandled 500.
+
+### Fixed - MEDIUM
+- **Bug 13: Inactive user password recovery** — Added `is_active` check in
+  `recover_password_service()` — inactive users can no longer request password resets.
+- **Bug 15: AlertEngine fire-and-forget with no error handling** — Added `_pending_tasks` set
+  and `_handle_task_error` callback to `AlertEngine.emit()`. Unhandled task exceptions are now
+  logged instead of silently swallowed.
+- **Bug 5: Deprecated `datetime.utcnow()` across 51 call sites in 37 files** — Replaced all
+  `datetime.utcnow()` calls with `datetime.now(timezone.utc)` and added `timezone` import
+  where needed.
+- **Bug 22: Foreign keys missing `ondelete`** — Added explicit `ondelete` clauses
+  (`CASCADE`, `RESTRICT`, `SET NULL`) to all FK columns in `team_member`, `user`, `user_role`,
+  `role_permission`, `billing`, `system_config`, and `team` models using
+  `sa_column=Column(PG_UUID(...), ForeignKey(..., ondelete=...))`.
+
+### Fixed - LOW
+- **Bug 27: Hardcoded 30-day billing interval** — Added `BillingInterval` enum and
+  `BILLING_INTERVAL_DAYS` dict to `billing.py`. Plan model now has a `billing_interval` field.
+  `SubscriptionService.create_subscription()` uses `BILLING_INTERVAL_DAYS` instead of a
+  hardcoded 30.
+- **Bug 24: Team model missing owner and timestamps** — Added `owner_id` (FK to `swx_users.id`
+  with `ondelete="SET NULL"`), `created_at`, and `updated_at` to `Team` model.
+- **Bug 18: No billing account on team creation** — `create_team_service()` now creates a
+  `TEAM` billing account via `SubscriptionService.get_or_create_account()`.
+- **Bug 19: Orphan billing data on team deletion** — `delete_team_service()` now deletes
+  related `UsageRecord`, `Subscription`, and `BillingAccount` rows before deleting the team.
+
+### Changed
+- `BaseRepository.__init__()` now accepts an optional `session: AsyncSession` parameter.
+- `_session_context()` async context manager yields injected session or auto-creates one.
+- All FK fields in models now use `sa_column=Column(PG_UUID(as_uuid=True), ForeignKey(..., ondelete=...))`
+  instead of `Field(foreign_key=...)`.
+- `tenant_aware.py`: `sa_false` import moved from inline to module-level.
+
 ## [2.7.21] - 2026-06-16
 
 ### Fixed - CRITICAL

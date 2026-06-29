@@ -170,7 +170,7 @@ async def update_user(*, session: AsyncSession, db_user: User, user_in: UserUpda
 
     if "password" in user_data and db_user.auth_provider == "local":
         password = user_data["password"]
-        hashed_password = get_password_hash(password)
+        hashed_password = await get_password_hash(password)
         extra_data["hashed_password"] = hashed_password
 
     db_user.sqlmodel_update(user_data, update=extra_data)

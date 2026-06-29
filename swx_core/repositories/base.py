@@ -9,7 +9,7 @@ Usage:
             super().__init__(model=Product)
 
         async def find_by_sku(self, sku: str) -> Optional[Product]:
-            async with AsyncSessionLocal() as session:
+            async with self._session_context() as session:
                 query = select(Product).where(Product.sku == sku)
                 result = await session.execute(query)
                 return result.scalar_one_or_none()
@@ -17,7 +17,8 @@ Usage:
 
 import uuid
 from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import BinaryExpression
@@ -42,6 +43,10 @@ class BaseRepository(Generic[ModelType]):
     - Bulk operations
     - Soft delete support
 
+    Supports optional session injection for Unit of Work pattern.
+    When a session is provided, it is used directly (no auto-commit).
+    When no session is provided, a new session is created per operation.
+
     Usage:
         class ProductRepository(BaseRepository[Product]):
             def __init__(self):
@@ -54,14 +59,25 @@ class BaseRepository(Generic[ModelType]):
                 return await self.search(query, ["name", "description"])
     """
 
-    def __init__(self, model: Type[ModelType]):
+    def __init__(self, model: Type[ModelType], session: Optional[AsyncSession] = None):
         """
         Initialize the repository with a model class.
 
         Args:
             model: The SQLAlchemy model class
+            session: Optional injected session for Unit of Work pattern.
+                     When provided, the caller manages commit/rollback.
         """
         self.model = model
+        self.session = session
+
+    @asynccontextmanager
+    async def _session_context(self):
+        if self.session is not None:
+            yield self.session
+        else:
+            async with AsyncSessionLocal() as session:
+                yield session
 
     # =========================================================================
     # Core Read Operations
@@ -77,7 +93,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             The model instance or None
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             query = select(self.model).where(self.model.id == id)
             result = await session.execute(query)
             return result.scalar_one_or_none()
@@ -119,7 +135,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             List of model instances
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             # Get order column
             order_column = getattr(self.model, order_by, None)
             if order_column is None:
@@ -169,7 +185,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             List of model instances
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             query = select(self.model)
 
             # Apply filters
@@ -210,7 +226,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             Model instance or None
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             query = select(self.model)
 
             for field, value in filters.items():
@@ -245,7 +261,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             List of matching model instances
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             # Build OR conditions for each field
             conditions = []
             for field in fields:
@@ -283,7 +299,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             Number of matching records
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             # Build OR conditions for each field
             conditions = []
             for field in fields:
@@ -317,12 +333,12 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             The created model instance
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             # Set timestamps if model has them
             if hasattr(self.model, "created_at") and "created_at" not in data:
-                data["created_at"] = datetime.utcnow()
+                data["created_at"] = datetime.now(timezone.utc)
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
-                data["updated_at"] = datetime.utcnow()
+                data["updated_at"] = datetime.now(timezone.utc)
 
             instance = self.model(**data)
             session.add(instance)
@@ -340,9 +356,9 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             List of created model instances
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             instances = []
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             for data in data_list:
                 # Set timestamps if model has them
@@ -374,7 +390,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             The updated model instance or None
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             query = select(self.model).where(self.model.id == id)
             result = await session.execute(query)
             instance = result.scalar_one_or_none()
@@ -384,7 +400,7 @@ class BaseRepository(Generic[ModelType]):
 
             # Set updated_at timestamp
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
-                data["updated_at"] = datetime.utcnow()
+                data["updated_at"] = datetime.now(timezone.utc)
 
             # Update fields
             for field, value in data.items():
@@ -411,12 +427,12 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             List of updated model instances
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             query = select(self.model).where(self.model.id.in_(ids))
             result = await session.execute(query)
             instances = list(result.scalars().all())
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
                 data["updated_at"] = now
 
@@ -443,7 +459,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             True if deleted, False if not found
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             query = select(self.model).where(self.model.id == id)
             result = await session.execute(query)
             instance = result.scalar_one_or_none()
@@ -503,7 +519,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             Number of matching records
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             query = select(func.count(self.model.id))
 
             # Apply filters
@@ -528,7 +544,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             True if exists, False otherwise
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             query = select(func.count(self.model.id)).where(self.model.id == id)
             result = await session.execute(query)
             return (result.scalar() or 0) > 0
@@ -547,7 +563,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             True if exists, False otherwise
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             query = select(func.count(self.model.id))
 
             for field, value in filters.items():
@@ -572,7 +588,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             List of field values
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             column = getattr(self.model, field)
 
             if distinct:
@@ -602,7 +618,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             Number of updated records
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             from sqlalchemy import update as sql_update
 
             stmt = (
@@ -627,7 +643,7 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             Number of deleted records
         """
-        async with AsyncSessionLocal() as session:
+        async with self._session_context() as session:
             from sqlalchemy import delete as sql_delete
 
             stmt = sql_delete(self.model).where(and_(*filter_conditions))

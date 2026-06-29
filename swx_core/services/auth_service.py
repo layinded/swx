@@ -353,6 +353,10 @@ async def recover_password_service(email: str, session: AsyncSession, request: R
         raise HTTPException(
             status_code=400, detail=translate(request, "password_reset_not_available")
         )
+    if not existing_user.is_active:
+        raise HTTPException(
+            status_code=400, detail=translate(request, "account_disabled")
+        )
     password_reset_token = await generate_password_reset_token(session, email=email)
     email_data = generate_reset_password_email(
         email_to=existing_user.email, email=email, token=password_reset_token

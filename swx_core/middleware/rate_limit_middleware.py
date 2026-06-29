@@ -63,12 +63,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 "/docs",
                 "/openapi.json",
                 "/redoc",
-                "/api/admin/auth",  # Admin authentication should not be rate limited
-                "/api/auth",  # User authentication should not be rate limited
-                "/api/admin/",  # All admin endpoints should not be rate limited (admin users have high limits anyway)
-                "/api/user/profile",  # User profile endpoints should not be rate limited (authenticated users)
-                "/api/qa_article",  # QA article endpoints should not be rate limited for testing
-                "/api/oauth",  # OAuth endpoints should not be rate limited
                 "/",  # Root endpoint should not be rate limited
             ]
         )

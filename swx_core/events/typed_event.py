@@ -19,7 +19,7 @@ Usage:
             return self.payload["data"]["email"]
 """
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, ClassVar, Dict, Optional
 from uuid import uuid4
 
@@ -61,7 +61,7 @@ class TypedEvent:
     event_type: ClassVar[str] = "typed.event"
     name: str
     payload: Dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     stopped: bool = False
     
     def __hash__(self) -> int:

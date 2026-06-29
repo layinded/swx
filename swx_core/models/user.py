@@ -23,7 +23,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from pydantic import EmailStr
-from sqlalchemy import Column, String, text, DateTime
+from sqlalchemy import Column, DateTime, ForeignKey, String, text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
@@ -37,7 +38,15 @@ class UserBase(Base):
     preferred_language: str = Field(
         default="en", sa_column=Column(String(5), server_default=text("'en'"))
     )
-    tenant_id: Optional[uuid.UUID] = Field(default=None, index=True, foreign_key="swx_team.id")
+    tenant_id: Optional[uuid.UUID] = Field(
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_team.id", ondelete="SET NULL"),
+            index=True,
+            nullable=True,
+        ),
+    )
 
 
 class User(UserBase, table=True):
@@ -54,7 +63,7 @@ class User(UserBase, table=True):
         updated_at (datetime): Timestamp when user was last updated.
     """
 
-    __tablename__ = "swx_users"
+    __tablename__ = "swx_users"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -121,7 +130,7 @@ class UserPublic(UserBase):
     id: uuid.UUID
     auth_provider: str
     avatar_url: Optional[str] = None
-    preferred_language: str
+    preferred_language: str  # pyright: ignore[reportGeneralTypeIssues]
     created_at: datetime
     updated_at: datetime
 

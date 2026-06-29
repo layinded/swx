@@ -482,7 +482,7 @@ The controller handles all CRUD operations. Add custom routes in the controller.
 # Recommended: Use model mixins from swx_core.utils.mixins for common fields.
 
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from sqlmodel import SQLModel, Field
 from swx_core.models.base import Base
@@ -515,8 +515,8 @@ class {class_name}({class_name}Base, table=True):
     __table_args__ = {{"extend_existing": True}}
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_deleted: bool = Field(default=False, index=True)
 {columns_placeholder}
 

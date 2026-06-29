@@ -58,7 +58,7 @@ def _utc_now() -> datetime:
 
 def _utc_now_naive() -> datetime:
     """Get current UTC timezone-naive datetime for database comparisons."""
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 class JobRunner:

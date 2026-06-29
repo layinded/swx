@@ -8,6 +8,8 @@ It also stores the user's role within that team.
 """
 
 import uuid
+from sqlalchemy import Column, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
 
@@ -20,7 +22,14 @@ class TeamMemberBase(Base):
         role_id (uuid.UUID): The role this user has in the team.
     """
 
-    role_id: uuid.UUID = Field(foreign_key="swx_role.id", index=True)
+    role_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_role.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        )
+    )
 
 
 class TeamMember(TeamMemberBase, table=True):
@@ -36,7 +45,7 @@ class TeamMember(TeamMemberBase, table=True):
         user_id (uuid.UUID): Foreign key to the user.
     """
 
-    __tablename__ = "swx_team_member"
+    __tablename__ = "swx_team_member"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (
         {"extend_existing": True},
         # Composite unique constraint: a user cannot be in the same team twice
@@ -45,8 +54,22 @@ class TeamMember(TeamMemberBase, table=True):
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    team_id: uuid.UUID = Field(foreign_key="swx_team.id", index=True)
-    user_id: uuid.UUID = Field(foreign_key="swx_users.id", index=True)
+    team_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_team.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        )
+    )
+    user_id: uuid.UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            ForeignKey("swx_users.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        )
+    )
 
 
 class TeamMemberCreate(SQLModel):
