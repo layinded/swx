@@ -1,7 +1,7 @@
 # Billing & Entitlements
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.7.22  
+**Last Updated:** 2026-06-29
 
 ---
 
@@ -79,7 +79,27 @@ class Plan(SQLModel, table=True):
     description: str
     is_active: bool
     is_public: bool
+    billing_interval: BillingInterval  # "weekly", "monthly", or "yearly" (default: "monthly")
 ```
+
+#### BillingInterval Enum
+
+As of v2.7.22, the `Plan` model includes a `billing_interval` field that controls subscription duration:
+
+```python
+class BillingInterval(str, Enum):
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+
+BILLING_INTERVAL_DAYS = {
+    BillingInterval.WEEKLY: 7,
+    BillingInterval.MONTHLY: 30,
+    BillingInterval.YEARLY: 365,
+}
+```
+
+When creating a subscription, `SubscriptionService.create_subscription()` uses `BILLING_INTERVAL_DAYS` to calculate `current_period_end` based on the plan's `billing_interval` instead of a hardcoded 30 days.
 
 ### 3. Entitlement
 

@@ -1,7 +1,7 @@
 # Rate Limiting & Abuse Protection
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.7.22  
+**Last Updated:** 2026-06-29
 
 ---
 
@@ -276,6 +276,8 @@ results = await pipe.execute()
 
 ### Default Skip Paths
 
+> **⚠️ Security Notice (v2.7.22):** Previous versions included broad skip paths (`/api/auth`, `/api/admin/`, `/api/user/profile`, `/api/qa_article`, `/api/oauth`) that exempted entire route groups from rate limiting. These have been removed to prevent abuse. Only infrastructure endpoints are now exempt by default.
+
 ```python
 skip_paths = [
     "/api/utils/health-check",
@@ -284,12 +286,6 @@ skip_paths = [
     "/docs",
     "/openapi.json",
     "/redoc",
-    "/api/admin/auth",
-    "/api/auth",
-    "/api/admin/",
-    "/api/user/profile",
-    "/api/qa_article",
-    "/api/oauth",
     "/",
 ]
 ```

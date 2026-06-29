@@ -1,8 +1,8 @@
 # Runtime Settings System
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26  
-**Updated:** Policy context integration documented
+**Version:** 2.7.23  
+**Last Updated:** 2026-06-29  
+**Updated:** v2.7.23 - Added registration defaults settings
 
 ---
 
@@ -225,6 +225,28 @@ await settings_crud_service.update_setting_service(
 - `auth.access_token_expire_minutes` - Access token expiration
 - `auth.refresh_token_expire_days` - Refresh token expiration
 - `auth.email_reset_token_expire_hours` - Password reset expiration
+
+### Registration Defaults
+
+**Category:** `REGISTRATION`
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `AUTO_ASSIGN_DEFAULT_ROLE` | `bool` | `True` | Automatically assign `DEFAULT_USER_ROLE` to newly registered users |
+| `DEFAULT_USER_ROLE` | `str` | `"user"` | Role name to assign on registration (requires `AUTO_ASSIGN_DEFAULT_ROLE=True`) |
+| `AUTO_CREATE_BILLING_ACCOUNT` | `bool` | `True` | Automatically create a billing account for newly registered users |
+| `DEFAULT_PLAN_KEY` | `str` | `"free"` | Plan key for new user subscriptions (requires `BILLING_ENABLED=True` and `AUTO_CREATE_BILLING_ACCOUNT=True`) |
+
+**Example `.env` configuration:**
+```bash
+# Registration defaults
+AUTO_ASSIGN_DEFAULT_ROLE=true
+DEFAULT_USER_ROLE=user
+AUTO_CREATE_BILLING_ACCOUNT=true
+DEFAULT_PLAN_KEY=free
+```
+
+> **Note:** The role specified in `DEFAULT_USER_ROLE` must exist in the `swx_role` table. Run `python scripts/seed_system.py` to create the default roles (`admin`, `team_owner`, `team_member`).
 
 ### Rate Limit Settings
 

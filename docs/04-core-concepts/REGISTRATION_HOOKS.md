@@ -1,7 +1,7 @@
 # Registration Hooks & Extension Points
 
-**Version:** 1.0.0
-**Last Updated:** 2026-05-29
+**Version:** 2.7.23
+**Last Updated:** 2026-06-29
 
 ---
 
@@ -9,7 +9,7 @@
 
 swx-core provides multiple extension points for customizing user registration:
 
-1. **Lifecycle Hooks** - `pre_register_hook` and `post_register_hook` parameters
+1. **Lifecycle Hooks** - `pre_register_hook` and `post_register_hook` parameters, plus built-in default hooks
 2. **Event System** - Subscribe to `user.created` event
 3. **Service Override** - Create custom registration service
 
@@ -204,6 +204,79 @@ async def on_user_created(event):
     }
 }
 ```
+
+---
+
+## 2.5 Default Registration Hooks
+
+swx-core provides built-in hooks that run automatically after registration:
+
+### Auto-Assigned Default Role
+
+When `AUTO_ASSIGN_DEFAULT_ROLE=True` (default), newly registered users receive the role specified by `DEFAULT_USER_ROLE` (default: `"user"`).
+
+**Configuration (`.env`):**
+```bash
+AUTO_ASSIGN_DEFAULT_ROLE=true
+DEFAULT_USER_ROLE=user
+```
+
+The role must exist in the `swx_role` table. Run `python scripts/seed_system.py` to create default roles.
+
+### Auto-Created Billing Account
+
+When `AUTO_CREATE_BILLING_ACCOUNT=True` (default) and `BILLING_ENABLED=True`, a `USER` billing account with a subscription to the `DEFAULT_PLAN_KEY` plan (default: `"free"`) is created for each new user.
+
+**Configuration (`.env`):**
+```bash
+AUTO_CREATE_BILLING_ACCOUNT=true
+DEFAULT_PLAN_KEY=free
+BILLING_ENABLED=true
+```
+
+### Disabling Default Hooks
+
+To disable either hook, set the corresponding environment variable to `false`:
+
+```bash
+AUTO_ASSIGN_DEFAULT_ROLE=false
+AUTO_CREATE_BILLING_ACCOUNT=false
+```
+
+### Custom Hooks Alongside Defaults
+
+You can register additional hooks alongside the defaults using `add_post_register()`:
+
+```python
+from swx_core.core.hooks import registration_hooks
+
+async def send_welcome_email(user: User, context: dict) -> User:
+    await send_email(user.email, "Welcome!", "...")
+    return user
+
+# This adds to the hook chain, it does NOT replace the default hooks
+registration_hooks.add_post_register(send_welcome_email)
+```
+
+---
+
+## 2.6 Multi-Hook Registration System
+
+As of v2.7.23, `RegistrationHookRegistry` supports multiple post-register hooks:
+
+```python
+from swx_core.core.hooks import registration_hooks
+
+# add_post_register() — appends to the hook chain
+registration_hooks.add_post_register(hook_a)
+registration_hooks.add_post_register(hook_b)
+registration_hooks.add_post_register(hook_c)
+
+# set_post_register() — replaces ALL hooks with a single hook
+registration_hooks.set_post_register(hook_x)  # Removes hook_a, hook_b, hook_c
+```
+
+Hooks run sequentially in registration order. If a hook raises an exception, it is logged and the next hook continues. The `user` object passed to each hook is always the original registered user (hooks are side-effect handlers, not transformers).
 
 ---
 

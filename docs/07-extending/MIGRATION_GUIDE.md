@@ -1,7 +1,7 @@
 # Migration Guide: SwX v1.x to v2.0
 
-**Version:** 2.0.0  
-**Last Updated:** 2026-03-07
+**Version:** 2.7.22  
+**Last Updated:** 2026-06-29
 
 ---
 
@@ -10,11 +10,13 @@
 1. [Overview](#overview)
 2. [Breaking Changes](#breaking-changes)
 3. [New Features in v2.0](#new-features-in-v20)
-4. [Migration Steps](#migration-steps)
-5. [Code Migration Examples](#code-migration-examples)
-6. [CLI Migration](#cli-migration)
-7. [Configuration Changes](#configuration-changes)
-8. [Troubleshooting](#troubleshooting)
+4. [v2.7.22 Changes](#v2722-changes)
+5. [v2.7.23 Changes](#v2723-changes)
+6. [Migration Steps](#migration-steps)
+7. [Code Migration Examples](#code-migration-examples)
+8. [CLI Migration](#cli-migration)
+9. [Configuration Changes](#configuration-changes)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -200,6 +202,72 @@ async_engine = create_async_engine(
     pool_recycle=3600,   # Recycle after 1 hour
 )
 ```
+
+---
+
+## v2.7.22 Changes
+
+### Security Fixes
+
+| Bug | Description | Impact |
+|-----|-------------|--------|
+| Bug #10 | CORS defaults changed to `allow_origins=[]`, `allow_credentials=False` | Previously permissive defaults could expose endpoints to cross-origin attacks |
+| Bug #9 | Removed broad rate-limit skip_paths (`/api/auth`, `/api/admin/`, `/api/user/profile`, `/api/oauth`, `/api/qa_article`) | Only infrastructure endpoints (health, docs, openapi) are now exempt |
+| Bug #12 | `_apply_tenant_filter` now returns `query.where(sa_false())` when no tenant context | Previously returned unfiltered query, leaking cross-tenant data |
+| Bug #13 | Password recovery now rejects inactive users (`is_active=False`) | Disabled accounts could previously reset passwords |
+| Bug #8 | `get_password_hash()` now properly awaited | Was called without `await`, causing unhandled coroutine warnings |
+
+### Data Integrity Fixes
+
+| Bug | Description |
+|-----|-------------|
+| Bug #5 | All `datetime.utcnow()` replaced with `datetime.now(timezone.utc)` (51 occurrences across 37 files) |
+| Bug #22 | All foreign key columns now include `ondelete` clauses (CASCADE, SET NULL, or RESTRICT) |
+| Bug #20 | Subscription SELECT uses `with_for_update()` to prevent race conditions |
+| Bug #28 | Subscription service returns `HTTPException(404)` instead of `ValueError` |
+
+### New Features
+
+- **BillingInterval enum**: `Plan.billing_interval` field with `WEEKLY`, `MONTHLY`, `YEARLY` options
+- **Team billing**: Billing accounts auto-created with teams; data deleted on team deletion
+- **Team ownership**: `owner_id`, `created_at`, `updated_at` fields added to Team model
+- **AlertEngine resilience**: `_pending_tasks` tracking and `_handle_task_error` callback
+
+### Database Migration Required
+
+A migration template is provided at `swx_core/database/migrations/v2_7_22_schema_changes.py` covering:
+- `billing_interval` column on `plan` table
+- `ondelete` clauses on all foreign keys
+- `owner_id`, `created_at`, `updated_at` columns on `team` table
+
+```bash
+# Apply the migration
+alembic upgrade head
+```
+
+---
+
+## v2.7.23 Changes
+
+### New Features
+
+- **Default role assignment on registration**: `AUTO_ASSIGN_DEFAULT_ROLE` and `DEFAULT_USER_ROLE` settings
+- **Default billing account on registration**: `AUTO_CREATE_BILLING_ACCOUNT` and `DEFAULT_PLAN_KEY` settings
+- **Multi-hook registration system**: `RegistrationHookRegistry.add_post_register()` supports multiple hooks with exception isolation
+
+### New Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `AUTO_ASSIGN_DEFAULT_ROLE` | `True` | Automatically assign the default role to new users |
+| `DEFAULT_USER_ROLE` | `"user"` | Role key assigned to new users |
+| `AUTO_CREATE_BILLING_ACCOUNT` | `True` | Automatically create a billing account on registration |
+| `DEFAULT_PLAN_KEY` | `"free"` | Plan key for new billing accounts |
+
+### New Files
+
+- `swx_core/core/default_hooks.py` — Built-in `assign_default_role()` and `create_billing_account()` hooks
+- `swx_core/database/migrations/v2_7_22_schema_changes.py` — Alembic migration template
 
 ---
 

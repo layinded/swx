@@ -1,7 +1,7 @@
 # Base Classes (Controller-Service-Repository Pattern)
 
-**Version:** 2.0.0  
-**Last Updated:** 2026-03-07
+**Version:** 2.7.22  
+**Last Updated:** 2026-06-29
 
 ---
 
@@ -95,6 +95,53 @@ class ProductRepository(BaseRepository[Product]):
     async def search_by_name(self, query: str) -> list[Product]:
         """Search products by name."""
         return await self.search(query, ["name", "description"])
+```
+
+### Session Injection (Unit of Work Pattern)
+
+BaseRepository now supports optional session injection for multi-operation transactions:
+
+```python
+from swx_core.repositories.base import BaseRepository
+from swx_core.database.db import AsyncSessionLocal
+
+# Default: auto-managed sessions (one per operation)
+repo = BaseRepository(model=Product)
+product = await repo.find_by_id(product_id)
+
+# Injected session: caller controls commit/rollback
+async with AsyncSessionLocal() as session:
+    repo = BaseRepository(model=Product, session=session)
+    product = await repo.find_by_id(product_id)
+    product.name = "Updated"
+    # session.commit() is NOT called by the repository
+    # Caller controls the transaction lifecycle
+    await session.commit()
+```
+
+When a `session` is provided:
+- The repository yields the injected session via `_session_context()`
+- `commit()` and `rollback()` are the caller's responsibility
+- Multiple repositories can share the same session for atomic operations
+
+When no `session` is provided (default):
+- Each repository operation creates and manages its own session
+- Auto-commit on success, auto-rollback on exception
+- Behavior is identical to pre-v2.7.22
+
+#### Shared Session Example
+
+```python
+from swx_core.database.db import AsyncSessionLocal
+from swx_core.repositories.base import BaseRepository
+from swx_core.models.product import Product
+
+async def transfer_ownership(product_id: UUID, new_owner_id: UUID):
+    async with AsyncSessionLocal() as session:
+        product_repo = BaseRepository(model=Product, session=session)
+        product = await product_repo.find_by_id(product_id)
+        product.owner_id = new_owner_id
+        await session.commit()
 ```
 
 ### Available Methods
