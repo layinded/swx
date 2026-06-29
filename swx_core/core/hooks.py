@@ -21,7 +21,7 @@ Usage:
         return user
 """
 
-from typing import Callable, Awaitable, Any
+from typing import Callable, Awaitable, Any, List
 from swx_core.models.user import User, UserCreate
 
 PreRegisterHook = Callable[[UserCreate, dict[str, Any]], Awaitable[UserCreate]]
@@ -29,17 +29,20 @@ PostRegisterHook = Callable[[User, dict[str, Any]], Awaitable[User | None]]
 
 
 class RegistrationHookRegistry:
-    __slots__ = ("_pre_hook", "_post_hook")
+    __slots__ = ("_pre_hook", "_post_hooks")
 
     def __init__(self):
         self._pre_hook: PreRegisterHook | None = None
-        self._post_hook: PostRegisterHook | None = None
+        self._post_hooks: List[PostRegisterHook] = []
 
     def set_pre_register(self, hook: PreRegisterHook) -> None:
         self._pre_hook = hook
 
+    def add_post_register(self, hook: PostRegisterHook) -> None:
+        self._post_hooks.append(hook)
+
     def set_post_register(self, hook: PostRegisterHook) -> None:
-        self._post_hook = hook
+        self._post_hooks = [hook]
 
     @property
     def pre_register(self) -> PreRegisterHook | None:
@@ -47,11 +50,27 @@ class RegistrationHookRegistry:
 
     @property
     def post_register(self) -> PostRegisterHook | None:
-        return self._post_hook
+        if not self._post_hooks:
+            return None
+
+        hooks = list(self._post_hooks)
+
+        async def combined_post_hook(user: User, context: dict[str, Any]) -> User | None:
+            result: User | None = user
+            for h in hooks:
+                try:
+                    result = await h(user, context)
+                except Exception:
+                    from swx_core.middleware.logging_middleware import logger
+                    logger.exception(f"Post-register hook {h.__name__} failed")
+            return result
+
+        combined_post_hook.__name__ = "combined_post_register_hook"
+        return combined_post_hook
 
     def clear(self) -> None:
         self._pre_hook = None
-        self._post_hook = None
+        self._post_hooks = []
 
 
 registration_hooks = RegistrationHookRegistry()

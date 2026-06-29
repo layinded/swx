@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.23] - 2026-06-29
+
+### Added
+- **Default role assignment on registration** — New `AUTO_ASSIGN_DEFAULT_ROLE` (default: `True`) and
+  `DEFAULT_USER_ROLE` (default: `"user"`) settings. When enabled, newly registered users automatically
+  receive the specified role via a post-registration hook. Requires `seed_system.py` to have created
+  the role.
+- **Billing account creation on registration** — New `AUTO_CREATE_BILLING_ACCOUNT` (default: `True`)
+  setting. When enabled (and `BILLING_ENABLED=True`), a USER billing account and free-tier subscription
+  are created automatically for newly registered users.
+- **Multi-hook registration system** — `RegistrationHookRegistry` now supports multiple post-register
+  hooks via `add_post_register()`. `set_post_register()` still works but replaces all hooks. Both
+  default hooks (role assignment, billing) are registered via `add_post_register()`.
+- **`swx_core/core/default_hooks.py`** — New module with `assign_default_role()` and
+  `create_billing_account()` post-registration hooks.
+- **`_register_default_hooks()` in bootstrap** — Automatically registers default hooks based on settings
+  during `bootstrap_app()` (Phase 2.5).
+- **Alembic migration template** — `swx_core/database/migrations/v2_7_22_schema_changes.py` covering
+  all v2.7.22 schema changes (new columns on `swx_team`, `billing_interval` on `swx_billing_plan`,
+  FK `ondelete` clauses on 17 foreign keys).
+
+### Changed
+- `RegistrationHookRegistry._post_hook` changed from single hook to `_post_hooks: List[PostRegisterHook]`.
+- `registration_hooks.post_register` property now returns a combined coroutine that runs all hooks
+  sequentially, catching and logging exceptions per hook.
+
 ## [2.7.22] - 2026-06-29
 
 ### Fixed - CRITICAL

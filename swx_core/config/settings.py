@@ -275,6 +275,22 @@ class Settings(BaseSettings):
     BILLING_ENABLED: bool = Field(
         default=False, description="Enable Stripe billing integration"
     )
+    AUTO_ASSIGN_DEFAULT_ROLE: bool = Field(
+        default=True,
+        description="Automatically assign DEFAULT_USER_ROLE to new users on registration",
+    )
+    DEFAULT_USER_ROLE: str = Field(
+        default="user",
+        description="Role name assigned to newly registered users (requires AUTO_ASSIGN_DEFAULT_ROLE=True)",
+    )
+    DEFAULT_PLAN_KEY: str = Field(
+        default="free",
+        description="Plan key for new user billing subscriptions (requires BILLING_ENABLED=True)",
+    )
+    AUTO_CREATE_BILLING_ACCOUNT: bool = Field(
+        default=True,
+        description="Automatically create a billing account for new users on registration",
+    )
     STRIPE_API_KEY: str | None = Field(default=None, description="Stripe API key")
     STRIPE_WEBHOOK_SECRET: str | None = Field(
         default=None, description="Stripe webhook secret"

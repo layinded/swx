@@ -208,6 +208,9 @@ def bootstrap_app(
         except Exception as e:
             logger.error(f"Failed to boot {provider.__class__.__name__}: {e}")
 
+    # Phase 2.5: Register default registration hooks
+    _register_default_hooks()
+
     # Phase 3: Register user event listeners from app/listeners/
     app_exists = discovery.app_exists()
     has_listeners = discovery.has_listeners()
@@ -346,3 +349,17 @@ def diagnose_discovery() -> dict:
         "has_listeners": discovery.has_listeners(),
         "phase_3_will_run": discovery.app_exists() and discovery.has_listeners(),
     }
+
+
+def _register_default_hooks() -> None:
+    from swx_core.config.settings import settings
+    from swx_core.core.hooks import registration_hooks
+    from swx_core.core.default_hooks import assign_default_role, create_billing_account
+
+    if settings.AUTO_ASSIGN_DEFAULT_ROLE:
+        registration_hooks.add_post_register(assign_default_role)
+        logger.info(f"Default registration hook: assign role '{settings.DEFAULT_USER_ROLE}'")
+
+    if settings.AUTO_CREATE_BILLING_ACCOUNT and settings.BILLING_ENABLED:
+        registration_hooks.add_post_register(create_billing_account)
+        logger.info("Default registration hook: create billing account")
