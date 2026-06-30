@@ -1,18 +1,21 @@
 """
 Default Registration Hooks
 ---------------------------
-Built-in post-registration hooks that assign a default role and billing
-account to newly registered users.
+Built-in post-registration hooks that assign a default role, create a billing
+account, and create a personal team for newly registered users.
 
 Registered automatically by bootstrap_app() when enabled via settings:
 - AUTO_ASSIGN_DEFAULT_ROLE (default: True) — assigns DEFAULT_USER_ROLE
 - AUTO_CREATE_BILLING_ACCOUNT (default: True) — creates a USER billing account
+- AUTO_CREATE_PERSONAL_TEAM (default: True) — creates a personal team and sets tenant_id
 
 To disable, set the environment variable to "false" or "0".
 """
 
 from swx_core.models.user import User
 from swx_core.models.user_role import UserRoleCreate
+from swx_core.models.team import Team
+from swx_core.models.team_member import TeamMember
 from swx_core.models.billing import BillingAccountType
 from swx_core.middleware.logging_middleware import logger
 
@@ -70,5 +73,59 @@ async def create_billing_account(user: User, context: dict) -> User:
                 f"Could not create subscription for user {user.id}: {e}. "
                 "Skipping — user has billing account but no subscription."
             )
+
+    return user
+
+
+async def create_personal_team(user: User, _context: dict) -> User:
+    """
+    Create a personal team for the user and set tenant_id.
+    
+    This ensures users have a valid tenant_id for tenant-aware operations.
+    Without a personal team, users without tenant_id get 500 errors on
+    protected endpoints.
+    """
+    from swx_core.config.settings import settings
+    from swx_core.database.db import AsyncSessionLocal
+    from swx_core.models.team_role import TeamRole
+    from swx_core.models.user import User as UserModel
+    from sqlmodel import select
+    from sqlalchemy import update
+
+    if not getattr(settings, 'AUTO_CREATE_PERSONAL_TEAM', True):
+        return user
+
+    async with AsyncSessionLocal() as session:
+        team = Team(
+            name=f"{user.full_name or user.email}'s Team",
+            description="Personal team",
+            owner_id=user.id,
+        )
+        session.add(team)
+        await session.flush()
+
+        result = await session.exec(select(TeamRole).where(TeamRole.key == "owner"))
+        owner_role = result.scalar_one_or_none()
+
+        if owner_role:
+            session.add(TeamMember(
+                team_id=team.id,
+                user_id=user.id,
+                team_role_id=owner_role.id,
+            ))
+        else:
+            logger.warning(
+                f"Owner role not found — user {user.id} added to team without role. "
+                "Run seed_system to create default team roles."
+            )
+
+        await session.execute(
+            update(UserModel).where(UserModel.id == user.id).values(tenant_id=team.id)
+        )
+
+        await session.commit()
+
+        user.tenant_id = team.id
+        logger.info(f"Created personal team {team.id} for user {user.id}")
 
     return user

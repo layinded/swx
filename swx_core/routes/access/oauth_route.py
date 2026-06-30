@@ -8,6 +8,7 @@ Features:
 - Redirect users to OAuth providers (Google, Facebook).
 - Handle OAuth callbacks to authenticate users.
 - Fetch user details from third-party OAuth providers.
+- Support for custom OAuth providers via configuration.
 
 Methods:
 - `get_oauth_urls()`: Returns OAuth login URLs dynamically based on configuration.
@@ -34,13 +35,9 @@ from swx_core.repositories.user_repository import (
 )
 from swx_core.utils.language_helper import translate
 
-# Initialize API router with a prefix for OAuth authentication
 router = APIRouter(prefix="/oauth")
-
-# Initialize OAuth client
 oauth = OAuth()
 
-# Register Google OAuth if enabled
 if social_settings.ENABLE_GOOGLE_LOGIN:
     oauth.register(
         name="google",
@@ -50,7 +47,6 @@ if social_settings.ENABLE_GOOGLE_LOGIN:
         client_kwargs={"scope": "openid email profile"},
     )
 
-# Register Facebook OAuth if enabled
 if social_settings.ENABLE_FACEBOOK_LOGIN:
     oauth.register(
         name="facebook",
@@ -61,38 +57,35 @@ if social_settings.ENABLE_FACEBOOK_LOGIN:
         client_kwargs={"scope": "email,public_profile"},
     )
 
+from swx_core.core.oauth_providers import oauth_provider_settings
+
+for provider_name, config in oauth_provider_settings.get_provider_configs().items():
+    if provider_name not in oauth._clients:
+        oauth.register(
+            name=provider_name,
+            **config.to_oauth_config(),
+        )
+
 
 @router.get("/urls")
 async def get_oauth_urls():
-    """
-    Retrieve dynamically generated OAuth login URLs based on enabled providers.
-
-    Returns:
-        JSONResponse: A dictionary containing OAuth login URLs for Google and Facebook.
-    """
     base_url = settings.BACKEND_HOST
-    urls = {
-        "google": f"{base_url}/api/oauth/google"
-        if social_settings.ENABLE_SOCIAL_LOGIN and social_settings.ENABLE_GOOGLE_LOGIN
-        else None,
-        "facebook": f"{base_url}/api/oauth/facebook"
-        if social_settings.ENABLE_SOCIAL_LOGIN and social_settings.ENABLE_FACEBOOK_LOGIN
-        else None,
-    }
+    urls = {}
+
+    if social_settings.ENABLE_SOCIAL_LOGIN:
+        if social_settings.ENABLE_GOOGLE_LOGIN:
+            urls["google"] = f"{base_url}/api/oauth/google"
+        if social_settings.ENABLE_FACEBOOK_LOGIN:
+            urls["facebook"] = f"{base_url}/api/oauth/facebook"
+
+    for provider_name in oauth_provider_settings.get_provider_configs():
+        urls[provider_name] = f"{base_url}/api/oauth/{provider_name}"
+
     return JSONResponse(urls)
 
 
 @router.get("/google")
 async def google_login(request: Request):
-    """
-    Redirect the user to Google's OAuth authentication page.
-
-    Args:
-        request (Request): The HTTP request object.
-
-    Returns:
-        RedirectResponse: A redirect to Google's OAuth authentication page.
-    """
     try:
         if not social_settings.ENABLE_GOOGLE_LOGIN:
             raise HTTPException(status_code=400, detail=translate(request, "google_login_disabled"))
@@ -110,16 +103,6 @@ async def google_login(request: Request):
 
 @router.get("/google/callback")
 async def google_auth_callback(request: Request, session: SessionDep):
-    """
-    Handle Google's OAuth callback, authenticate the user, and return a JWT token.
-
-    Args:
-        request (Request): The HTTP request object.
-        session (SessionDep): The database session.
-
-    Returns:
-        Token: A JWT token if authentication is successful.
-    """
     try:
         state = request.query_params.get("state")
         stored_state = request.session.get("oauth_state")
@@ -147,15 +130,6 @@ async def google_auth_callback(request: Request, session: SessionDep):
 
 @router.get("/facebook")
 async def facebook_login(request: Request):
-    """
-    Redirect the user to Facebook's OAuth authentication page.
-
-    Args:
-        request (Request): The HTTP request object.
-
-    Returns:
-        RedirectResponse: A redirect to Facebook's OAuth authentication page.
-    """
     try:
         if not social_settings.ENABLE_FACEBOOK_LOGIN:
             raise HTTPException(status_code=400, detail=translate(request, "facebook_login_disabled"))
@@ -170,15 +144,6 @@ async def facebook_login(request: Request):
 
 
 async def fetch_facebook_user_info(access_token: str):
-    """
-    Fetch user details from Facebook's Graph API using `httpx`.
-
-    Args:
-        access_token (str): The Facebook OAuth access token.
-
-    Returns:
-        dict: A dictionary containing user information.
-    """
     user_info_url = "https://graph.facebook.com/me?fields=id,name,email"
     headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -201,16 +166,6 @@ async def fetch_facebook_user_info(access_token: str):
 
 @router.get("/facebook/callback")
 async def facebook_auth_callback(request: Request, session: SessionDep):
-    """
-    Handle Facebook's OAuth callback, authenticate the user, and return a JWT token.
-
-    Args:
-        request (Request): The HTTP request object.
-        session (SessionDep): The database session.
-
-    Returns:
-        Token: A JWT token if authentication is successful.
-    """
     try:
         state = request.query_params.get("state")
         code = request.query_params.get("code")
@@ -234,3 +189,68 @@ async def facebook_auth_callback(request: Request, session: SessionDep):
         return await login_social_user_controller(session, existing_user.email)
     except Exception as e:
         raise HTTPException(status_code=500, detail=translate(request, "facebook_auth_callback_failed", error=str(e)))
+
+
+@router.get("/{provider}")
+async def provider_login(request: Request, provider: str):
+    configs = oauth_provider_settings.get_provider_configs()
+
+    if provider not in configs:
+        raise HTTPException(status_code=400, detail=translate(request, f"{provider}_login_disabled"))
+
+    config = configs[provider]
+    redirect_uri = config.redirect_uri
+
+    if not redirect_uri:
+        raise HTTPException(
+            status_code=500,
+            detail=translate(request, f"{provider}_redirect_uri_not_configured"),
+        )
+
+    state = secrets.token_urlsafe(16)
+    request.session["oauth_state"] = state
+
+    client = getattr(oauth, provider)
+    return await client.authorize_redirect(request, redirect_uri, state=state)
+
+
+@router.get("/{provider}/callback")
+async def provider_auth_callback(request: Request, session: SessionDep, provider: str):
+    configs = oauth_provider_settings.get_provider_configs()
+
+    if provider not in configs:
+        raise HTTPException(status_code=400, detail=translate(request, f"{provider}_not_configured"))
+
+    state = request.query_params.get("state")
+    stored_state = request.session.get("oauth_state")
+    if not stored_state or state != stored_state:
+        return JSONResponse({"error": translate(request, "csrf_warning_state_mismatch")}, status_code=400)
+
+    client = getattr(oauth, provider)
+    token = await client.authorize_access_token(request)
+
+    if not token:
+        return JSONResponse({"error": translate(request, f"failed_to_fetch_{provider}_token")}, status_code=400)
+
+    config = configs[provider]
+    user_info_url = config.user_info_url
+
+    if not user_info_url:
+        user_info = token.get("userinfo", {})
+    else:
+        access_token = token.get("access_token")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(user_info_url, headers={"Authorization": f"Bearer {access_token}"})
+            response.raise_for_status()
+            user_info = response.json()
+
+    email = user_info.get("email")
+    if not email:
+        return JSONResponse({"error": translate(request, f"{provider}_account_missing_email")}, status_code=400)
+
+    existing_user = await get_user_by_email(session=session, email=email)
+    if not existing_user:
+        existing_user = await create_social_user(session, email, user_info, provider)
+
+    request.session.pop("oauth_state", None)
+    return await login_social_user_controller(session, existing_user.email)

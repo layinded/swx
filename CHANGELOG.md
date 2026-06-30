@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.27] - 2026-06-30
+
+### Fixed - Bug #7/29: Users Forced to Belong to a Team
+
+- **Auto-create personal team on registration** — New users now get a personal team with `tenant_id` set automatically
+- **`AUTO_CREATE_PERSONAL_TEAM` setting** — Default `True`, creates personal team and assigns `owner` role
+- **No more 500 errors** — Users without `tenant_id` no longer crash tenant-aware endpoints
+
+### Added
+
+- `create_personal_team()` hook — Creates team `{user}'s Team` and sets `user.tenant_id`
+- `AUTO_CREATE_PERSONAL_TEAM` setting — Controls automatic team creation (default: True)
+- Migration `v2_7_27_personal_team_backfill.py` — Backfills existing users without tenant_id
+
+### Fixed - Bug #14: Alembic Migration Rollback Handling
+
+- All migrations now have proper `downgrade()` functions
+- Migration `v2_7_27_personal_team_backfill.py` includes rollback support
+
+### Added - FR1: Extensibility for Custom Social Auth Providers
+
+- **OAuth Provider Registry** — `swx_core.core.oauth_providers` module
+- **Configuration-based providers** — Add GitHub, LinkedIn, Apple, etc. via `.env`
+- **Dynamic provider loading** — No code changes needed to add new providers
+
+#### Usage:
+
+```bash
+# .env
+OAUTH_PROVIDERS=github,linkedin
+
+GITHUB_CLIENT_ID=xxx
+GITHUB_CLIENT_SECRET=xxx
+GITHUB_REDIRECT_URI=http://localhost:8001/api/oauth/github/callback
+GITHUB_AUTH_URL=https://github.com/login/oauth/authorize
+GITHUB_TOKEN_URL=https://github.com/login/oauth/access_token
+GITHUB_USER_INFO_URL=https://api.github.com/user
+GITHUB_SCOPE=user:email
+
+LINKEDIN_CLIENT_ID=xxx
+LINKEDIN_CLIENT_SECRET=xxx
+LINKEDIN_REDIRECT_URI=http://localhost:8001/api/oauth/linkedin/callback
+LINKEDIN_AUTH_URL=https://www.linkedin.com/oauth/v2/authorization
+LINKEDIN_TOKEN_URL=https://www.linkedin.com/oauth/v2/accessToken
+LINKEDIN_USER_INFO_URL=https://api.linkedin.com/v2/me
+LINKEDIN_SCOPE=r_emailaddress r_liteprofile
+```
+
+### How It Works
+
+1. User registers → `assign_default_role()` hook assigns role
+2. `create_billing_account()` hook creates USER billing account
+3. `create_personal_team()` hook creates team, sets `tenant_id`, adds user as owner
+
+This ensures all users have a valid `tenant_id` for multi-tenant operations.
+
 ## [2.7.26] - 2026-06-30
 
 ### Added - Bug #25: Separate Team Roles from System RBAC

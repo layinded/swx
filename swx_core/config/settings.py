@@ -296,6 +296,10 @@ class Settings(BaseSettings):
         default=True,
         description="Automatically create a billing account for new users on registration",
     )
+    AUTO_CREATE_PERSONAL_TEAM: bool = Field(
+        default=True,
+        description="Automatically create a personal team and set tenant_id for new users on registration",
+    )
     STRIPE_API_KEY: str | None = Field(default=None, description="Stripe API key")
     STRIPE_WEBHOOK_SECRET: str | None = Field(
         default=None, description="Stripe webhook secret"

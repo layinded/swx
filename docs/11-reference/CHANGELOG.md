@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.7.25  
+**Version:** 2.7.27  
 **Last Updated:** 2026-06-30
 
 ---
@@ -29,6 +29,57 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.7.27 (2026-06-30)
+
+**Critical Fix - Bug #7/29**
+
+- Users no longer forced into teams — auto-creates personal team on registration
+- New `AUTO_CREATE_PERSONAL_TEAM` setting (default: True)
+- `create_personal_team()` hook creates team and sets `tenant_id`
+- No more 500 errors for users without `tenant_id`
+
+**New Settings**
+
+- `AUTO_CREATE_PERSONAL_TEAM`: Auto-create personal team on registration (default: True)
+
+**Migration Fix - Bug #14**
+
+- All migrations now have proper `downgrade()` rollback functions
+- New migration `v2_7_27_personal_team_backfill.py` with rollback support
+
+**Feature Request - FR1: OAuth Provider Extensibility**
+
+- New `swx_core.core.oauth_providers` module for custom auth providers
+- Add GitHub, LinkedIn, Apple, etc. via configuration (no code changes)
+- Dynamic provider loading based on `OAUTH_PROVIDERS` env variable
+
+**OAuth Configuration Example:**
+
+```bash
+OAUTH_PROVIDERS=github,linkedin
+
+GITHUB_CLIENT_ID=xxx
+GITHUB_CLIENT_SECRET=xxx
+GITHUB_REDIRECT_URI=http://localhost:8001/api/oauth/github/callback
+GITHUB_AUTH_URL=https://github.com/login/oauth/authorize
+GITHUB_TOKEN_URL=https://github.com/login/oauth/access_token
+GITHUB_USER_INFO_URL=https://api.github.com/user
+GITHUB_SCOPE=user:email
+```
+
+### Version 2.7.27 (2026-06-30)
+
+**Critical Fix - Bug #7/29**
+
+- Users no longer forced into teams — auto-creates personal team on registration
+- New `AUTO_CREATE_PERSONAL_TEAM` setting (default: True)
+- `create_personal_team()` hook creates team and sets `tenant_id`
+- No more 500 errors for users without `tenant_id`
+
+**New Settings**
+
+- `AUTO_CREATE_PERSONAL_TEAM`: Auto-create personal team on registration (default: True)
 
 ### Version 2.7.26 (2026-06-30)
 

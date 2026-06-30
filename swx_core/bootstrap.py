@@ -354,7 +354,11 @@ def diagnose_discovery() -> dict:
 def _register_default_hooks() -> None:
     from swx_core.config.settings import settings
     from swx_core.core.hooks import registration_hooks
-    from swx_core.core.default_hooks import assign_default_role, create_billing_account
+    from swx_core.core.default_hooks import (
+        assign_default_role,
+        create_billing_account,
+        create_personal_team,
+    )
 
     if settings.AUTO_ASSIGN_DEFAULT_ROLE:
         registration_hooks.add_post_register(assign_default_role)
@@ -363,3 +367,7 @@ def _register_default_hooks() -> None:
     if settings.AUTO_CREATE_BILLING_ACCOUNT and settings.BILLING_ENABLED:
         registration_hooks.add_post_register(create_billing_account)
         logger.info("Default registration hook: create billing account")
+
+    if getattr(settings, 'AUTO_CREATE_PERSONAL_TEAM', True):
+        registration_hooks.add_post_register(create_personal_team)
+        logger.info("Default registration hook: create personal team")

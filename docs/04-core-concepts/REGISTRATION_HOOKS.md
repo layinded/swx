@@ -1,7 +1,7 @@
 # Registration Hooks & Extension Points
 
-**Version:** 2.7.23
-**Last Updated:** 2026-06-29
+**Version:** 2.7.27
+**Last Updated:** 2026-06-30
 
 ---
 
@@ -234,13 +234,33 @@ DEFAULT_PLAN_KEY=free
 BILLING_ENABLED=true
 ```
 
+### Auto-Created Personal Team (v2.7.27)
+
+When `AUTO_CREATE_PERSONAL_TEAM=True` (default), each new user gets a personal team with `tenant_id` set automatically. This ensures users always have a valid `tenant_id` for multi-tenant operations.
+
+**Configuration (`.env`):**
+```bash
+AUTO_CREATE_PERSONAL_TEAM=true
+```
+
+**What happens on registration:**
+1. Creates a `Team` with `name="{user}'s Team"` and `owner_id=user.id`
+2. Adds user as team member with `owner` role
+3. Sets `user.tenant_id = team.id`
+
+**Disable personal team creation:**
+```bash
+AUTO_CREATE_PERSONAL_TEAM=false
+```
+
 ### Disabling Default Hooks
 
-To disable either hook, set the corresponding environment variable to `false`:
+To disable any hook, set the corresponding environment variable to `false`:
 
 ```bash
 AUTO_ASSIGN_DEFAULT_ROLE=false
 AUTO_CREATE_BILLING_ACCOUNT=false
+AUTO_CREATE_PERSONAL_TEAM=false
 ```
 
 ### Custom Hooks Alongside Defaults
