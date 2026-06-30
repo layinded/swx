@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.26] - 2026-06-30
+
+### Added - Bug #25: Separate Team Roles from System RBAC
+
+- **TeamRole model** — New model for team-scoped roles (owner, editor, viewer) separate from system RBAC
+- **TeamPermissionChecker service** — Check team-scoped permissions based on TeamRole.permissions dict
+- **DEFAULT_TEAM_ROLES** — Seeded roles: owner (full control), editor (can edit), viewer (read-only)
+- **Migration v2_7_26** — Creates swx_team_role table and migrates TeamMember.role_id to team_role_id
+
+### Changed - Bug #25
+
+- **TeamMember.team_role_id** — Now uses team_role_id (FK to swx_team_role) instead of role_id (FK to swx_role)
+- **TeamMemberCreate** — Uses team_role_id instead of role_id
+- **TeamMemberUpdate** — New schema for updating team role
+- **team_service.py** — Updated to use TeamRole instead of system Role
+
+### Added - Bug #26: Team Invitation System
+
+- **TeamInvitation model** — Invitation with status (pending, accepted, rejected, expired, revoked)
+- **TeamInvitationService** — Full CRUD: create, accept, reject, revoke with permission checks
+- **TeamInvitation routes** — API endpoints: POST /, POST /{token}/accept, POST /{token}/reject, DELETE /{id}
+- **7-day expiration** — Invitations expire after 7 days by default
+- **Secure tokens** — 64-character random tokens for invitation acceptance
+
+### New Models
+
+- `swx_team_role` — Team-scoped roles with permissions dict
+- `swx_team_invitation` — Team invitations with audit trail
+
+### New Services
+
+- `TeamPermissionChecker` — Check team-scoped permissions
+- `TeamInvitationService` — Manage invitation lifecycle
+
+### New Routes
+
+- `/team-invitations/` — Create invitation
+- `/team-invitations/{token}/accept` — Accept invitation
+- `/team-invitations/{token}/reject` — Reject invitation
+- `/team-invitations/{id}` (DELETE) — Revoke invitation
+- `/team-invitations/team/{team_id}` — List team invitations
+- `/team-invitations/me` — List my invitations
+
+## [2.7.25] - 2026-06-30
+
+### Fixed
+- **Bug 16: Invalid UUID headers silently ignored** — `X-Tenant-ID` and `X-Team-ID` headers with
+  invalid UUIDs were silently dropped. Now logs a warning for debugging.
+- **Bug 17: Hardcoded log directory** — Log file path was hardcoded to `"logs/swx_core.log"`.
+  Added `LOG_DIR` setting (default: `"logs"`) for configurable log directory.
+- **Bug 21: Expired subscriptions granted access** — `get_entitlement()` checked subscription status
+  but not `current_period_end`. Now requires `current_period_end >= now()` to grant entitlements.
+- **Bug 23: Duplicate team membership allowed** — `TeamMember` lacked composite unique constraint,
+  allowing same user to be added to same team multiple times. Added `UniqueConstraint("team_id", "user_id")`.
+
+### Added
+- `LOG_DIR` setting for configurable log directory path.
+- Migration `v2_7_24_add_team_member_unique.py` for TeamMember unique constraint.
+
+### Changed
+- `TeamMember.__table_args__` now includes `UniqueConstraint("team_id", "user_id")`.
+
 ## [2.7.23] - 2026-06-29
 
 ### Added

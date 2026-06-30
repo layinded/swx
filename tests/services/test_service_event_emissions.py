@@ -123,32 +123,31 @@ class TestTeamServiceEvents:
         from swx_core.models.team_member import TeamMember, TeamMemberCreate
         from swx_core.models.team import Team
         from swx_core.models.user import User
-        from swx_core.models.role import Role
+        from swx_core.models.team_role import TeamRole
         
         mock_session = AsyncMock()
         
         team_id = uuid.uuid4()
         user_id = uuid.uuid4()
-        role_id = uuid.uuid4()
+        team_role_id = uuid.uuid4()
         
-        member_in = TeamMemberCreate(team_id=team_id, user_id=user_id, role_id=role_id)
-        mock_member = TeamMember(id=uuid.uuid4(), team_id=team_id, user_id=user_id, role_id=role_id)
+        member_in = TeamMemberCreate(team_id=team_id, user_id=user_id, team_role_id=team_role_id)
+        mock_member = TeamMember(id=uuid.uuid4(), team_id=team_id, user_id=user_id, team_role_id=team_role_id)
         
         with patch("swx_core.services.team_service.team_repository") as mock_team_repo:
             with patch("swx_core.services.team_service.user_repository") as mock_user_repo:
-                with patch("swx_core.services.team_service.role_repository") as mock_role_repo:
-                    mock_team_repo.get_team_by_id = AsyncMock(return_value=Team(id=team_id, name="test"))
-                    mock_user_repo.get_user_by_id = AsyncMock(return_value=User(id=user_id, email="test@test.com"))
-                    mock_role_repo.get_role_by_id = AsyncMock(return_value=Role(id=role_id, name="member"))
-                    mock_team_repo.get_team_member = AsyncMock(return_value=None)
-                    mock_team_repo.add_team_member = AsyncMock(return_value=mock_member)
+                mock_team_repo.get_team_by_id = AsyncMock(return_value=Team(id=team_id, name="test"))
+                mock_user_repo.get_user_by_id = AsyncMock(return_value=User(id=user_id, email="test@test.com"))
+                mock_session.get = AsyncMock(return_value=TeamRole(id=team_role_id, key="member", name="Team Member"))
+                mock_team_repo.get_team_member = AsyncMock(return_value=None)
+                mock_team_repo.add_team_member = AsyncMock(return_value=mock_member)
+                
+                with patch.object(EventBus, "emit", new_callable=AsyncMock) as mock_emit:
+                    await add_team_member_service(session=mock_session, member_in=member_in)
                     
-                    with patch.object(EventBus, "emit", new_callable=AsyncMock) as mock_emit:
-                        await add_team_member_service(session=mock_session, member_in=member_in)
-                        
-                        assert mock_emit.called
-                        event = mock_emit.call_args[0][0]
-                        assert event.name == "team.member_added"
+                    assert mock_emit.called
+                    event = mock_emit.call_args[0][0]
+                    assert event.name == "team.member_added"
 
 
 class TestUserRoleServiceEvents:

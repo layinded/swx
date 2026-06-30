@@ -15,6 +15,7 @@ from swx_core.core.tenant import (
     set_super_admin,
     clear_current_tenant,
 )
+from swx_core.middleware.logging_middleware import logger
 
 
 class TenantContextMiddleware(BaseHTTPMiddleware):
@@ -46,14 +47,16 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
             try:
                 set_current_tenant(UUID(header_tenant))
             except ValueError:
-                pass
+                # Bug #16: Log invalid UUID instead of silently ignoring
+                logger.warning(f"Invalid X-Tenant-ID header value: {header_tenant}")
         
         header_team = request.headers.get("X-Team-ID")
         if header_team:
             try:
                 set_current_team(UUID(header_team))
             except ValueError:
-                pass
+                # Bug #16: Log invalid UUID instead of silently ignoring
+                logger.warning(f"Invalid X-Team-ID header value: {header_team}")
         
         user = getattr(request.state, "user", None)
         if user:

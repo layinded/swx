@@ -43,7 +43,21 @@ from swx_core.models.team import (
 from swx_core.models.team_member import (
     TeamMember,
     TeamMemberCreate,
+    TeamMemberUpdate,
     TeamMemberPublic,
+)
+from swx_core.models.team_role import (
+    TeamRole,
+    TeamRoleCreate,
+    TeamRoleUpdate,
+    TeamRolePublic,
+    DEFAULT_TEAM_ROLES,
+)
+from swx_core.models.team_invitation import (
+    TeamInvitation,
+    TeamInvitationCreate,
+    TeamInvitationPublic,
+    InvitationStatus,
 )
 from swx_core.models.token import (
     Token,
@@ -128,7 +142,19 @@ __all__ = [
     # Team Member
     "TeamMember",
     "TeamMemberCreate",
+    "TeamMemberUpdate",
     "TeamMemberPublic",
+    # Team Role
+    "TeamRole",
+    "TeamRoleCreate",
+    "TeamRoleUpdate",
+    "TeamRolePublic",
+    "DEFAULT_TEAM_ROLES",
+    # Team Invitation
+    "TeamInvitation",
+    "TeamInvitationCreate",
+    "TeamInvitationPublic",
+    "InvitationStatus",
     # Token
     "Token",
     "TokenBase",

@@ -86,6 +86,11 @@ class Settings(BaseSettings):
         "debug", "info", "warning", "error", "critical", "production"
     ] = Field(default="warning")
 
+    LOG_DIR: str = Field(
+        default="logs",
+        description="Directory for log files (default: 'logs')"
+    )
+
     @field_validator("LOG_LEVEL", mode="before")
     def normalize_log_level(cls, v: Any) -> str:
         """Normalize LOG_LEVEL to lowercase."""

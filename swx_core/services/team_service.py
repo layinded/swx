@@ -6,7 +6,8 @@ from sqlmodel import and_, select
 from swx_core.models.billing import BillingAccount, BillingAccountType, Subscription, UsageRecord
 from swx_core.models.team import Team, TeamCreate, TeamUpdate
 from swx_core.models.team_member import TeamMember, TeamMemberCreate
-from swx_core.repositories import team_repository, user_repository, role_repository
+from swx_core.models.team_role import TeamRole
+from swx_core.repositories import team_repository, user_repository
 from swx_core.events.dispatcher import event_bus, Event
 from swx_core.services.billing.subscription_service import SubscriptionService
 
@@ -77,7 +78,6 @@ async def delete_team_service(
 ) -> None:
     team = await get_team_service(session, team_id)
     
-    # Check if has members
     members = await team_repository.list_team_members(session, team_id)
     if members:
         raise HTTPException(status_code=400, detail="Cannot delete team with members")
@@ -127,26 +127,28 @@ async def delete_team_service(
     ))
 
 
-# Team Membership Management
-
 async def add_team_member_service(
     session: AsyncSession, 
     member_in: TeamMemberCreate,
     event_context: Dict[str, Any] | None = None,
 ) -> TeamMember:
-    await get_team_service(session, member_in.team_id) # Validate team existence
+    await get_team_service(session, member_in.team_id)
     
     user = await user_repository.get_user_by_id(session, member_in.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
-    role = await role_repository.get_role_by_id(session, member_in.role_id)
-    if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
+    
+    team_role = await session.get(TeamRole, member_in.team_role_id)
+    if not team_role:
+        raise HTTPException(status_code=404, detail="Team role not found")
         
     existing = await team_repository.get_team_member(session, member_in.team_id, member_in.user_id)
     if existing:
-        return await team_repository.update_team_member_role(session, existing, member_in.role_id)
+        existing.team_role_id = member_in.team_role_id
+        session.add(existing)
+        await session.commit()
+        await session.refresh(existing)
+        return existing
         
     member = await team_repository.add_team_member(session, member_in)
     
@@ -154,7 +156,7 @@ async def add_team_member_service(
         name="team.member_added",
         payload={
             "id": str(member.id),
-            "data": {"team_id": str(member_in.team_id), "user_id": str(member_in.user_id), "role_id": str(member_in.role_id)},
+            "data": {"team_id": str(member_in.team_id), "user_id": str(member_in.user_id), "team_role_id": str(member_in.team_role_id)},
             **({"context": event_context} if event_context is not None else {}),
         },
     ))
@@ -184,5 +186,5 @@ async def remove_team_member_service(
 
 
 async def list_team_members_service(session: AsyncSession, team_id: UUID) -> List[TeamMember]:
-    await get_team_service(session, team_id) # Validate existence
+    await get_team_service(session, team_id)
     return await team_repository.list_team_members(session, team_id)

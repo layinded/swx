@@ -102,9 +102,9 @@ from swx_core.config.settings import settings
 # Get environment settings
 ENVIRONMENT = settings.ENVIRONMENT
 LOG_LEVEL = settings.LOG_LEVEL  # Default to WARNING
+LOG_DIR = settings.LOG_DIR
 
 # Ensure logs directory exists
-LOG_DIR = "logs"
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR, exist_ok=True)
 

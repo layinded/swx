@@ -85,12 +85,13 @@ class EntitlementResolver:
 
         # 2. Find active subscription (including grace period)
         # ACTIVE and PAST_DUE (grace period) subscriptions allow access
+        # Bug #21: Also verify current_period_end >= now() to prevent expired subscriptions
+        now = datetime.now(timezone.utc)
         stmt = select(Subscription).where(
             and_(
                 Subscription.account_id == account.id,
                 Subscription.status.in_([SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE]),
-                # Ensure current time is within period
-                # (Simplified for now, real world needs more complex time checks)
+                Subscription.current_period_end >= now,
             )
         )
         result = await self.session.execute(stmt)

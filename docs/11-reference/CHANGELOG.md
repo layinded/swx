@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.4.0  
-**Last Updated:** 2026-04-27
+**Version:** 2.7.25  
+**Last Updated:** 2026-06-30
 
 ---
 
@@ -29,6 +29,57 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.7.26 (2026-06-30)
+
+**New Features**
+
+- Bug #25: Team-scoped roles (TeamRole model) — Separate from system RBAC
+- Bug #26: Team invitation system — Create, accept, reject, revoke with expiration
+
+**Bug Fixes**
+
+- Bug #25: TeamMember now uses team_role_id instead of role_id
+
+**New Models**
+
+- TeamRole — Team-scoped roles with permissions dict
+- TeamInvitation — Team invitations with audit trail
+
+**New Services**
+
+- TeamPermissionChecker — Check team-scoped permissions
+- TeamInvitationService — Manage invitation lifecycle
+
+**New Routes**
+
+- POST /team-invitations/ — Create invitation
+- POST /team-invitations/{token}/accept — Accept invitation
+- POST /team-invitations/{token}/reject — Reject invitation
+- DELETE /team-invitations/{id} — Revoke invitation
+- GET /team-invitations/team/{team_id} — List team invitations
+- GET /team-invitations/me — List my invitations
+
+**Migration Required**
+
+- `v2_7_26_team_roles_invitations.py`: Creates swx_team_role table, adds team_role_id to swx_team_member, creates swx_team_invitation table
+
+### Version 2.7.25 (2026-06-30)
+
+**Bug Fixes**
+
+- Bug #16: Invalid `X-Tenant-ID` and `X-Team-ID` headers now log warnings instead of silently ignoring
+- Bug #17: Added `LOG_DIR` setting for configurable log directory (default: `"logs"`)
+- Bug #21: `get_entitlement()` now validates `current_period_end >= now()` to prevent expired subscriptions from granting access
+- Bug #23: Added `UniqueConstraint("team_id", "user_id")` on `TeamMember` to prevent duplicate team memberships
+
+**New Settings**
+
+- `LOG_DIR`: Configurable log directory path (default: `"logs"`)
+
+**Database Migration Required**
+
+- `v2_7_24_add_team_member_unique.py`: Adds composite unique constraint on `swx_team_member(team_id, user_id)`
 
 ### Version 2.4.0 (2026-04-27)
 
