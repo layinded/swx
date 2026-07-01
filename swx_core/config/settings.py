@@ -277,6 +277,28 @@ class Settings(BaseSettings):
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
+    # Cookie Settings for OAuth BFF Pattern
+    COOKIE_ACCESS_TOKEN_NAME: str = Field(
+        default="swx_access_token",
+        description="Name of the HTTP-only cookie for access tokens"
+    )
+    COOKIE_REFRESH_TOKEN_NAME: str = Field(
+        default="swx_refresh_token",
+        description="Name of the HTTP-only cookie for refresh tokens"
+    )
+    COOKIE_SECURE: bool = Field(
+        default=True,
+        description="Set Secure flag on cookies (True in production, False for local dev)"
+    )
+    COOKIE_SAMESITE: Literal["strict", "lax", "none"] = Field(
+        default="lax",
+        description="SameSite attribute for cookies (strict, lax, or none)"
+    )
+    COOKIE_DOMAIN: str | None = Field(
+        default=None,
+        description="Domain for cookies (None for current domain)"
+    )
+
     BILLING_ENABLED: bool = Field(
         default=False, description="Enable Stripe billing integration"
     )
