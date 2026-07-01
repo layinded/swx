@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.31] - 2026-07-01
+
+### Fixed
+- **RefreshToken created_at timezone mismatch** — `created_at` field was using timezone-aware
+  datetime (`datetime.now(timezone.utc)`) but the database column is `TIMESTAMP WITHOUT TIME ZONE`,
+  causing asyncpg errors during OAuth callback. Now correctly uses naive datetime with
+  `.replace(tzinfo=None)`.
+
 ## [2.7.30] - 2026-07-01
 
 ### Fixed
