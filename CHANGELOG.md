@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.30] - 2026-07-01
+
+### Fixed
+- **OAuth routes missing error logging** — Exceptions in OAuth login/callback handlers were silently
+  swallowed without logging, making OAuth failures impossible to debug. Now all OAuth routes log
+  exceptions with full traceback before raising HTTPException.
+
+### Changed
+- All OAuth exception handlers now re-raise `HTTPException` directly (prevents double-wrapping)
+- Added `logger` to oauth_route.py with error logging on all exception paths
+
 ## [2.7.29] - 2026-07-01
 
 ### Fixed

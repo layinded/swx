@@ -19,6 +19,7 @@ Methods:
 - `fetch_facebook_user_info()`: Retrieves user details from Facebook's Graph API.
 """
 
+import logging
 import secrets
 import httpx
 from authlib.integrations.starlette_client import OAuth
@@ -28,6 +29,8 @@ from starlette.responses import JSONResponse
 from swx_core.config.settings import settings
 from swx_core.config.social_settings import social_settings
 from swx_core.controllers.auth_controller import login_social_user_controller
+
+logger = logging.getLogger(__name__)
 from swx_core.database.db import SessionDep
 from swx_core.repositories.user_repository import (
     get_user_by_email,
@@ -97,7 +100,10 @@ async def google_login(request: Request):
         state = secrets.token_urlsafe(16)
         request.session["oauth_state"] = state
         return await oauth.google.authorize_redirect(request, redirect_uri, state=state)
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Failed to initiate Google login: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=translate(request, "failed_to_initiate_google_login", error=str(e)))
 
 
@@ -124,7 +130,10 @@ async def google_auth_callback(request: Request, session: SessionDep):
 
         request.session.pop("oauth_state", None)
         return await login_social_user_controller(session, existing_user.email)
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Google auth callback failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=translate(request, "google_auth_callback_failed", error=str(e)))
 
 
@@ -139,7 +148,10 @@ async def facebook_login(request: Request):
             raise HTTPException(status_code=500, detail=translate(request, "facebook_redirect_uri_not_configured"))
 
         return await oauth.facebook.authorize_redirect(request, redirect_uri)
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Failed to initiate Facebook login: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=translate(request, "failed_to_initiate_facebook_login", error=str(e)))
 
 
@@ -186,71 +198,87 @@ async def facebook_auth_callback(request: Request, session: SessionDep):
         if not existing_user:
             existing_user = await create_social_user(session, email, user_info, "facebook")
 
+        request.session.pop("oauth_state", None)
         return await login_social_user_controller(session, existing_user.email)
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Facebook auth callback failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=translate(request, "facebook_auth_callback_failed", error=str(e)))
 
 
 @router.get("/{provider}")
 async def provider_login(request: Request, provider: str):
-    configs = oauth_provider_settings.get_provider_configs()
+    try:
+        configs = oauth_provider_settings.get_provider_configs()
 
-    if provider not in configs:
-        raise HTTPException(status_code=400, detail=translate(request, f"{provider}_login_disabled"))
+        if provider not in configs:
+            raise HTTPException(status_code=400, detail=translate(request, f"{provider}_login_disabled"))
 
-    config = configs[provider]
-    redirect_uri = config.redirect_uri
+        config = configs[provider]
+        redirect_uri = config.redirect_uri
 
-    if not redirect_uri:
-        raise HTTPException(
-            status_code=500,
-            detail=translate(request, f"{provider}_redirect_uri_not_configured"),
-        )
+        if not redirect_uri:
+            raise HTTPException(
+                status_code=500,
+                detail=translate(request, f"{provider}_redirect_uri_not_configured"),
+            )
 
-    state = secrets.token_urlsafe(16)
-    request.session["oauth_state"] = state
+        state = secrets.token_urlsafe(16)
+        request.session["oauth_state"] = state
 
-    client = getattr(oauth, provider)
-    return await client.authorize_redirect(request, redirect_uri, state=state)
+        client = getattr(oauth, provider)
+        return await client.authorize_redirect(request, redirect_uri, state=state)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to initiate {provider} login: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to initiate {provider} login: {str(e)}")
 
 
 @router.get("/{provider}/callback")
 async def provider_auth_callback(request: Request, session: SessionDep, provider: str):
-    configs = oauth_provider_settings.get_provider_configs()
+    try:
+        configs = oauth_provider_settings.get_provider_configs()
 
-    if provider not in configs:
-        raise HTTPException(status_code=400, detail=translate(request, f"{provider}_not_configured"))
+        if provider not in configs:
+            raise HTTPException(status_code=400, detail=translate(request, f"{provider}_not_configured"))
 
-    state = request.query_params.get("state")
-    stored_state = request.session.get("oauth_state")
-    if not stored_state or state != stored_state:
-        return JSONResponse({"error": translate(request, "csrf_warning_state_mismatch")}, status_code=400)
+        state = request.query_params.get("state")
+        stored_state = request.session.get("oauth_state")
+        if not stored_state or state != stored_state:
+            return JSONResponse({"error": translate(request, "csrf_warning_state_mismatch")}, status_code=400)
 
-    client = getattr(oauth, provider)
-    token = await client.authorize_access_token(request)
+        client = getattr(oauth, provider)
+        token = await client.authorize_access_token(request)
 
-    if not token:
-        return JSONResponse({"error": translate(request, f"failed_to_fetch_{provider}_token")}, status_code=400)
+        if not token:
+            return JSONResponse({"error": translate(request, f"failed_to_fetch_{provider}_token")}, status_code=400)
 
-    config = configs[provider]
-    user_info_url = config.user_info_url
+        config = configs[provider]
+        user_info_url = config.user_info_url
 
-    if not user_info_url:
-        user_info = token.get("userinfo", {})
-    else:
-        access_token = token.get("access_token")
-        async with httpx.AsyncClient() as client:
-            response = await client.get(user_info_url, headers={"Authorization": f"Bearer {access_token}"})
-            response.raise_for_status()
-            user_info = response.json()
+        if not user_info_url:
+            user_info = token.get("userinfo", {})
+        else:
+            access_token = token.get("access_token")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(user_info_url, headers={"Authorization": f"Bearer {access_token}"})
+                response.raise_for_status()
+                user_info = response.json()
 
-    email = user_info.get("email")
-    if not email:
-        return JSONResponse({"error": translate(request, f"{provider}_account_missing_email")}, status_code=400)
+        email = user_info.get("email")
+        if not email:
+            return JSONResponse({"error": translate(request, f"{provider}_account_missing_email")}, status_code=400)
 
-    existing_user = await get_user_by_email(session=session, email=email)
-    if not existing_user:
-        existing_user = await create_social_user(session, email, user_info, provider)
+        existing_user = await get_user_by_email(session=session, email=email)
+        if not existing_user:
+            existing_user = await create_social_user(session, email, user_info, provider)
 
-    request.session.pop("oauth_state", None)
-    return await login_social_user_controller(session, existing_user.email)
+        request.session.pop("oauth_state", None)
+        return await login_social_user_controller(session, existing_user.email)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"{provider} auth callback failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"{provider} auth callback failed: {str(e)}")
