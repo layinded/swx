@@ -55,18 +55,23 @@ async def login_controller(
     return await login_user_service(session, form_data, request)
 
 
-async def login_social_user_controller(session: AsyncSession, form_data) -> Token:
+async def login_social_user_controller(
+    session: AsyncSession, 
+    user_email: str,
+    event_context: dict[str, Any] | None = None,
+) -> Token:
     """
     Handles login for users authenticated via social authentication providers.
 
     Args:
         session: The database session.
-        form_data: The social authentication user data.
+        user_email: The social authentication user email.
+        event_context: Additional context for user.login.social event.
 
     Returns:
         Token: A dictionary containing the access token, refresh token, and token type.
     """
-    return await login_social_user_service(session, form_data)
+    return await login_social_user_service(session, user_email, event_context)
 
 
 async def refresh_token_controller(

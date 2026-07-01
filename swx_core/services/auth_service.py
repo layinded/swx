@@ -100,28 +100,33 @@ async def login_user_service(
     )
 
 
-async def login_social_user_service(session: AsyncSession, user_email: str) -> Token:
+async def login_social_user_service(
+    session: AsyncSession, 
+    user_email: str,
+    event_context: dict[str, Any] | None = None,
+) -> Token:
     """
     Handles login for users authenticated via social authentication providers.
 
     Args:
         session (AsyncSession): The database session.
         user_email (str): The email address of the user.
+        event_context (dict[str, Any] | None): Additional context for user.login.social event.
 
     Returns:
         Token: A dictionary containing the access token, refresh token, and token type.
+    
+    Emits:
+        user.login.social: Event with payload {email, provider, context}
     """
-    # Get user to fetch permissions
     from swx_core.repositories.user_repository import get_user_by_email
     user = await get_user_by_email(session=session, email=user_email)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Get user permissions for token scopes
     permissions = await get_user_permissions(session, user.id, domain="user")
     scopes = [p.name for p in permissions] if permissions else []
 
-    # Get token expiration from settings service (DB -> .env -> default)
     from swx_core.services.settings_helper import get_token_expiration
     access_token_expires = await get_token_expiration(session, "access")
     refresh_token_expires = await get_token_expiration(session, "refresh")
@@ -131,6 +136,18 @@ async def login_social_user_service(session: AsyncSession, user_email: str) -> T
     refresh_token = await create_refresh_token(
         session, user_email, expires_delta=refresh_token_expires
     )
+
+    from swx_core.events.dispatcher import event_bus, Event
+    payload = {
+        "email": user_email,
+        "user_id": str(user.id),
+        "provider": event_context.get("provider", "unknown") if event_context else "unknown",
+        "is_new_user": event_context.get("is_new_user", False) if event_context else False,
+    }
+    if event_context:
+        payload["context"] = event_context
+    
+    await event_bus.emit(Event(name="user.login.social", payload=payload))
 
     return Token(
         access_token=access_token, refresh_token=refresh_token, token_type="bearer"
