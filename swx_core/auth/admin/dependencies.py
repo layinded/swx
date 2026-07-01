@@ -5,18 +5,23 @@ This module provides FastAPI dependencies for admin authentication.
 
 Admin users authenticate separately from regular users and use tokens
 with audience="admin".
+
+Supports both:
+- Authorization: Bearer header (for API clients)
+- httpOnly cookie (for browser-based apps using BFF pattern)
 """
 
 from typing import Annotated
 import jwt
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from swx_core.auth.core.jwt import decode_token, TokenAudience
+from swx_core.auth.core.bearer_or_cookie import BearerOrCookieAuth
 from swx_core.config.settings import settings
 from swx_core.database.db import SessionDep
 from swx_core.models.admin_user import AdminUser
@@ -24,12 +29,9 @@ from swx_core.utils.language_helper import translate
 from swx_core.services.alert_engine import alert_engine
 from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertActorType
 
-# OAuth2 Bearer token authentication for admin endpoints
-admin_oauth2 = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.ROUTE_PREFIX}/admin/auth",
-    scheme_name="AdminBearer",
-)
-AdminTokenDep = Annotated[str, Depends(admin_oauth2)]
+# Bearer or Cookie authentication for admin endpoints (BFF pattern)
+admin_auth = BearerOrCookieAuth()
+AdminTokenDep = Annotated[HTTPAuthorizationCredentials | None, Depends(admin_auth)]
 
 
 async def get_current_admin_user(
@@ -46,9 +48,13 @@ async def get_current_admin_user(
     3. Retrieves the admin user from database
     4. Validates the admin user is active
 
+    Supports token from:
+    - Authorization: Bearer header (API clients)
+    - httpOnly cookie (browser-based apps)
+
     Args:
         session: Database session (AsyncSession).
-        token: JWT token from request header.
+        token: JWT token from request header or cookie.
         request: HTTP request object.
 
     Returns:
@@ -59,9 +65,23 @@ async def get_current_admin_user(
         HTTPException (404): If admin user not found.
         HTTPException (400): If admin account is inactive.
     """
+    if not token:
+        await alert_engine.emit(
+            severity=AlertSeverity.WARNING,
+            source=AlertSource.AUTH,
+            event_type="MISSING_ADMIN_TOKEN",
+            message=f"Missing admin token from {request.client.host if request.client else 'unknown'}",
+            metadata={"path": request.url.path}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=translate(request, "could_not_validate_credentials")
+            or "Authentication required",
+        )
+
     try:
         # Decode token with admin audience validation
-        payload = decode_token(token, TokenAudience.ADMIN)
+        payload = decode_token(token.credentials, TokenAudience.ADMIN)
     except (InvalidTokenError, ValidationError, jwt.InvalidAudienceError) as e:
         await alert_engine.emit(
             severity=AlertSeverity.WARNING,

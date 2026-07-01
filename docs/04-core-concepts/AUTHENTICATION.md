@@ -1,7 +1,7 @@
 # Authentication
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.7.34  
+**Last Updated:** 2026-07-01
 
 ---
 
@@ -384,6 +384,288 @@ await revoke_all_tokens(session, user_email)
 - Secrets stored in `.env` (never in database)
 - Different secrets prevent token type confusion
 - Rotate secrets periodically
+
+---
+
+## Cookie-Based Authentication
+
+SwX-API supports **HTTP-only cookie authentication** for browser-based applications following the **Backend-for-Frontend (BFF) pattern**.
+
+### Why Cookie-Based Auth?
+
+| Method | XSS Resistant | CSRF Resistant | Auto-Attach | Token Management |
+|--------|---------------|----------------|-------------|------------------|
+| Authorization Header | ❌ No* | ✅ Yes | ❌ Manual | ❌ Client-side |
+| HTTP-only Cookie | ✅ Yes | ✅ With SameSite | ✅ Automatic | ✅ Server-side |
+
+*Authorization header is secure if stored correctly, but vulnerable if stored in localStorage.
+
+**Benefits:**
+- **XSS Protection**: JavaScript cannot access HTTP-only cookies
+- **Automatic Token Handling**: Browser automatically includes cookies with requests
+- **CSRF Protection**: SameSite attribute prevents cross-origin attacks
+- **Simpler Frontend**: No token storage or management code needed
+
+### Cookie Configuration
+
+```bash
+# .env
+COOKIE_ACCESS_TOKEN_NAME=swx_access_token
+COOKIE_REFRESH_TOKEN_NAME=swx_refresh_token
+COOKIE_SECURE=true                 # False for local dev (http://)
+COOKIE_SAMESITE=lax                # 'strict' or 'lax'
+COOKIE_DOMAIN=                     # Optional, for subdomain sharing
+```
+
+**Cookie Security Settings:**
+- `httponly=True` - Prevents JavaScript access (XSS protection)
+- `secure=True` - Only sent over HTTPS (production only)
+- `samesite=lax` - CSRF protection while allowing top-level navigations
+
+### Cookie-Based Endpoints
+
+#### 1. Login with Cookies
+
+```http
+POST /api/auth/cookie/login
+Content-Type: application/x-www-form-urlencoded
+
+username=user@example.com&password=securepassword
+```
+
+**Response:**
+```json
+{
+  "email": "user@example.com",
+  "access_token": "eyJ...",
+  "token_type": "bearer"
+}
+```
+
+**Cookies Set:**
+- `swx_access_token` - HTTP-only, secure, path `/`
+- `swx_refresh_token` - HTTP-only, secure, path `/api`
+
+**Frontend Example:**
+```javascript
+async function login(email, password) {
+  const response = await fetch('/api/auth/cookie/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
+    credentials: 'include'  // Required for cookies
+  })
+  
+  if (response.ok) {
+    // Cookies automatically set by browser
+    window.location.href = '/dashboard'
+  }
+}
+```
+
+#### 2. Get Current User
+
+```http
+GET /api/auth/me
+```
+
+**Response:**
+```json
+{
+  "id": "uuid-string",
+  "email": "user@example.com",
+  "full_name": "John Doe",
+  "is_active": true,
+  "team_id": "uuid-string"
+}
+```
+
+**Frontend Example:**
+```javascript
+async function getCurrentUser() {
+  const response = await fetch('/api/auth/me', {
+    credentials: 'include'  // Required for cookies
+  })
+  
+  if (response.ok) {
+    return await response.json()
+  }
+  
+  return null  // Not authenticated
+}
+
+// Check auth state on app boot
+const user = await getCurrentUser()
+if (user) {
+  showDashboard()
+} else {
+  showLogin()
+}
+```
+
+#### 3. Refresh Tokens
+
+```http
+POST /api/auth/cookie/refresh
+```
+
+**Response:**
+```json
+{
+  "status": "ok"
+}
+```
+
+**Cookies Updated:**
+- New `swx_access_token` cookie
+- New `swx_refresh_token` cookie
+
+**Frontend Example:**
+```javascript
+let refreshPromise = null
+
+async function refreshAccessToken() {
+  // Prevent concurrent refresh requests
+  if (refreshPromise) {
+    return refreshPromise
+  }
+  
+  refreshPromise = fetch('/api/auth/cookie/refresh', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  
+  try {
+    await refreshPromise
+  } finally {
+    refreshPromise = null
+  }
+}
+
+// Auto-refresh on 401
+fetch('/api/user/profile', { credentials: 'include' })
+  .then(response => {
+    if (response.status === 401) {
+      return refreshAccessToken().then(() => fetch('/api/user/profile'))
+    }
+    return response
+  })
+```
+
+#### 4. Logout
+
+```http
+POST /api/auth/cookie/logout
+```
+
+**Response:**
+```json
+{
+  "message": "Logged out successfully"
+}
+```
+
+**Cookies Cleared:**
+- `swx_access_token` cookie deleted
+- `swx_refresh_token` cookie deleted
+
+**Frontend Example:**
+```javascript
+async function logout() {
+  await fetch('/api/auth/cookie/logout', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  
+  // Cookies cleared by backend
+  window.location.href = '/login'
+}
+```
+
+### Dual Authentication Support
+
+SwX-API supports **both** Authorization header and cookie-based authentication simultaneously:
+
+```python
+from swx_core.auth.user.dependencies import UserDep
+
+@router.get("/user/profile")
+async def get_profile(user: UserDep):
+    # Works with both:
+    # 1. Authorization: Bearer <token>
+    # 2. Cookie: swx_access_token=<token>
+    return user
+```
+
+**Priority Order:**
+1. Authorization header (if present)
+2. Cookie (if header not present)
+
+**Implementation:**
+```python
+from swx_core.auth.core.bearer_or_cookie import BearerOrCookieAuth
+
+# Automatically checks both sources
+user_auth = BearerOrCookieAuth()
+
+async def get_current_user(
+    session: SessionDep,
+    token: HTTPAuthorizationCredentials | None = Depends(user_auth),
+    request: Request
+) -> User:
+    # Token extracted from:
+    # 1. Authorization header
+    # 2. HTTP-only cookie
+    
+    if not token:
+        raise HTTPException(401, "Authentication required")
+    
+    # Validate token...
+```
+
+### Migration from Header to Cookie
+
+**Before (Authorization Header):**
+```javascript
+// Store token in localStorage (XSS vulnerable)
+localStorage.setItem('token', response.access_token)
+
+// Manually attach to every request
+fetch('/api/user/profile', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+})
+```
+
+**After (HTTP-only Cookie):**
+```javascript
+// No token storage needed - browser handles it
+fetch('/api/auth/cookie/login', {
+  method: 'POST',
+  body: form,
+  credentials: 'include'  // Cookies automatically included
+})
+
+// All subsequent requests include cookies automatically
+fetch('/api/user/profile', {
+  credentials: 'include'
+})
+```
+
+### Security Considerations
+
+**Cookie Security:**
+- ✅ HTTP-only prevents JavaScript access (XSS protection)
+- ✅ Secure flag ensures HTTPS-only transmission
+- ✅ SameSite=Lax prevents CSRF attacks
+- ✅ Path restrictions limit cookie scope
+
+**Best Practices:**
+1. Use `credentials: 'include'` in all fetch requests
+2. Configure CORS to allow credentials: `allow_credentials=True`
+3. Set `COOKIE_SECURE=true` in production (false for local dev)
+4. Use `SameSite=Lax` for OAuth flows, `SameSite=Strict` for pure cookie auth
 
 ---
 

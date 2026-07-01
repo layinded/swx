@@ -5,18 +5,23 @@ This module provides FastAPI dependencies for user authentication.
 
 Regular users authenticate separately from admin users and use tokens
 with audience="user".
+
+Supports both:
+- Authorization: Bearer header (for API clients)
+- httpOnly cookie (for browser-based apps using BFF pattern)
 """
 
 from typing import Annotated
 import jwt
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from swx_core.auth.core.jwt import decode_token, TokenAudience
+from swx_core.auth.core.bearer_or_cookie import BearerOrCookieAuth
 from swx_core.config.settings import settings
 from swx_core.database.db import SessionDep
 from swx_core.models.user import User
@@ -25,12 +30,9 @@ from swx_core.services.alert_engine import alert_engine
 from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertActorType
 from swx_core.core.tenant import set_current_tenant, set_super_admin
 
-# OAuth2 Bearer token authentication for user endpoints
-user_oauth2 = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.ROUTE_PREFIX}/access/auth",
-    scheme_name="UserBearer",
-)
-UserTokenDep = Annotated[str, Depends(user_oauth2)]
+# Bearer or Cookie authentication for user endpoints (BFF pattern)
+user_auth = BearerOrCookieAuth()
+UserTokenDep = Annotated[HTTPAuthorizationCredentials | None, Depends(user_auth)]
 
 
 async def get_current_user(
@@ -47,9 +49,13 @@ async def get_current_user(
     3. Retrieves the user from database
     4. Validates the user is active
 
+    Supports token from:
+    - Authorization: Bearer header (API clients)
+    - httpOnly cookie (browser-based apps)
+
     Args:
         session: Database session (AsyncSession).
-        token: JWT token from request header.
+        token: JWT token from request header or cookie.
         request: HTTP request object.
 
     Returns:
@@ -60,9 +66,23 @@ async def get_current_user(
         HTTPException (404): If user not found.
         HTTPException (400): If admin account is inactive.
     """
+    if not token:
+        await alert_engine.emit(
+            severity=AlertSeverity.INFO,
+            source=AlertSource.AUTH,
+            event_type="MISSING_USER_TOKEN",
+            message=f"Missing user token from {request.client.host if request.client else 'unknown'}",
+            metadata={"path": request.url.path}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=translate(request, "could_not_validate_credentials")
+            or "Authentication required",
+        )
+
     try:
         # Decode token with user audience validation
-        payload = decode_token(token, TokenAudience.USER)
+        payload = decode_token(token.credentials, TokenAudience.USER)
     except (InvalidTokenError, ValidationError, jwt.InvalidAudienceError) as e:
         await alert_engine.emit(
             severity=AlertSeverity.INFO,

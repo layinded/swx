@@ -9,6 +9,7 @@ Features:
 - User registration.
 - User logout (revoking refresh tokens).
 - Password recovery and reset.
+- Cookie-based authentication (BFF pattern).
 
 Methods:
 - `login()`: Handles user login.
@@ -17,12 +18,16 @@ Methods:
 - `logout()`: Revokes the user's refresh token.
 - `recover_password()`: Sends a password reset email.
 - `reset_password()`: Resets a user's password and revokes active tokens.
+- `get_me()`: Returns current authenticated user (cookie-auth compatible).
+- `cookie_login()`: Login with email/password, sets httpOnly cookies.
+- `cookie_refresh()`: Refresh tokens using httpOnly cookie.
+- `cookie_logout()`: Clears httpOnly auth cookies.
 """
 
 from typing import Any
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 
 from swx_core.controllers.auth_controller import (
     login_controller,
@@ -39,7 +44,9 @@ from swx_core.models.user import UserCreate, UserNewPassword, UserPublic
 from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
 from swx_core.services.alert_engine import alert_engine
 from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertActorType
+from swx_core.services.settings_helper import get_token_expiration
 from swx_core.config.settings import settings
+from swx_core.auth.user.dependencies import UserDep
 
 router = APIRouter(prefix="/auth")
 
@@ -208,7 +215,7 @@ async def logout(session: SessionDep, request_data: TokenRefreshRequest, request
 
 
 @router.post("/password/recover/{email}", response_model=Message)
-async def recover_password(email: str, session: SessionDep, request: Request = None):
+async def recover_password(email: str, session: SessionDep, request: Request):
     """
     Sends a password reset email to the user.
 
@@ -244,7 +251,7 @@ async def recover_password(email: str, session: SessionDep, request: Request = N
 
 
 @router.post("/password/reset", response_model=Message)
-async def reset_password(session: SessionDep, body: UserNewPassword, request: Request = None):
+async def reset_password(session: SessionDep, body: UserNewPassword, request: Request):
     """
     Resets the user's password and revokes all active tokens.
 
@@ -317,6 +324,173 @@ async def cookie_logout(request: Request, session: SessionDep):
     except Exception as e:
         await audit.log_event(
             action="user.cookie.logout",
+            actor_type=ActorType.USER,
+            outcome=AuditOutcome.FAILURE,
+            context={"error": str(e)},
+            request=request
+        )
+        raise e
+
+
+@router.get("/me", response_model=UserPublic)
+async def get_me(current_user: UserDep):
+    """
+    Returns current authenticated user profile.
+
+    Works with both Authorization header and httpOnly cookie authentication.
+    Used by frontend to check auth state on app boot.
+
+    Returns:
+        UserPublic: The authenticated user's profile.
+    """
+    return UserPublic.model_validate(current_user)
+
+
+@router.post("/cookie/login")
+async def cookie_login(
+    request: Request,
+    session: SessionDep,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+):
+    """
+    Authenticate with email/password and set httpOnly auth cookies.
+
+    For browser-based apps using cookie-based auth (BFF pattern).
+    Returns user profile JSON in the response body.
+    Sets swx_access_token and swx_refresh_token as httpOnly cookies.
+
+    Returns:
+        JSONResponse: User profile with cookies set.
+    """
+    audit = get_audit_logger(session)
+    try:
+        auth_token = await login_controller(session, form_data, request)
+        
+        access_expires = await get_token_expiration(session, "access")
+        refresh_expires = await get_token_expiration(session, "refresh")
+
+        response = JSONResponse({
+            "email": form_data.username,
+            "access_token": auth_token.access_token,
+            "token_type": auth_token.token_type,
+        })
+        
+        secure = settings.COOKIE_SECURE and settings.ENVIRONMENT != "local"
+        samesite = settings.COOKIE_SAMESITE
+        domain = settings.COOKIE_DOMAIN
+
+        response.set_cookie(
+            key=settings.COOKIE_ACCESS_TOKEN_NAME,
+            value=auth_token.access_token,
+            httponly=True,
+            secure=secure,
+            samesite=samesite,
+            max_age=int(access_expires.total_seconds()),
+            path="/",
+            domain=domain,
+        )
+        if auth_token.refresh_token:
+            response.set_cookie(
+                key=settings.COOKIE_REFRESH_TOKEN_NAME,
+                value=auth_token.refresh_token,
+                httponly=True,
+                secure=secure,
+                samesite=samesite,
+                max_age=int(refresh_expires.total_seconds()),
+                path="/api",
+                domain=domain,
+            )
+
+        await audit.log_event(
+            action="user.cookie.login",
+            actor_type=ActorType.USER,
+            actor_id=form_data.username,
+            outcome=AuditOutcome.SUCCESS,
+            request=request
+        )
+        return response
+    except Exception as e:
+        await audit.log_event(
+            action="user.cookie.login",
+            actor_type=ActorType.USER,
+            actor_id=form_data.username,
+            outcome=AuditOutcome.FAILURE,
+            context={"error": str(e)},
+            request=request
+        )
+        raise e
+
+
+@router.post("/cookie/refresh")
+async def cookie_refresh(
+    request: Request,
+    session: SessionDep,
+):
+    """
+    Refresh access token using httpOnly refresh cookie.
+
+    Reads swx_refresh_token from cookies, validates it,
+    issues new access + refresh tokens, sets new cookies.
+
+    Returns:
+        JSONResponse: Success message with new cookies set.
+    """
+    refresh_token = request.cookies.get(settings.COOKIE_REFRESH_TOKEN_NAME)
+    if not refresh_token:
+        raise HTTPException(
+            status_code=401,
+            detail="No refresh token in cookie"
+        )
+
+    audit = get_audit_logger(session)
+    try:
+        auth_token = await refresh_token_controller(
+            session,
+            TokenRefreshRequest(refresh_token=refresh_token),
+            request,
+        )
+
+        access_expires = await get_token_expiration(session, "access")
+        refresh_expires = await get_token_expiration(session, "refresh")
+
+        response = JSONResponse({"status": "ok"})
+
+        secure = settings.COOKIE_SECURE and settings.ENVIRONMENT != "local"
+        samesite = settings.COOKIE_SAMESITE
+        domain = settings.COOKIE_DOMAIN
+
+        response.set_cookie(
+            key=settings.COOKIE_ACCESS_TOKEN_NAME,
+            value=auth_token.access_token,
+            httponly=True,
+            secure=secure,
+            samesite=samesite,
+            max_age=int(access_expires.total_seconds()),
+            path="/",
+            domain=domain,
+        )
+        if auth_token.refresh_token:
+            response.set_cookie(
+                key=settings.COOKIE_REFRESH_TOKEN_NAME,
+                value=auth_token.refresh_token,
+                httponly=True,
+                secure=secure,
+                samesite=samesite,
+                max_age=int(refresh_expires.total_seconds()),
+                path="/api",
+                domain=domain,
+            )
+
+        await audit.log_event(
+            action="user.cookie.refresh",
+            actor_type=ActorType.USER,
+            outcome=AuditOutcome.SUCCESS,
+            request=request
+        )
+        return response
+    except Exception as e:
+        await audit.log_event(
+            action="user.cookie.refresh",
             actor_type=ActorType.USER,
             outcome=AuditOutcome.FAILURE,
             context={"error": str(e)},
