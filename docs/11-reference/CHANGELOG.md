@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.7.27  
-**Last Updated:** 2026-06-30
+**Version:** 2.7.33  
+**Last Updated:** 2026-07-01
 
 ---
 
@@ -30,23 +30,41 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 
 ## Version History
 
-### Version 2.7.27 (2026-06-30)
+### Version 2.7.33 (2026-07-01)
 
-**Critical Fix - Bug #7/29**
+**OAuth 2.0 Security Overhaul - BFF Pattern + PKCE**
 
-- Users no longer forced into teams — auto-creates personal team on registration
-- New `AUTO_CREATE_PERSONAL_TEAM` setting (default: True)
-- `create_personal_team()` hook creates team and sets `tenant_id`
-- No more 500 errors for users without `tenant_id`
+Major security upgrade following RFC 9700 best practices.
 
-**New Settings**
+**PKCE Support (RFC 7636)**
+- All OAuth flows now use PKCE with S256 challenge method
+- Session-stored verifier for secure code exchange
+- Mandatory for all providers (Google, Facebook, custom)
 
-- `AUTO_CREATE_PERSONAL_TEAM`: Auto-create personal team on registration (default: True)
+**Backend-for-Frontend (BFF) Pattern**
+- HTTP-only cookies for XSS-resistant token storage
+- Callbacks redirect to frontend instead of returning JSON
+- Tokens never exposed to client-side JavaScript
 
-**Migration Fix - Bug #14**
+**New Cookie Settings**
+- `COOKIE_ACCESS_TOKEN_NAME` (default: `swx_access_token`)
+- `COOKIE_REFRESH_TOKEN_NAME` (default: `swx_refresh_token`)
+- `COOKIE_SECURE` (auto-adjusts for local dev)
+- `COOKIE_SAMESITE` (default: `lax`)
+- `COOKIE_DOMAIN` (optional)
 
-- All migrations now have proper `downgrade()` rollback functions
-- New migration `v2_7_27_personal_team_backfill.py` with rollback support
+**New Endpoint**
+- `POST /api/auth/cookie/logout` - Clears HTTP-only auth cookies
+
+**New Event**
+- `user.login.social` - Emitted on OAuth login with payload: `{email, user_id, provider, is_new_user}`
+
+**Frontend Migration Required**
+- Add `credentials: 'include'` to all API requests
+- Remove localStorage token management
+- Use `/api/auth/cookie/logout` for logout
+
+### Version 2.7.32 (2026-07-01)
 
 **Feature Request - FR1: OAuth Provider Extensibility**
 
