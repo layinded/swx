@@ -27,7 +27,7 @@ class AlertActorType(str, Enum):
 
 class Alert(BaseModel):
     alert_id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     source: AlertSource
     event_type: str
     severity: AlertSeverity

@@ -22,11 +22,11 @@ class TimestampMixin:
             name: str
     """
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         sa_column=Column(DateTime, server_default=func.now(), nullable=False)
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         sa_column=Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     )
 
@@ -57,7 +57,7 @@ class SoftDeleteMixin:
     
     def soft_delete(self) -> None:
         self.is_deleted = True
-        self.deleted_at = datetime.now(timezone.utc)
+        self.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
     
     def restore(self) -> None:
         self.is_deleted = False

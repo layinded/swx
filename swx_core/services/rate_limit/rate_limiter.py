@@ -92,7 +92,7 @@ class RateLimiter:
                 allowed=False,
                 limit=limit,
                 remaining=0,
-                reset_at=datetime.now(timezone.utc),
+                reset_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 retry_after=self._window_seconds[window]
             )
         
@@ -143,7 +143,7 @@ class RateLimiter:
                 allowed=False,
                 limit=limit,
                 remaining=0,
-                reset_at=datetime.now(timezone.utc),
+                reset_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 retry_after=self._window_seconds[window]
             )
     

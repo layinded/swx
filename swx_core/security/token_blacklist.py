@@ -133,7 +133,7 @@ class RedisTokenBlacklist(TokenBlacklist):
         
         # Calculate TTL
         if exp:
-            ttl = max(1, int(exp - datetime.now(timezone.utc).timestamp()))
+            ttl = max(1, int(exp - datetime.now(timezone.utc).replace(tzinfo=None).timestamp()))
         else:
             ttl = 2592000  # 30 days default
         
@@ -211,7 +211,7 @@ class RedisTokenBlacklist(TokenBlacklist):
             ttl_seconds = 2592000  # 30 days
         
         key = f"{self.user_prefix}{user_id}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         
         await self.redis.setex(key, ttl_seconds, now)
     
@@ -316,7 +316,7 @@ class InMemoryTokenBlacklist(TokenBlacklist):
         ttl_seconds: int = None
     ) -> None:
         """Revoke all tokens for a user."""
-        self._user_revoked[user_id] = datetime.now(timezone.utc)
+        self._user_revoked[user_id] = datetime.now(timezone.utc).replace(tzinfo=None)
     
     async def is_user_revoked(self, user_id: str, token_iat: datetime) -> bool:
         """Check if user's tokens are revoked."""

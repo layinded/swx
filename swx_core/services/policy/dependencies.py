@@ -175,7 +175,7 @@ def require_policy(
         
         # Build context
         context = PolicyContext(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
             ip_address=request.client.host if request and request.client else None,
             user_agent=request.headers.get("user-agent") if request else None,
             environment=environment,

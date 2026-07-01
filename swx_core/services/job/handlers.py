@@ -111,7 +111,7 @@ async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]
                 if subscription.status != new_status:
                     subscription.status = new_status
                     if new_status == SubscriptionStatus.CANCELED:
-                        subscription.ended_at = datetime.now(timezone.utc)
+                        subscription.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
                     session.add(subscription)
                     await session.commit()
                     logger.info(f"Updated subscription {subscription.id} status to {new_status}")
@@ -128,7 +128,7 @@ async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]
             
             if subscription:
                 subscription.status = SubscriptionStatus.CANCELED
-                subscription.ended_at = datetime.now(timezone.utc)
+                subscription.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 session.add(subscription)
                 await session.commit()
                 logger.info(f"Cancelled subscription {subscription.id}")
@@ -242,12 +242,12 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
     if date_from_str:
         date_from = datetime.fromisoformat(date_from_str.replace("Z", "+00:00"))
     else:
-        date_from = datetime.now(timezone.utc) - timedelta(days=7)  # Default: last 7 days
+        date_from = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)  # Default: last 7 days
     
     if date_to_str:
         date_to = datetime.fromisoformat(date_to_str.replace("Z", "+00:00"))
     else:
-        date_to = datetime.now(timezone.utc)
+        date_to = datetime.now(timezone.utc).replace(tzinfo=None)
     
     logger.info(f"Aggregating audit logs from {date_from} to {date_to}")
     

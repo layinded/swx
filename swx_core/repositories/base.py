@@ -336,9 +336,9 @@ class BaseRepository(Generic[ModelType]):
         async with self._session_context() as session:
             # Set timestamps if model has them
             if hasattr(self.model, "created_at") and "created_at" not in data:
-                data["created_at"] = datetime.now(timezone.utc)
+                data["created_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
-                data["updated_at"] = datetime.now(timezone.utc)
+                data["updated_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
 
             instance = self.model(**data)
             session.add(instance)
@@ -358,7 +358,7 @@ class BaseRepository(Generic[ModelType]):
         """
         async with self._session_context() as session:
             instances = []
-            now = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
 
             for data in data_list:
                 # Set timestamps if model has them
@@ -400,7 +400,7 @@ class BaseRepository(Generic[ModelType]):
 
             # Set updated_at timestamp
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
-                data["updated_at"] = datetime.now(timezone.utc)
+                data["updated_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
 
             # Update fields
             for field, value in data.items():
@@ -432,7 +432,7 @@ class BaseRepository(Generic[ModelType]):
             result = await session.execute(query)
             instances = list(result.scalars().all())
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
                 data["updated_at"] = now
 

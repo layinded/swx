@@ -39,7 +39,7 @@ class Event:
 
     name: str
     payload: Any = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     stopped: bool = False
     _metadata: Dict[str, Any] = field(default_factory=dict)
     

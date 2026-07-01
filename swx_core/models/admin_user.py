@@ -54,7 +54,7 @@ class AdminUser(AdminUserBase, table=True):
     hashed_password: Optional[str] = Field(default=None, max_length=255)
     auth_provider: str = Field(default="local", max_length=50)
     provider_id: Optional[str] = Field(default=None, unique=True, max_length=255)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class AdminUserCreate(SQLModel):

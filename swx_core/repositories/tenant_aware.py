@@ -179,7 +179,7 @@ class TenantAwareRepository(BaseRepository[ModelType]):
                 return None
             
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
-                data["updated_at"] = datetime.now(timezone.utc)
+                data["updated_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
             
             for field, value in data.items():
                 if hasattr(instance, field):

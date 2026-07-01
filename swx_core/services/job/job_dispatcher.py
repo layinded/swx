@@ -133,7 +133,7 @@ async def enqueue_job_delayed(
     Returns:
         Created Job instance
     """
-    scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+    scheduled_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=delay_seconds)
     return await enqueue_job(
         job_type=job_type,
         payload=payload,
@@ -168,7 +168,7 @@ async def cancel_job(job_id: uuid.UUID, session: Optional[AsyncSession] = None) 
         # Only cancel if not already running/completed
         if job.status in (JobStatus.PENDING, JobStatus.QUEUED):
             job.status = JobStatus.CANCELLED
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
             session.add(job)
             
             # Audit log

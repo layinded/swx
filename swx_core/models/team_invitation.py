@@ -64,7 +64,7 @@ class TeamInvitationBase(Base):
     )
     message: Optional[str] = Field(default=None, max_length=500)
     expires_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=7)
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7)
     )
 
 
@@ -92,10 +92,10 @@ class TeamInvitation(TeamInvitationBase, table=True):
     token: str = Field(unique=True, index=True, max_length=64)
     accepted_at: Optional[datetime] = Field(default=None)
     rejected_at: Optional[datetime] = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc)}
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc).replace(tzinfo=None)}
     )
 
 

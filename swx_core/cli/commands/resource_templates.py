@@ -515,8 +515,8 @@ class {class_name}({class_name}Base, table=True):
     __table_args__ = {{"extend_existing": True}}
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     is_deleted: bool = Field(default=False, index=True)
 {columns_placeholder}
 

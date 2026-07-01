@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.32] - 2026-07-01
+
+### Fixed - CRITICAL: Timezone-aware datetime database incompatibility
+
+Massive fix for datetime timezone issues causing asyncpg `DataError: can't subtract offset-naive and offset-aware datetimes`.
+
+**Root Cause**: PostgreSQL `TIMESTAMP WITHOUT TIME ZONE` columns received timezone-aware `datetime.now(timezone.utc)` objects, causing asyncpg to fail when comparing/inserting datetimes.
+
+**Solution**: All datetime objects passed to database columns now use `.replace(tzinfo=None)` to create naive UTC datetimes.
+
+### Changed Files (60+ locations):
+
+**Models (default_factory fixes):**
+- `swx_core/utils/mixins.py` - TimestampMixin.created_at, updated_at, SoftDeleteMixin.soft_delete()
+- `swx_core/models/billing.py` - All 11 timestamp fields (BillingAccount, Feature, Plan, PlanEntitlement, Subscription, UsageRecord)
+- `swx_core/models/team_member.py` - created_at, updated_at
+- `swx_core/models/team_role.py` - created_at, updated_at
+- `swx_core/models/team_invitation.py` - created_at, updated_at, expires_at
+- `swx_core/models/team.py` - created_at, updated_at
+- `swx_core/models/admin_user.py` - created_at
+- `swx_core/models/policy.py` - created_at, updated_at
+- `swx_core/models/refresh_token.py` - created_at (already fixed in 2.7.31)
+- `swx_core/utils/response.py` - 7 response model timestamp fields
+- `swx_core/events/typed_event.py` - timestamp field
+- `swx_core/events/dispatcher.py` - Event.timestamp field
+- `swx_core/contracts/events.py` - EventInterface.timestamp field
+- `swx_core/utils/health.py` - HealthCheckResult.timestamp field + business logic
+- `swx_core/services/channels/models.py` - Alert.timestamp field
+- `swx_core/cli/commands/resource_templates.py` - Generated model timestamps
+
+**Services (business logic fixes):**
+- `swx_core/services/job/job_runner.py` - completed_at, scheduled_at assignments (already had _utc_now_naive() fix)
+- `swx_core/services/billing/subscription_service.py` - 5 timestamp assignments
+- `swx_core/services/team_invitation_service.py` - accepted_at, rejected_at, created_at assignments
+- `swx_core/services/rate_limit/rate_limiter.py` - reset_at assignments
+- `swx_core/services/job/handlers.py` - subscription.ended_at assignments
+- `swx_core/services/settings_service.py` - cache timestamp assignments
+- `swx_core/services/job/job_dispatcher.py` - completed_at assignment
+- `swx_core/services/settings_crud_service.py` - updated_at assignment
+- `swx_core/services/policy/dependencies.py` - event timestamp assignment
+
+**Repositories:**
+- `swx_core/repositories/base.py` - 5 created_at/updated_at assignments
+- `swx_core/repositories/tenant_aware.py` - updated_at assignment
+
+**Security:**
+- `swx_core/security/token_blacklist.py` - internal dict timestamp
+
+**FastPII App (user application):**
+- `apps/backend/api/swx_app/models/detection.py` - created_at, updated_at
+- `apps/backend/api/swx_app/models/api_key.py` - created_at, updated_at
+
+### Impact
+
+This fix resolves ALL datetime insertion failures in applications using swx-core with PostgreSQL `TIMESTAMP WITHOUT TIME ZONE` columns (the default).
+
 ## [2.7.31] - 2026-07-01
 
 ### Fixed

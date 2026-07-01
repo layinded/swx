@@ -61,7 +61,7 @@ class TypedEvent:
     event_type: ClassVar[str] = "typed.event"
     name: str
     payload: Dict[str, Any]
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     stopped: bool = False
     
     def __hash__(self) -> int:

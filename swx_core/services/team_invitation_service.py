@@ -81,7 +81,7 @@ class TeamInvitationService:
             message=message,
             token=secrets.token_urlsafe(32),
             status=InvitationStatus.PENDING,
-            expires_at=datetime.now(timezone.utc) + timedelta(days=self.INVITATION_EXPIRY_DAYS),
+            expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=self.INVITATION_EXPIRY_DAYS),
         )
         
         self.session.add(invitation)
@@ -110,7 +110,7 @@ class TeamInvitationService:
         if invitation.status != InvitationStatus.PENDING:
             raise HTTPException(400, f"Invitation already {invitation.status.value}")
         
-        if invitation.expires_at < datetime.now(timezone.utc):
+        if invitation.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
             invitation.status = InvitationStatus.EXPIRED
             await self.session.commit()
             raise HTTPException(400, "Invitation has expired")
@@ -125,7 +125,7 @@ class TeamInvitationService:
         existing_member = await self._get_team_member(invitation.team_id, user_id)
         if existing_member:
             invitation.status = InvitationStatus.ACCEPTED
-            invitation.accepted_at = datetime.now(timezone.utc)
+            invitation.accepted_at = datetime.now(timezone.utc).replace(tzinfo=None)
             await self.session.commit()
             return await self._get_team(invitation.team_id)
         
@@ -137,7 +137,7 @@ class TeamInvitationService:
         self.session.add(member)
         
         invitation.status = InvitationStatus.ACCEPTED
-        invitation.accepted_at = datetime.now(timezone.utc)
+        invitation.accepted_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await self.session.commit()
         
         logger.info(f"User {user_id} accepted invitation to team {invitation.team_id}")
@@ -159,7 +159,7 @@ class TeamInvitationService:
             raise HTTPException(403, "This invitation is for a different email address")
         
         invitation.status = InvitationStatus.REJECTED
-        invitation.rejected_at = datetime.now(timezone.utc)
+        invitation.rejected_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await self.session.commit()
         
         logger.info(f"Invitation {invitation.id} rejected")

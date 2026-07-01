@@ -24,7 +24,7 @@ class HealthStatus(BaseModel):
 class HealthCheckResult(BaseModel):
     """Overall health check result."""
     status: str = Field(description="healthy, unhealthy, or degraded")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     version: str
     uptime_seconds: float = Field(description="Application uptime in seconds")
     services: Dict[str, HealthStatus] = Field(default_factory=dict)
@@ -57,7 +57,7 @@ class HealthChecker:
             version: Application version
         """
         self.version = version
-        self._start_time = datetime.now(timezone.utc)
+        self._start_time = datetime.now(timezone.utc).replace(tzinfo=None)
         self._checks: Dict[str, Callable] = {}
         self._required_services: List[str] = []
     
@@ -99,9 +99,9 @@ class HealthChecker:
             )
         
         try:
-            start_time = datetime.now(timezone.utc)
+            start_time = datetime.now(timezone.utc).replace(tzinfo=None)
             result = await check_func()
-            end_time = datetime.now(timezone.utc)
+            end_time = datetime.now(timezone.utc).replace(tzinfo=None)
             
             if result.latency_ms is None:
                 result.latency_ms = (end_time - start_time).total_seconds() * 1000
@@ -144,7 +144,7 @@ class HealthChecker:
         return HealthCheckResult(
             status=overall_status,
             version=self.version,
-            uptime_seconds=(datetime.now(timezone.utc) - self._start_time).total_seconds(),
+            uptime_seconds=(datetime.now(timezone.utc).replace(tzinfo=None) - self._start_time).total_seconds(),
             services=results,
         )
     
@@ -196,11 +196,11 @@ async def check_redis(redis_url: str = "redis://localhost:6379") -> HealthStatus
         import redis.asyncio as redis
         
         client = redis.from_url(redis_url)
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(timezone.utc).replace(tzinfo=None)
         
         await client.ping()
         
-        latency = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+        latency = (datetime.now(timezone.utc).replace(tzinfo=None) - start_time).total_seconds() * 1000
         await client.close()
         
         return HealthStatus(
@@ -284,12 +284,12 @@ async def check_external_service(
     try:
         import httpx
         
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(timezone.utc).replace(tzinfo=None)
         
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url)
         
-        latency = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+        latency = (datetime.now(timezone.utc).replace(tzinfo=None) - start_time).total_seconds() * 1000
         
         if response.status_code < 400:
             return HealthStatus(
