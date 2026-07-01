@@ -22,6 +22,7 @@ Methods:
 from typing import Any
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
+from starlette.responses import Response
 
 from swx_core.controllers.auth_controller import (
     login_controller,
@@ -38,8 +39,8 @@ from swx_core.models.user import UserCreate, UserNewPassword, UserPublic
 from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
 from swx_core.services.alert_engine import alert_engine
 from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertActorType
+from swx_core.config.settings import settings
 
-# Initialize API router with a prefix for authentication-related endpoints
 router = APIRouter(prefix="/auth")
 
 
@@ -268,6 +269,54 @@ async def reset_password(session: SessionDep, body: UserNewPassword, request: Re
     except Exception as e:
         await audit.log_event(
             action="user.password.reset",
+            actor_type=ActorType.USER,
+            outcome=AuditOutcome.FAILURE,
+            context={"error": str(e)},
+            request=request
+        )
+        raise e
+
+
+@router.post("/cookie/logout")
+async def cookie_logout(request: Request, session: SessionDep):
+    """
+    Clears HTTP-only auth cookies for cookie-based authentication.
+
+    Use this endpoint when using the BFF (Backend-for-Frontend) pattern
+    where tokens are stored in HTTP-only cookies instead of localStorage.
+
+    Returns:
+        dict: A message indicating successful logout.
+    """
+    audit = get_audit_logger(session)
+    try:
+        response = Response(
+            content='{"message": "Logged out successfully"}',
+            media_type="application/json",
+            status_code=200,
+        )
+        
+        response.delete_cookie(
+            key=settings.COOKIE_ACCESS_TOKEN_NAME,
+            path="/",
+            domain=settings.COOKIE_DOMAIN,
+        )
+        response.delete_cookie(
+            key=settings.COOKIE_REFRESH_TOKEN_NAME,
+            path="/api",
+            domain=settings.COOKIE_DOMAIN,
+        )
+        
+        await audit.log_event(
+            action="user.cookie.logout",
+            actor_type=ActorType.USER,
+            outcome=AuditOutcome.SUCCESS,
+            request=request
+        )
+        return response
+    except Exception as e:
+        await audit.log_event(
+            action="user.cookie.logout",
             actor_type=ActorType.USER,
             outcome=AuditOutcome.FAILURE,
             context={"error": str(e)},
