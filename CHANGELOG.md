@@ -2,6 +2,85 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.34] - 2026-07-01
+
+### Added - HTTP-only Cookie Authentication (BFF Pattern)
+
+Extended cookie-based authentication support for all auth flows, enabling XSS-resistant browser authentication.
+
+#### Cookie Authentication for All Flows
+
+- **Dual authentication support** - Authorization header AND HTTP-only cookies work simultaneously
+- **Priority-based extraction** - Header first, cookie fallback for maximum compatibility
+- **New authentication scheme** - `BearerOrCookieAuth` class extracts JWT from both sources
+- **Backward compatible** - Existing Authorization header auth continues to work unchanged
+
+#### New Endpoints
+
+- `GET /api/auth/me` - Check current authentication state (works with cookies)
+- `POST /api/auth/cookie/login` - Email/password login with HTTP-only cookies
+- `POST /api/auth/cookie/refresh` - Token refresh using HTTP-only cookie
+- `POST /api/auth/cookie/logout` - Clear auth cookies (added in v2.7.33, now documented)
+
+#### Security Benefits
+
+| Before | After |
+|--------|-------|
+| localStorage tokens (XSS vulnerable) | HTTP-only cookies (XSS resistant) |
+| Manual token attachment | Automatic cookie inclusion |
+| Client-side token management | Server-side cookie management |
+| No CSRF protection | SameSite attribute protection |
+
+#### Configuration
+
+Same cookie settings introduced in v2.7.33 OAuth BFF pattern:
+- `COOKIE_ACCESS_TOKEN_NAME` (default: `swx_access_token`)
+- `COOKIE_REFRESH_TOKEN_NAME` (default: `swx_refresh_token`)
+- `COOKIE_SECURE` (auto-adjusts for local dev)
+- `COOKIE_SAMESITE` (default: `lax`)
+- `COOKIE_DOMAIN` (optional)
+
+#### Frontend Integration
+
+```javascript
+// Login with cookies
+await fetch('/api/auth/cookie/login', {
+  method: 'POST',
+  body: `username=${email}&password=${password}`,
+  credentials: 'include'
+})
+
+// Check auth state
+const user = await fetch('/api/auth/me', {
+  credentials: 'include'
+}).then(r => r.json())
+
+// All requests include cookies automatically
+await fetch('/api/user/profile', {
+  credentials: 'include'
+})
+```
+
+#### Changes
+
+- **New file**: `swx_core/auth/core/bearer_or_cookie.py` - Authentication scheme
+- **Updated**: `swx_core/auth/user/dependencies.py` - Uses `BearerOrCookieAuth`
+- **Updated**: `swx_core/auth/admin/dependencies.py` - Uses `BearerOrCookieAuth`
+- **Updated**: `swx_core/routes/access/auth_route.py` - Added cookie endpoints
+
+#### Documentation
+
+- **Updated**: `docs/04-core-concepts/AUTHENTICATION.md` - Added comprehensive cookie authentication section with:
+  - Cookie-based authentication overview
+  - Frontend integration examples
+  - Migration guide from header to cookie auth
+  - Security considerations
+  - Endpoint reference
+
+### Migration from v2.7.33
+
+No migration required. The new cookie authentication is additive and fully backward compatible with existing Authorization header authentication.
+
 ## [2.7.33] - 2026-07-01
 
 ### Added - OAuth 2.0 Security Overhaul (BFF Pattern + PKCE)
