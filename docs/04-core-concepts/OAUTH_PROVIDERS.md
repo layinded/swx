@@ -1,13 +1,22 @@
 # OAuth Provider Extensibility
 
-**Version:** 2.7.27
-**Last Updated:** 2026-06-30
+**Version:** 2.7.33
+**Last Updated:** 2026-07-01
 
 ---
 
 ## Overview
 
-swx-core supports extensible OAuth authentication. Add custom providers (GitHub, LinkedIn, Apple, etc.) via configuration without modifying core code.
+swx-core supports extensible OAuth authentication with **PKCE** and **Backend-for-Frontend (BFF) pattern** following RFC 9700 security best practices.
+
+### Security Features
+
+| Feature | Standard | Implementation |
+|---------|----------|----------------|
+| **PKCE** | RFC 7636 | Mandatory, S256 method |
+| **CSRF Protection** | OAuth 2.0 | State parameter validation |
+| **Token Storage** | OWASP | HTTP-only cookies |
+| **Token Delivery** | BFF Pattern | Server-side only |
 
 ---
 

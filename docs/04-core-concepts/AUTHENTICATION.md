@@ -391,59 +391,147 @@ await revoke_all_tokens(session, user_email)
 
 ### Social Login Support
 
-SwX-API supports OAuth providers:
+SwX-API supports OAuth providers with **PKCE** and **Backend-for-Frontend (BFF) pattern**:
 - Google
 - Facebook
-- GitHub (configurable)
+- GitHub, LinkedIn, Apple, etc. (configurable)
 
-### OAuth Flow
+### OAuth 2.0 Security
+
+SwX-API implements **OAuth 2.0 Authorization Code Flow with PKCE** following RFC 9700 best practices:
+
+| Feature | Implementation |
+|---------|----------------|
+| **PKCE** | Mandatory for all providers (S256 method) |
+| **CSRF Protection** | State parameter validation |
+| **Token Storage** | HTTP-only cookies (XSS resistant) |
+| **Token Delivery** | Server-side, never exposed to client |
+
+### OAuth Flow (BFF Pattern)
 
 ```
-1. Client → GET /api/oauth/{provider}/authorize
+1. Frontend → GET /api/oauth/{provider}
+   - Backend generates PKCE challenge
+   - Stores verifier in session
    - Redirects to OAuth provider
 
 2. User authenticates with provider
-   - Provider redirects back with code
+   - Provider redirects back with code + state
 
-3. Server exchanges code for token
-   - Validates code
+3. Backend → GET /api/oauth/{provider}/callback?code=...&state=...
+   - Validates state (CSRF protection)
+   - Exchanges code + PKCE verifier for tokens
    - Gets user info from provider
+   - Creates/updates user
 
-4. Server creates/updates user
-   - Creates user if new
-   - Updates auth_provider field
+4. Backend sets HTTP-only cookies and redirects
+   - Sets: swx_access_token (httpOnly, secure)
+   - Sets: swx_refresh_token (httpOnly, secure)
+   - Redirects to: {FRONTEND_HOST}/auth/callback
 
-5. Server generates tokens
-   - Access token
-   - Refresh token
-
-6. Server returns tokens
-   {
-     "access_token": "eyJ...",
-     "refresh_token": "eyJ...",
-     "token_type": "bearer"
-   }
+5. Frontend receives redirect
+   - Cookies already set (no token handling needed)
+   - Redirect to dashboard
 ```
 
-**Code Example:**
-```python
-from swx_core.services.auth_service import login_social_user_service
+### HTTP-Only Cookie Authentication
 
-@router.get("/oauth/{provider}/callback")
-async def oauth_callback(
-    provider: str,
-    code: str,
-    session: SessionDep,
-):
-    # Exchange code for user info
-    user_info = await exchange_oauth_code(provider, code)
+**Why cookies over localStorage?**
+
+| Storage | XSS Resistant | CSRF Resistant | Auto-Attach |
+|---------|---------------|----------------|-------------|
+| localStorage | ❌ No | ✅ Yes | ❌ Manual |
+| HTTP-only Cookie | ✅ Yes | ✅ With SameSite | ✅ Automatic |
+
+**Cookie Configuration:**
+
+```bash
+# .env
+COOKIE_ACCESS_TOKEN_NAME=swx_access_token
+COOKIE_REFRESH_TOKEN_NAME=swx_refresh_token
+COOKIE_SECURE=true                 # False for local dev
+COOKIE_SAMESITE=lax                # 'strict' or 'lax'
+COOKIE_DOMAIN=                     # Optional, for subdomain sharing
+```
+
+### Frontend Integration
+
+#### API Requests with Cookies
+
+```javascript
+// All API requests automatically include cookies
+fetch('/api/user/profile', {
+  credentials: 'include'  // Required for cookies
+})
+
+// Or with axios
+axios.get('/api/user/profile', {
+  withCredentials: true
+})
+```
+
+#### OAuth Callback Page
+
+```javascript
+// /auth/callback page - no token parsing needed!
+async function handleOAuthCallback() {
+  // Cookies already set by backend
+  // Just redirect to dashboard
+  window.location.href = '/dashboard'
+}
+
+// Handle errors
+const urlParams = new URLSearchParams(window.location.search)
+const error = urlParams.get('error')
+if (error) {
+  // Show error: csrf_mismatch, token_fetch_failed, missing_email
+  showError(error)
+}
+```
+
+#### Logout with Cookies
+
+```javascript
+async function logout() {
+  await fetch('/api/auth/cookie/logout', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  // Cookies cleared by backend
+  window.location.href = '/login'
+}
+```
+
+### Events
+
+OAuth logins emit `user.login.social` event:
+
+```python
+from swx_core.events import event_bus, Event
+
+@event_bus.on("user.login.social")
+async def on_social_login(event: Event):
+    email = event.payload["email"]
+    provider = event.payload["provider"]  # google, facebook, etc.
+    is_new_user = event.payload["is_new_user"]
     
-    # Create/update user
-    user = await get_or_create_social_user(session, user_info)
-    
-    # Generate tokens
-    token = await login_social_user_service(session, user.email)
-    return token
+    # Send welcome email for new users
+    if is_new_user:
+        await send_welcome_email(email, provider)
+```
+
+**Event Payload:**
+```json
+{
+  "email": "user@example.com",
+  "user_id": "uuid-string",
+  "provider": "google",
+  "is_new_user": false,
+  "context": {
+    "provider": "google",
+    "is_new_user": false
+  }
+}
 ```
 
 ---
@@ -510,12 +598,14 @@ except InvalidTokenError:
 ### ✅ DO
 
 - Use HTTPS in production
-- Store tokens securely (httpOnly cookies, secure storage)
+- Store tokens in HTTP-only cookies (XSS resistant)
+- Use `credentials: 'include'` for cookie-based auth
 - Validate token audience
 - Check token expiration
 - Revoke tokens on password change
 - Use separate secrets for each token type
 - Rotate secrets periodically
+- Configure `COOKIE_SAMESITE=lax` or `strict`
 
 ### ❌ DON'T
 
@@ -525,6 +615,7 @@ except InvalidTokenError:
 - Ignore token expiration
 - Skip audience validation
 - Log tokens in plain text
+- Disable PKCE for OAuth flows
 
 ---
 

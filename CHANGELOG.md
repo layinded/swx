@@ -2,6 +2,96 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.33] - 2026-07-01
+
+### Added - OAuth 2.0 Security Overhaul (BFF Pattern + PKCE)
+
+Major security upgrade for OAuth authentication following RFC 9700 best practices.
+
+#### PKCE Support (RFC 7636)
+
+- **All OAuth flows now use PKCE** - Mandatory per RFC 9700 for all clients
+- **S256 challenge method** - SHA-256 based code challenge (never 'plain')
+- **Session-stored verifier** - PKCE verifier stored in server-side session
+- **Applies to**: Google, Facebook, and all custom OAuth providers
+
+#### Backend-for-Frontend (BFF) Pattern
+
+- **HTTP-only cookies for tokens** - XSS-resistant token storage
+- **No tokens in response body** - Callbacks redirect to frontend with cookies
+- **Automatic token rotation** - Fresh tokens set on each OAuth login
+- **Cookie configuration settings**:
+  - `COOKIE_ACCESS_TOKEN_NAME` (default: `swx_access_token`)
+  - `COOKIE_REFRESH_TOKEN_NAME` (default: `swx_refresh_token`)
+  - `COOKIE_SECURE` (auto-adjusts for local dev)
+  - `COOKIE_SAMESITE` (default: `lax`)
+  - `COOKIE_DOMAIN` (optional)
+
+#### New Endpoints
+
+- `POST /api/auth/cookie/logout` - Clears HTTP-only auth cookies
+
+#### Events
+
+- **`user.login.social` event** - Emitted on social login with payload:
+  ```json
+  {
+    "email": "user@example.com",
+    "user_id": "uuid",
+    "provider": "google",
+    "is_new_user": false
+  }
+  ```
+
+### Changed
+
+- **OAuth callbacks now redirect** - Instead of returning JSON tokens, callbacks redirect to `{FRONTEND_HOST}/auth/callback`
+- **Error handling via redirect** - OAuth errors redirect with `?error=...` parameter
+- **Refactored oauth_route.py** - Extracted common logic into helper functions:
+  - `generate_pkce_verifier()` / `generate_pkce_challenge()`
+  - `validate_oauth_state()` - CSRF protection
+  - `store_pkce_session()` / `clear_oauth_session()`
+  - `set_auth_cookies()` - HTTP-only cookie management
+  - `complete_oauth_login()` - Shared login completion logic
+
+### Security Improvements
+
+| Before | After |
+|--------|-------|
+| Tokens in JSON response | Tokens in HTTP-only cookies |
+| No PKCE | PKCE mandatory (S256) |
+| XSS vulnerable (localStorage) | XSS resistant (httpOnly) |
+| Manual token management | Automatic via cookies |
+
+### Migration Guide
+
+#### Frontend Changes Required
+
+1. **Remove localStorage token management** - Cookies are automatic
+2. **Add `credentials: 'include'`** to all API requests:
+   ```javascript
+   fetch('/api/user/profile', {
+     credentials: 'include'  // Send cookies automatically
+   })
+   ```
+3. **Update OAuth callback handling**:
+   - Old: Parse tokens from URL or response body
+   - New: Just redirect to dashboard, cookies already set
+4. **Use `/api/auth/cookie/logout`** for logout (clears cookies)
+
+#### Environment Variables
+
+```bash
+FRONTEND_HOST=http://localhost:3003  # Required for redirects
+COOKIE_SECURE=true                    # False for local dev
+COOKIE_SAMESITE=lax                   # or 'strict' for stricter CSRF
+```
+
+### Documentation
+
+- Updated `docs/04-core-concepts/AUTHENTICATION.md` - BFF pattern docs
+- Updated `docs/04-core-concepts/OAUTH_PROVIDERS.md` - PKCE and redirect flow
+
 ## [2.7.32] - 2026-07-01
 
 ### Fixed - CRITICAL: Timezone-aware datetime database incompatibility
