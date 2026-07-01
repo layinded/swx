@@ -2,7 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.7.27] - 2026-06-30
+## [2.7.29] - 2026-07-01
+
+### Fixed
+- **Job runner datetime mismatch** — `_utc_now_naive()` was returning timezone-aware datetime
+  instead of naive, causing asyncpg errors when comparing with `TIMESTAMP WITHOUT TIME ZONE`
+  columns. Now correctly returns naive datetime with `.replace(tzinfo=None)`.
+
+## [2.7.28] - 2026-06-30
 
 ### Fixed - Bug #7/29: Users Forced to Belong to a Team
 
@@ -50,15 +57,12 @@ LINKEDIN_USER_INFO_URL=https://api.linkedin.com/v2/me
 LINKEDIN_SCOPE=r_emailaddress r_liteprofile
 ```
 
-### How It Works
+### Documentation
 
-1. User registers → `assign_default_role()` hook assigns role
-2. `create_billing_account()` hook creates USER billing account
-3. `create_personal_team()` hook creates team, sets `tenant_id`, adds user as owner
+- New `docs/04-core-concepts/OAUTH_PROVIDERS.md` — OAuth extensibility guide
+- Updated `docs/04-core-concepts/REGISTRATION_HOOKS.md` — Added personal team hook docs
 
-This ensures all users have a valid `tenant_id` for multi-tenant operations.
-
-## [2.7.26] - 2026-06-30
+## [2.7.27] - 2026-06-30
 
 ### Added - Bug #25: Separate Team Roles from System RBAC
 
