@@ -64,7 +64,11 @@ class APIKeyGuard(BaseGuard):
             if isinstance(expires_at, str):
                 expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
             
-            if datetime.now(timezone.utc) > expires_at:
+            now = datetime.now(timezone.utc)
+            if expires_at.tzinfo is None:
+                now = now.replace(tzinfo=None)
+            
+            if now > expires_at:
                 logger.info(f"Expired API key used: {key_info.get('key_id')}")
                 return None
         
