@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.7.33  
+**Version:** 2.7.34  
 **Last Updated:** 2026-07-01
 
 ---
@@ -29,6 +29,56 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.7.34 (2026-07-01)
+
+**HTTP-only Cookie Authentication - BFF Pattern Extension**
+
+Extended cookie-based authentication for all auth flows.
+
+**Cookie Authentication for All Flows**
+- Dual authentication support - Authorization header AND HTTP-only cookies
+- Priority-based extraction - Header first, cookie fallback
+- New authentication scheme - `BearerOrCookieAuth` class
+- Backward compatible - Existing Authorization header auth unchanged
+
+**New Endpoints**
+- `GET /api/auth/me` - Check authentication state
+- `POST /api/auth/cookie/login` - Email/password login with cookies
+- `POST /api/auth/cookie/refresh` - Token refresh via cookies
+- `POST /api/auth/cookie/logout` - Clear auth cookies (from v2.7.33)
+
+**Security Benefits**
+- XSS-resistant HTTP-only cookies
+- SameSite CSRF protection
+- Automatic cookie management
+- No client-side token handling
+
+**Frontend Integration**
+```javascript
+// Login with cookies
+await fetch('/api/auth/cookie/login', {
+  method: 'POST',
+  body: `username=${email}&password=${password}`,
+  credentials: 'include'
+})
+
+// Check auth state
+const user = await fetch('/api/auth/me', {
+  credentials: 'include'
+}).then(r => r.json())
+```
+
+**Changes**
+- New: `swx_core/auth/core/bearer_or_cookie.py`
+- Updated: `swx_core/auth/user/dependencies.py`
+- Updated: `swx_core/auth/admin/dependencies.py`
+- Updated: `swx_core/routes/access/auth_route.py`
+
+**Documentation**
+- Comprehensive cookie authentication guide in AUTHENTICATION.md
+- Frontend integration examples
+- Migration guide from header to cookie auth
 
 ### Version 2.7.33 (2026-07-01)
 
