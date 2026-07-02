@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.7.34  
-**Last Updated:** 2026-07-01
+**Version:** 2.7.35  
+**Last Updated:** 2026-07-02
 
 ---
 
@@ -29,6 +29,38 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.7.35 (2026-07-02)
+
+**CRITICAL FIX: OAuth Registration Event Emission**
+
+Fixed critical bug where social auth users (Google, Facebook, custom OAuth) were missing billing accounts, user profiles, PII policies, onboarding steps, and welcome notifications.
+
+**Root Cause:**
+- OAuth registration bypassed `register_user_service()`
+- `user.created` event never emitted for social auth users
+- All event listeners skipped (billing, profile, notifications, etc.)
+
+**Fix:**
+- Extended `register_user_service()` with `auth_provider` and `provider_id` params
+- OAuth routes now use `register_user_service()` for all registrations
+- Ensures `user.created` event fires for both traditional and social auth
+
+**Changes:**
+- `swx_core/services/auth_service.py`: Added social auth parameters
+- `swx_core/routes/access/oauth_route.py`: Use service layer for registration
+- `swx_core/repositories/user_repository.py`: Type annotation fixes
+- `docs/04-core-concepts/OAUTH_PROVIDERS.md`: Event emission documentation
+
+**Impact:**
+- Social auth users now receive complete account setup
+- Billing accounts created
+- User profiles initialized
+- PII policies set up
+- Onboarding steps configured
+- Welcome notifications sent
+
+**Breaking Changes:** None (backward compatible)
 
 ### Version 2.7.34 (2026-07-01)
 

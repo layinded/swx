@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.35] - 2026-07-02
+
+### Fixed - CRITICAL: OAuth registration skips user.created event
+
+**Severity:** High  
+**Impact:** Social auth users received no billing, profile, PII policy, onboarding, notifications, or email verification.
+
+**Root Cause:**  
+OAuth registration called `create_social_user()` at repository layer directly, bypassing `register_user_service()` — the only place where `user.created` event is emitted.
+
+**What Was Skipped:**
+- NotificationListener (welcome notification)
+- UserCreatedBillingListener (billing setup, profile, PII policy, onboarding)
+- UserCreatedAuditListener (audit log)
+- All custom `user.created` event listeners
+
+**Fix:**
+Extended `register_user_service()` to support social auth parameters:
+- Added `auth_provider` parameter (defaults to `"local"`)
+- Added `provider_id` parameter for provider-specific user IDs
+- Updated OAuth routes (Google, Facebook, custom) to use `register_user_service()`
+- Ensures all lifecycle hooks and events fire for social auth users
+
+**Changes:**
+- `swx_core/services/auth_service.py`: Added `auth_provider` and `provider_id` params
+- `swx_core/routes/access/oauth_route.py`: Replaced `create_social_user()` with `register_user_service()`
+- `swx_core/repositories/user_repository.py`: Added type annotations
+- `docs/04-core-concepts/OAUTH_PROVIDERS.md`: Documented event emission
+
+**Breaking Changes:** None  
+- Parameters have sensible defaults
+- Existing email/password registration unchanged
+- `create_social_user()` kept for backward compatibility
+
+**Event Flow:**
+```python
+# Before: No events
+OAuth → create_social_user() → database INSERT
+
+# After: Full lifecycle
+OAuth → register_user_service()
+       → pre_register_hook
+       → create_user (with auth_provider/provider_id)
+       → post_register_hook
+       → emit user.created
+       → all listeners fire
+```
+
+**Migration:** None required. All OAuth registrations now emit `user.created` event.
+
 ## [2.7.34] - 2026-07-01
 
 ### Added - HTTP-only Cookie Authentication (BFF Pattern)
