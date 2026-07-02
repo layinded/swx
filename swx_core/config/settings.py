@@ -145,15 +145,14 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def all_cors_origins(self) -> List[str]:
-        """
-        Ensures CORS settings return a valid list.
-
-        Returns:
-            list[str]: List of allowed CORS origins.
-        """
-        return list(
-            set(self.BACKEND_CORS_ORIGINS + [self.FRONTEND_HOST, self.BACKEND_HOST])
+        """Ensures CORS settings return a valid list."""
+        origins = (
+            list(self.BACKEND_CORS_ORIGINS)
+            if isinstance(self.BACKEND_CORS_ORIGINS, list)
+            else [self.BACKEND_CORS_ORIGINS]
         )
+        origins.extend([self.FRONTEND_HOST, self.BACKEND_HOST])
+        return list(set(origins))
 
     # Detect Docker Environment
     DOCKERIZED: bool = Field(
@@ -296,7 +295,51 @@ class Settings(BaseSettings):
     )
     COOKIE_DOMAIN: str | None = Field(
         default=None,
-        description="Domain for cookies (None for current domain)"
+        description="Cookie domain for subdomain sharing (e.g., '.example.com')",
+    )
+
+    # Rate Limiting Configuration
+    RATE_LIMIT_ENABLED: bool = Field(
+        default=True,
+        description="Enable rate limiting for authentication endpoints",
+    )
+    RATE_LIMIT_LOGIN_MAX: int = Field(
+        default=5,
+        description="Maximum login attempts per minute per IP",
+    )
+    RATE_LIMIT_REGISTER_MAX: int = Field(
+        default=3,
+        description="Maximum registration attempts per hour per IP",
+    )
+    RATE_LIMIT_PASSWORD_RECOVER_MAX: int = Field(
+        default=3,
+        description="Maximum password recovery attempts per hour per IP",
+    )
+    RATE_LIMIT_COOKIE_AUTH_MAX: int = Field(
+        default=5,
+        description="Maximum cookie auth attempts per minute per IP",
+    )
+
+    # CSRF Protection Configuration
+    CSRF_ENABLED: bool = Field(
+        default=True,
+        description="Enable CSRF protection for cookie-based auth",
+    )
+    CSRF_TOKEN_LENGTH: int = Field(
+        default=32,
+        description="Length of CSRF tokens (bytes)",
+    )
+    CSRF_COOKIE_NAME: str = Field(
+        default="csrf_token",
+        description="Name of CSRF cookie",
+    )
+    CSRF_HEADER_NAME: str = Field(
+        default="X-CSRF-Token",
+        description="Name of CSRF header",
+    )
+    CSRF_COOKIE_MAX_AGE: int = Field(
+        default=86400,  # 24 hours
+        description="CSRF cookie maximum age in seconds",
     )
 
     BILLING_ENABLED: bool = Field(

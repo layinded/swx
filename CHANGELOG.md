@@ -2,6 +2,104 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.37] - 2026-07-02
+
+### Added - Rate Limiting & CSRF Implementation
+
+**Severity:** High (2 security enhancements implemented)
+
+#### Rate Limiting Implementation
+
+**Added:** Built-in rate limiting for all authentication endpoints using `@rate_limit_by_ip` decorator.
+
+**Protected Endpoints:**
+| Endpoint | Rate Limit | Window | Action |
+|----------|-----------|--------|--------|
+| `/auth/login` | 5 requests | 1 minute | `login` |
+| `/auth/register` | 3 requests | 1 hour | `register` |
+| `/auth/password/recover/{email}` | 3 requests | 1 hour | `password_recover` |
+| `/auth/cookie/login` | 5 requests | 1 minute | `cookie_login` |
+| `/auth/cookie/refresh` | 10 requests | 1 minute | `cookie_refresh` |
+
+**Implementation:**
+- Applied `@rate_limit_by_ip` decorator to all auth endpoints
+- Uses existing Redis-backed rate limiting middleware
+- Configuration via settings: `RATE_LIMIT_ENABLED`, `RATE_LIMIT_LOGIN_MAX`, etc.
+- Protects against brute force, account spam, SMTP abuse
+
+**Configuration:**
+```python
+# settings.py
+RATE_LIMIT_ENABLED: bool = True
+RATE_LIMIT_LOGIN_MAX: int = 5           # 5 req/min
+RATE_LIMIT_REGISTER_MAX: int = 3        # 3 req/hour
+RATE_LIMIT_PASSWORD_RECOVER_MAX: int = 3  # 3 req/hour
+RATE_LIMIT_COOKIE_AUTH_MAX: int = 5    # 5 req/min
+```
+
+#### CSRF Protection Implementation
+
+**Added:** CSRF middleware for cookie-based authentication using Double Submit Cookie pattern.
+
+**Implementation:**
+- Created `swx_core/middleware/csrf_middleware.py`
+- Token stored in cookie (httpOnly=False, readable by JS)
+- Token validated against `X-CSRF-Token` header
+- Protects POST, PUT, PATCH, DELETE methods
+- Exempt paths for health checks, metrics, public APIs
+
+**Configuration:**
+```python
+# settings.py
+CSRF_ENABLED: bool = True
+CSRF_TOKEN_LENGTH: int = 32
+CSRF_COOKIE_NAME: str = "csrf_token"
+CSRF_HEADER_NAME: str = "X-CSRF-Token"
+CSRF_COOKIE_MAX_AGE: int = 86400  # 24 hours
+```
+
+**CSRF Token Flow:**
+1. Backend generates CSRF token, sets in cookie
+2. Frontend reads token from cookie
+3. Frontend includes token in `X-CSRF-Token` header
+4. Backend validates token matches
+5. State-changing requests protected
+
+**Middleware Registration (Required):**
+```python
+from swx_core.middleware.csrf_middleware import CSRFMiddleware
+
+app.add_middleware(
+    CSRFMiddleware,
+    cookie_name="csrf_token",
+    header_name="X-CSRF-Token",
+)
+```
+
+### Fixed - Type Safety
+
+**Fixed:** Type annotation issues in settings and CSRF middleware:
+- Fixed `all_cors_origins` type handling for `str | list[str]`
+- Added proper generic type hints for `set[str]` and `list[str]`
+- Improved code clarity
+
+### Files Modified
+
+- `swx_core/routes/access/auth_route.py` - Added rate limit decorators to auth endpoints
+- `swx_core/middleware/csrf_middleware.py` - NEW: CSRF protection middleware
+- `swx_core/config/settings.py` - Added CSRF and rate limit configuration, fixed type handling
+- `docs/05-security/SECURITY_BEST_PRACTICES.md` - Updated with implementation details
+
+### Migration Guide
+
+**No migration required** - all changes are backward compatible.
+
+**Recommended Actions:**
+1. ✅ Upgrade to v2.7.37 for rate limiting and CSRF protection
+2. ✅ Register CSRF middleware in your application (if using cookie-based auth)
+3. ✅ Configure rate limits via environment variables (optional, defaults provided)
+4. ✅ Update frontend to include CSRF token in request headers
+
 ## [2.7.36] - 2026-07-02
 
 ### Fixed - CRITICAL Security Vulnerabilities (FastPII Security Report)

@@ -47,11 +47,13 @@ from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertA
 from swx_core.services.settings_helper import get_token_expiration
 from swx_core.config.settings import settings
 from swx_core.auth.user.dependencies import UserDep
+from swx_core.utils.rate_limit import rate_limit_by_ip
 
 router = APIRouter(prefix="/auth")
 
 
 @router.post("/", response_model=Token)
+@rate_limit_by_ip(max_requests=5, window_seconds=60, action="login")
 async def login(
     session: SessionDep,
     request: Request,
@@ -138,6 +140,7 @@ async def refresh_token(
 
 
 @router.post("/register", response_model=UserPublic, operation_id="register_new_user")
+@rate_limit_by_ip(max_requests=3, window_seconds=3600, action="register")
 async def register(
     session: SessionDep, 
     user_in: UserCreate, 
@@ -215,6 +218,7 @@ async def logout(session: SessionDep, request_data: TokenRefreshRequest, request
 
 
 @router.post("/password/recover/{email}", response_model=Message)
+@rate_limit_by_ip(max_requests=3, window_seconds=3600, action="password_recover")
 async def recover_password(email: str, session: SessionDep, request: Request):
     """
     Sends a password reset email to the user.
@@ -347,6 +351,7 @@ async def get_me(current_user: UserDep):
 
 
 @router.post("/cookie/login")
+@rate_limit_by_ip(max_requests=5, window_seconds=60, action="cookie_login")
 async def cookie_login(
     request: Request,
     session: SessionDep,
@@ -421,6 +426,7 @@ async def cookie_login(
 
 
 @router.post("/cookie/refresh")
+@rate_limit_by_ip(max_requests=10, window_seconds=60, action="cookie_refresh")
 async def cookie_refresh(
     request: Request,
     session: SessionDep,
