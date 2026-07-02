@@ -159,7 +159,7 @@ async def http_exception_handler(request: Request, exc):
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc):
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """
     Handles request validation errors and logs structured error messages.
 
@@ -170,8 +170,16 @@ async def validation_exception_handler(request: Request, exc):
     Returns:
         JSONResponse: A JSON response with validation error details.
     """
-    logger.error(f"VALIDATION ERROR: {exc.errors()} - Path: {request.url.path}")
-    return JSONResponse(status_code=422, content={"error": "Validation Error"})
+    logger.warning(f"Validation error at {request.url.path}: {exc.errors()}")
+    
+    from fastapi.encoders import jsonable_encoder
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": exc.errors(),
+            "body": exc.body if hasattr(exc, 'body') else None,
+        },
+    )
 
 
 @app.exception_handler(Exception)
@@ -186,8 +194,12 @@ async def generic_exception_handler(request: Request, exc: Exception):
     Returns:
         JSONResponse: A generic internal server error response.
     """
-    logger.critical(f"UNHANDLED EXCEPTION: {exc} - Path: {request.url.path}")
-    return JSONResponse(status_code=500, content={"error": "Internal Server Error"})
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.critical(f"Unhandled exception at {request.url.path}: {type(exc).__name__} (request_id={request_id})")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal Server Error", "request_id": request_id},
+    )
 
 
 # Load and apply middleware dynamically

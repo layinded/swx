@@ -1,7 +1,7 @@
 # Security Best Practices
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.7.36  
+**Last Updated:** 2026-07-02
 
 ---
 
@@ -275,6 +275,152 @@ This document provides **comprehensive security best practices** for developing,
    # ✅ Good - Rate limit login
    # Prevents brute force attacks
    ```
+
+### Rate Limiting (REQUIRED)
+
+**⚠️ IMPORTANT**: swx-core does NOT include built-in rate limiting middleware. You MUST implement rate limiting at the infrastructure level or application level.
+
+**Why Rate Limiting is Critical:**
+
+| Endpoint | Risk Without Rate Limiting |
+|----------|----------------------------|
+| `/auth/login` | Brute-force password attacks |
+| `/auth/register` | Account spam, email enumeration |
+| `/auth/password/recover` | SMTP abuse, email enumeration |
+| `/auth/cookie/login` | Brute-force attacks via BFF pattern |
+| `/oauth/{provider}` | OAuth flow abuse |
+| `/admin/auth` | Admin brute-force attacks |
+
+**Implementation Options:**
+
+1. **Infrastructure Level (Recommended)**
+   ```nginx
+   # Nginx rate limiting
+   limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/m;
+   
+   location /api/auth/login {
+       limit_req zone=auth burst=10 nodelay;
+       proxy_pass http://app;
+   }
+   ```
+
+2. **Application Level**
+   ```python
+   from fastapi import FastAPI
+   from slowapi import Limiter
+   from slowapi.util import get_remote_address
+   
+   app = FastAPI()
+   limiter = Limiter(key_func=get_remote_address)
+   
+   @app.post("/auth/login")
+   @limiter.limit("5/minute")
+   async def login(...):
+       ...
+   ```
+
+3. **Redis-Based Rate Limiting**
+   ```python
+   from swx_core.utils.rate_limit import rate_limit_by_ip
+   
+   @app.post("/auth/login")
+   @rate_limit_by_ip(requests=5, window=60)
+   async def login(...):
+       ...
+   ```
+
+**Recommended Rate Limits:**
+
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| `/auth/login` | 5 requests | 1 minute |
+| `/auth/register` | 3 requests | 1 hour |
+| `/auth/password/recover` | 3 requests | 1 hour |
+| `/auth/cookie/login` | 5 requests | 1 minute |
+| `/auth/cookie/refresh` | 10 requests | 1 minute |
+
+### CSRF Protection for Cookie-Based Auth
+
+**⚠️ IMPORTANT**: Cookie-based authentication requires CSRF protection.
+
+**Why CSRF Protection is Critical:**
+
+Cookie-based auth (BFF pattern) uses httpOnly cookies which are automatically sent by the browser. Without CSRF protection:
+
+- Malicious sites can trigger unauthorized requests
+- Login CSRF (force victim to login as attacker's account)
+- Logout CSRF (force victim to logout)
+- State-changing actions without user consent
+
+**SameSite Cookie Attribute (Default Protection):**
+
+swx-core sets `SameSite=Lax` by default (via `COOKIE_SAMESITE` setting):
+
+```python
+# settings.py
+COOKIE_SAMESITE=lax  # Protects against CSRF for most cases
+```
+
+**SameSite=Lax Protection:**
+
+- ✅ Blocks cross-site POST/PUT/DELETE requests
+- ✅ Allows top-level navigations from external sites
+- ❌ Does NOT protect if `SameSite=None` is set
+- ❌ Does NOT protect older browsers (pre-2017)
+
+**Additional CSRF Protection (Recommended):**
+
+For production applications, implement CSRF tokens:
+
+```python
+from fastapi_csrf_protect import CsrfProtect
+
+@CsrfProtect.load_config
+def get_csrf_config():
+    return CsrfSettings(
+        secret_key="csrf-secret-key",
+        cookie_name="csrf_token",
+        header_name="X-CSRF-Token",
+    )
+
+@app.post("/auth/cookie/login")
+async def cookie_login(
+    request: Request,
+    csrf_protect: CsrfProtect = Depends()
+):
+    await csrf_protect.validate_csrf_token(request)
+    # ... authentication logic
+```
+
+**CSRF Token Flow:**
+
+1. Backend generates CSRF token, sets in cookie + header
+2. Frontend reads token from cookie/header
+3. Frontend includes token in request header
+4. Backend validates token matches
+
+**SameSite=None Warning:**
+
+If you set `COOKIE_SAMESITE=none` for cross-origin requests:
+
+```bash
+# ⚠️ DANGER: Requires CSRF protection
+COOKIE_SAMESITE=none  # Must implement CSRF tokens
+COOKIE_SECURE=true     # Required for SameSite=None
+```
+
+**Best Practice:**
+
+```bash
+# Production
+COOKIE_SAMESITE=strict  # Maximum CSRF protection
+COOKIE_SECURE=true
+COOKIE_DOMAIN=yourdomain.com
+
+# Development
+COOKIE_SAMESITE=lax
+COOKIE_SECURE=false
+```
 
 ### ❌ DON'T
 

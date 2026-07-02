@@ -371,8 +371,7 @@ async def cookie_login(
 
         response = JSONResponse({
             "email": form_data.username,
-            "access_token": auth_token.access_token,
-            "token_type": auth_token.token_type,
+            "message": "Authentication successful",
         })
         
         secure = settings.COOKIE_SECURE and settings.ENVIRONMENT != "local"
