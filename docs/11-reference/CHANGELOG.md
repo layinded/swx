@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.7.35  
+**Version:** 2.7.36  
 **Last Updated:** 2026-07-02
 
 ---
@@ -29,6 +29,41 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.7.36 (2026-07-02)
+
+**CRITICAL SECURITY FIX: Cookie Login Token Leak**
+
+Fixed critical vulnerability where `/auth/cookie/login` returned access token in response body, defeating httpOnly cookie security.
+
+**Security Fixes:**
+
+1. **Cookie Login Token Leak (CRITICAL)**
+   - Removed access_token from cookie_login response
+   - Tokens now ONLY accessible via httpOnly cookies
+   - Prevents XSS token extraction
+
+2. **Exception Handler Information Disclosure (MEDIUM)**
+   - Changed to structured logging (exception type + request_id only)
+   - Prevents database URLs, file paths, PII in logs
+   - Response includes request_id for debugging
+
+3. **Validation Error Handler (MEDIUM)**
+   - Returns field-level error details
+   - Improves API consumer experience
+   - Uses WARNING level for client errors
+
+**Documentation Added:**
+
+- Rate limiting implementation guide
+- CSRF protection patterns
+- Security best practices for production
+
+**Severity:** Critical (1), High (2), Medium (2), Low (1)
+
+**Thanks:** FastPII Security Team for responsible disclosure
+
+**Upgrade:** IMMEDIATE (critical security vulnerability)
 
 ### Version 2.7.35 (2026-07-02)
 

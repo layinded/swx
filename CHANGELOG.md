@@ -2,6 +2,117 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.36] - 2026-07-02
+
+### Fixed - CRITICAL Security Vulnerabilities (FastPII Security Report)
+
+**Severity:** Critical (1), High (2), Medium (2), Low (1)
+
+#### Bug 1: CRITICAL - Cookie Login Token Leak
+
+**Fixed:** `/auth/cookie/login` endpoint was returning access_token in response body, defeating httpOnly cookie security.
+
+**Impact:**
+- Access tokens were XSS-extractable from response body
+- httpOnly cookies provided zero protection when same token available in JSON
+- Frontend apps could accidentally store token in localStorage
+
+**Fix:**
+- Removed `access_token` and `token_type` from cookie_login response
+- Response now returns only `{"email": "...", "message": "Authentication successful"}`
+- Tokens accessible ONLY via httpOnly cookies (proper BFF pattern)
+
+**Security Posture:**
+| Before | After |
+|--------|-------|
+| Token in response body + cookie | Token ONLY in httpOnly cookie |
+| XSS-extractable | XSS-resistant |
+| Frontend can store in localStorage | Frontend MUST use cookies |
+
+#### Bug 4: MEDIUM - Exception Handler Information Disclosure
+
+**Fixed:** Generic exception handler was logging full exception strings including potentially sensitive data.
+
+**Impact:**
+- Database connection strings in logs
+- File paths from IOError
+- Internal service URLs from ConnectionError
+- PII from custom exception messages
+
+**Fix:**
+- Changed to structured logging with `exc_type`, `path`, `request_id`
+- Response includes `request_id` for debugging
+- Uses `exc_info=True` for structured log aggregation systems
+- No sensitive data in logs or responses
+
+#### Bug 5: MEDIUM - Validation Error Handler Strips Details
+
+**Fixed:** Validation errors returned generic message with no field details.
+
+**Impact:**
+- API consumers couldn't debug validation failures
+- Increased support burden
+- Poor developer experience
+
+**Fix:**
+- Returns structured validation errors: `{"detail": [...], "body": ...}`
+- Field-level error details help consumers fix issues
+- Uses WARNING level (appropriate for client errors)
+- Standard FastAPI pattern (expected by clients)
+
+#### Documentation: Rate Limiting & CSRF Protection
+
+**Added:** Comprehensive security guidance in `docs/05-security/SECURITY_BEST_PRACTICES.md`
+
+**Rate Limiting:**
+- ⚠️ **swx-core does NOT include built-in rate limiting**
+- Documented infrastructure-level implementations (Nginx, Redis)
+- Provided application-level examples (slowapi)
+- Listed recommended rate limits for auth endpoints
+
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| `/auth/login` | 5 requests | 1 minute |
+| `/auth/register` | 3 requests | 1 hour |
+| `/auth/password/recover` | 3 requests | 1 hour |
+| `/auth/cookie/login` | 5 requests | 1 minute |
+
+**CSRF Protection:**
+- Documented SameSite=Lax default protection
+- Explained CSRF token implementation patterns
+- Warned about SameSite=None configuration risks
+- Provided production security best practices
+
+### Files Modified
+
+- `swx_core/routes/access/auth_route.py` - Removed token from cookie_login response
+- `swx_core/main.py` - Fixed exception and validation handlers
+- `docs/05-security/SECURITY_BEST_PRACTICES.md` - Added rate limiting and CSRF guidance
+
+### Migration Guide
+
+**No migration required** - all changes are backward compatible.
+
+**Recommended Actions:**
+1. ✅ Upgrade to v2.7.36 immediately (critical security fix)
+2. ✅ Implement rate limiting at infrastructure or application level
+3. ✅ Review CSRF protection if using cookie-based auth
+4. ✅ Update frontend to NOT expect `access_token` in cookie_login response
+
+**Frontend Changes:**
+```javascript
+// ❌ Before: Token in response (INSECURE)
+const { access_token } = await response.json();
+
+// ✅ After: Token ONLY in cookie (SECURE)
+const { email, message } = await response.json();
+// Token automatically sent via httpOnly cookie
+```
+
+### Security Acknowledgments
+
+Thanks to the FastPII Security Team for the responsible disclosure.
+
 ## [2.7.35] - 2026-07-02
 
 ### Fixed - CRITICAL: OAuth registration skips user.created event
