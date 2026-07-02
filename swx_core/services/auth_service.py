@@ -212,6 +212,8 @@ async def register_user_service(
     event_context: dict[str, Any] | None = None,
     pre_register_hook: Callable[[UserCreate, dict[str, Any]], Awaitable[UserCreate]] | None = None,
     post_register_hook: Callable[[User, dict[str, Any]], Awaitable[User | None]] | None = None,
+    auth_provider: str = "local",
+    provider_id: str | None = None,
 ) -> User:
     """
     Registers a new user account with optional lifecycle hooks.
@@ -236,6 +238,10 @@ async def register_user_service(
                 async def my_post_hook(user: User, ctx: dict) -> User:
                     await create_organization(user.id, ctx.get("org_name"))
                     return user
+        auth_provider (str): The authentication provider (e.g., "local", "google", "facebook").
+            Defaults to "local" for traditional email/password registration.
+        provider_id (str | None): The provider-specific user ID for social auth.
+            Required for social auth providers (Google sub, Facebook id, etc.).
 
     Returns:
         User: The newly created user (possibly modified by post_register_hook).
@@ -266,6 +272,16 @@ async def register_user_service(
             event_context={"organization_name": "Acme Corp", "tenant_id": "tenant-123"},
             post_register_hook=setup_tenant,
         )
+        
+        # For social auth:
+        user = await register_user_service(
+            session=session,
+            user_in=UserCreate(email="user@example.com", password="", full_name="John"),
+            request=request,
+            auth_provider="google",
+            provider_id="google-sub-123",
+            event_context={"social_provider": "google"},
+        )
     """
     context = event_context or {}
     
@@ -280,7 +296,12 @@ async def register_user_service(
         )
     
     try:
-        user = await create_user(session=session, user_create=user_in)
+        user = await create_user(
+            session=session,
+            user_create=user_in,
+            auth_provider=auth_provider,
+            provider_id=provider_id,
+        )
     except Exception as e:
         from swx_core.middleware.logging_middleware import logger
         logger.error(f"Error creating user: {e}")

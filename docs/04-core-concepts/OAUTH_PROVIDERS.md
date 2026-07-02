@@ -1,7 +1,7 @@
 # OAuth Provider Extensibility
 
-**Version:** 2.7.33
-**Last Updated:** 2026-07-01
+**Version:** 2.7.34
+**Last Updated:** 2026-07-02
 
 ---
 
@@ -191,23 +191,77 @@ Returns JWT token on success.
 
 ---
 
-## User Creation
+## User Creation and Events
 
-If the email doesn't exist in `swx_users`, a new user is created:
+When a new user registers via OAuth, swx-core uses the same registration flow as traditional email/password registration to ensure all lifecycle hooks and events fire:
 
 ```python
-# swx_core/repositories/user_repository.py
-async def create_social_user(session, email, user_info, provider):
-    user = User(
-        email=email,
-        full_name=user_info.get("name", ""),
-        auth_provider=provider,
-        is_verified=True,  # OAuth emails are verified
-    )
-    session.add(user)
-    await session.commit()
-    return user
+# swx_core/routes/access/oauth_route.py (Google example)
+user_in = UserCreate(
+    email=email,
+    password=secrets.token_urlsafe(32),  # Random placeholder, unused for social auth
+    full_name=user_info.get("name"),
+)
+
+user = await register_user_service(
+    session=session,
+    user_in=user_in,
+    request=request,
+    auth_provider="google",
+    provider_id=user_info.get("sub"),  # Provider-specific ID
+    event_context={"social_provider": "google"},
+)
 ```
+
+### Event Emission
+
+This ensures the **`user.created`** event fires, triggering all listeners:
+
+| Listener | What It Does |
+|----------|--------------|
+| **NotificationListener** | Sends welcome notification |
+| **UserCreatedBillingListener** | Creates billing account, user profile, PII policy, onboarding steps |
+| **UserCreatedAuditListener** | Logs user creation in audit trail |
+| **Custom listeners** | Any app-specific hooks |
+
+### Event Context
+
+The `event_context` parameter passes provider information to listeners:
+
+```python
+{
+    "social_provider": "google"  # or "facebook", "github", etc.
+}
+```
+
+### User Model
+
+Created users have these fields set:
+
+```python
+User(
+    email=email,
+    full_name=user_info.get("name"),
+    auth_provider="google",      # Provider name
+    provider_id="google-sub-id", # Provider's unique ID
+    is_active=True,
+    is_verified=True,            # OAuth emails are verified
+)
+```
+
+### What Happens on Registration
+
+1. **pre_register_hook** runs (if configured)
+2. **User created** in database with `auth_provider` and `provider_id`
+3. **post_register_hook** runs (if configured)
+4. **`user.created` event emitted**
+5. **All listeners fire**:
+   - Billing account created
+   - User profile created
+   - PII policy initialized
+   - Onboarding steps set up
+   - Welcome notification sent
+   - Email verification sent (if applicable)
 
 ---
 

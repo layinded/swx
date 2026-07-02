@@ -233,7 +233,7 @@ async def delete_user(session: AsyncSession, current_user: User) -> bool:
 
 
 async def create_social_user(
-    session: AsyncSession, email: str, user_info: dict, provider: str
+    session: AsyncSession, email: str, user_info: dict[str, Any], provider: str
 ) -> User:
     """
     Create a new user from a social login (Google, Facebook, GitHub).

@@ -31,7 +31,9 @@ from swx_core.config.settings import settings
 from swx_core.config.social_settings import social_settings
 from swx_core.controllers.auth_controller import login_social_user_controller
 from swx_core.database.db import SessionDep
-from swx_core.repositories.user_repository import get_user_by_email, create_social_user
+from swx_core.repositories.user_repository import get_user_by_email
+from swx_core.services.auth_service import register_user_service
+from swx_core.models.user import UserCreate
 from swx_core.utils.language_helper import translate
 from swx_core.services.settings_helper import get_token_expiration
 from swx_core.core.oauth_providers import oauth_provider_settings
@@ -240,7 +242,26 @@ async def google_auth_callback(request: Request, session: SessionDep):
         existing_user = await get_user_by_email(session=session, email=email)
         is_new_user = existing_user is None
         if is_new_user:
-            existing_user = await create_social_user(session, email, user_info, "google")
+            # Extract provider ID from user info
+            provider_id = user_info.get("sub")  # Google uses "sub"
+            if not provider_id:
+                return error_redirect("missing_provider_id")
+
+            # Create user with proper event emission
+            user_in = UserCreate(
+                email=email,
+                password=secrets.token_urlsafe(32),  # Random placeholder, unused for social auth
+                full_name=user_info.get("name"),
+            )
+
+            existing_user = await register_user_service(
+                session=session,
+                user_in=user_in,
+                request=request,
+                auth_provider="google",
+                provider_id=provider_id,
+                event_context={"social_provider": "google"},
+            )
 
         clear_oauth_session(request)
         return await complete_oauth_login(session, existing_user.email, "google", is_new_user)
@@ -319,7 +340,26 @@ async def facebook_auth_callback(request: Request, session: SessionDep):
         existing_user = await get_user_by_email(session=session, email=email)
         is_new_user = existing_user is None
         if is_new_user:
-            existing_user = await create_social_user(session, email, user_info, "facebook")
+            # Extract provider ID from user info
+            provider_id = user_info.get("id")  # Facebook uses "id"
+            if not provider_id:
+                return error_redirect("missing_provider_id")
+
+            # Create user with proper event emission
+            user_in = UserCreate(
+                email=email,
+                password=secrets.token_urlsafe(32),  # Random placeholder, unused for social auth
+                full_name=user_info.get("name"),
+            )
+
+            existing_user = await register_user_service(
+                session=session,
+                user_in=user_in,
+                request=request,
+                auth_provider="facebook",
+                provider_id=provider_id,
+                event_context={"social_provider": "facebook"},
+            )
 
         clear_oauth_session(request)
         return await complete_oauth_login(session, existing_user.email, "facebook", is_new_user)
@@ -402,7 +442,30 @@ async def provider_auth_callback(request: Request, session: SessionDep, provider
         existing_user = await get_user_by_email(session=session, email=email)
         is_new_user = existing_user is None
         if is_new_user:
-            existing_user = await create_social_user(session, email, user_info, provider)
+            # Extract provider ID from user info (provider-specific field)
+            provider_id = (
+                user_info.get("sub") or  # Google, OpenID
+                user_info.get("id") or    # Facebook, GitHub
+                user_info.get("user_id")  # Custom providers
+            )
+            if not provider_id:
+                return error_redirect("missing_provider_id")
+
+            # Create user with proper event emission
+            user_in = UserCreate(
+                email=email,
+                password=secrets.token_urlsafe(32),  # Random placeholder, unused for social auth
+                full_name=user_info.get("name"),
+            )
+
+            existing_user = await register_user_service(
+                session=session,
+                user_in=user_in,
+                request=request,
+                auth_provider=provider,
+                provider_id=provider_id,
+                event_context={"social_provider": provider},
+            )
 
         clear_oauth_session(request)
         return await complete_oauth_login(session, existing_user.email, provider, is_new_user)
