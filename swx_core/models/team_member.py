@@ -49,7 +49,7 @@ class TeamMember(TeamMemberBase, table=True):
         updated_at (datetime): When the membership was last updated.
     """
 
-    __tablename__ = "swx_team_member"
+    __tablename__ = "swx_team_member"  # type: ignore
     __table_args__ = (
         UniqueConstraint("team_id", "user_id", name="uq_team_member_user_team"),
         {"extend_existing": True},
@@ -77,6 +77,9 @@ class TeamMember(TeamMemberBase, table=True):
         default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc).replace(tzinfo=None)}
     )
+    
+    user: "User" = Relationship()  # type: ignore
+    team_role: "TeamRole" = Relationship()  # type: ignore
 
 
 class TeamMemberCreate(SQLModel):

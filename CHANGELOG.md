@@ -2,6 +2,178 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.40] - 2026-07-05
+
+### Added - Enterprise Dashboard Features
+
+**Priority:** P2 (4 feature requests from FastPII Integration)
+
+#### FEATURE-1: User-Scoped Workspace Endpoints
+
+**Added:** New workspace endpoints for Enterprise Dashboard with user-scoped filtering.
+
+**Endpoints:**
+- `GET /api/v1/workspaces` - List workspaces for current user
+- `GET /api/v1/workspaces/{workspace_id}` - Get workspace detail
+- `POST /api/v1/workspaces` - Create workspace
+- `PUT /api/v1/workspaces/{workspace_id}` - Update workspace
+- `DELETE /api/v1/workspaces/{workspace_id}` - Archive workspace
+
+**Implementation:**
+- New route: `swx_core/routes/user/workspace_route.py`
+- New controller: `swx_core/controllers/workspace_controller.py`
+- User filtering: Lists only teams where `current_user.id` is a member via TeamMember
+- Uses existing Team model and TeamService
+- Authentication: `Depends(get_current_user)`
+
+**Use Case:** Enterprise Dashboard workspace management with user-specific workspace list.
+
+#### FEATURE-2: Enriched Team Member Endpoint
+
+**Added:** New endpoint returning team members with full user and role details.
+
+**Endpoint:**
+- `GET /api/admin/team/{team_id}/members/enriched` - List members with enriched details
+
+**Response Schema:**
+```json
+{
+  "id": "...",
+  "team_id": "...",
+  "user": {
+    "id": "...",
+    "email": "...",
+    "full_name": "...",
+    "avatar_url": "..."
+  },
+  "team_role": {
+    "id": "...",
+    "key": "owner",
+    "name": "Team Owner",
+    "permissions": {...}
+  },
+  "created_at": "..."
+}
+```
+
+**Implementation:**
+- New schema: `TeamMemberWithDetails` (swx_core/models/team_member.py)
+- Uses `joinedload(User)` and `joinedload(TeamRole)` for eager loading
+- Original endpoint preserved: `GET /api/admin/team/{team_id}/members` (IDs only)
+
+**Use Case:** Enterprise Dashboard team member management with full user context.
+
+#### FEATURE-3: Team Invitation Auto-Accept on Registration
+
+**Added:** Auto-accept team invitations when users register through invitation links.
+
+**Flow:**
+1. User receives invitation email with link
+2. User clicks link → redirected to registration
+3. Frontend passes `invitation_token` in registration request
+4. Backend creates user account
+5. `post_register_hook` automatically accepts invitation
+6. User added to team immediately
+
+**Implementation:**
+- New hook: `swx_core/hooks/invitation_auto_accept.py`
+- Registered in `swx_core/core/hooks.py` via `registration_hooks.add_post_register()`
+- `UserCreate` schema accepts optional `invitation_token` field
+- `register_user_service` passes token through `event_context`
+- Hook validates email match (invitation.invitee_email == user.email)
+- Error handling: Hook failures log warning but don't block registration
+
+**Security:**
+- Email validation enforced by TeamInvitationService
+- Token expiration enforced (7 days default)
+- Invitation must have status PENDING
+
+**Use Case:** Seamless onboarding when inviting new users to teams.
+
+#### FEATURE-4: Team Invitation Event Emission
+
+**Added:** Event emission for team invitation creation to enable email notifications.
+
+**Event Bus:**
+- Location: `swx_core/event_bus.py` (AsyncEventBus)
+- Event type: `team.invitation.created`
+- Event class: `TeamInvitationCreatedEvent`
+
+**Event Payload:**
+```json
+{
+  "invitation_id": "uuid",
+  "team_id": "uuid",
+  "inviter_id": "uuid",
+  "invitee_email": "string",
+  "token": "string",
+  "metadata": {"invitation_code": "string"}
+}
+```
+
+**Implementation:**
+- TeamInvitationService.create_invitation() emits event after successful creation
+- Event emission is asynchronous (doesn't block invitation creation)
+- FastPII can subscribe to `team.invitation.created` for email sending
+
+**Example Handler (FastPII):**
+```python
+@event_bus.subscribe("team.invitation.created")
+async def send_invitation_email(event):
+    await send_email(
+        to=event.invitee_email,
+        template="team_invitation",
+        data={"team_name": event.team_name, "token": event.token}
+    )
+```
+
+**Use Case:** Enable FastPII email notification system for team invitations.
+
+### Files Modified
+
+- `swx_core/routes/user/workspace_route.py` - NEW: User-scoped workspace endpoints
+- `swx_core/controllers/workspace_controller.py` - NEW: Workspace controller
+- `swx_core/models/team_member.py` - NEW: TeamMemberWithDetails schema
+- `swx_core/routes/admin/team_route.py` - NEW: Enriched members endpoint
+- `swx_core/hooks/invitation_auto_accept.py` - NEW: Auto-accept hook
+- `swx_core/core/hooks.py` - UPDATED: Hook registration
+- `swx_core/services/team_invitation_service.py` - UPDATED: Event emission
+- `swx_core/events/__init__.py` - UPDATED: TeamInvitationCreatedEvent
+- `swx_core/main.py` - UPDATED: Route registration
+
+### Migration Guide
+
+**No database migrations required** - all changes are code additions.
+
+**Configuration:**
+1. Import and register workspace routes in your app:
+   ```python
+   from swx_core.routes.user.workspace_route import router as workspace_router
+   app.include_router(workspace_router, prefix="/api/v1/workspaces")
+   ```
+
+2. Register auto-accept hook at startup:
+   ```python
+   from swx_core.hooks.invitation_auto_accept import auto_accept_invitation
+   from swx_core.core.hooks import registration_hooks
+   registration_hooks.add_post_register(auto_accept_invitation)
+   ```
+
+3. Subscribe to invitation events (FastPII):
+   ```python
+   from swx_core.event_bus import event_bus
+   
+   @event_bus.subscribe("team.invitation.created")
+   async def send_invitation_email(event):
+       # Your email logic
+   ```
+
+### Breaking Changes
+
+None - all changes are additive and backward compatible.
+
+---
+
 ## [2.7.39] - 2026-07-05
 
 ### Fixed - CRITICAL TeamInvitationService Session Method Bug

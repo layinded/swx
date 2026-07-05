@@ -88,6 +88,17 @@ class TeamInvitationService:
         await self.session.commit()
         await self.session.refresh(invitation)
         
+        from swx_core.events.dispatcher import event_bus, Event
+        await event_bus.emit(Event(
+            name="team.invitation.created",
+            payload={
+                "invitation_id": str(invitation.id),
+                "team_id": str(invitation.team_id),
+                "invitee_email": invitation.invitee_email,
+                "token": invitation.token,
+            },
+        ))
+        
         logger.info(f"Created team invitation for {invitee_email} to team {team_id}")
         
         return invitation

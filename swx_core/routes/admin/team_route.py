@@ -1,10 +1,14 @@
 from typing import Any
 from uuid import UUID
 from fastapi import APIRouter, Depends, status, Request
+from sqlmodel import select
+from sqlalchemy.orm import joinedload
 
 from swx_core.database.db import SessionDep
 from swx_core.models.team import TeamPublic, TeamCreate, TeamUpdate
-from swx_core.models.team_member import TeamMemberCreate, TeamMemberPublic
+from swx_core.models.team_member import TeamMemberCreate, TeamMemberPublic, TeamMember
+from swx_core.models.user import UserPublic
+from swx_core.models.team_role import TeamRolePublic
 from swx_core.models.common import Message
 from swx_core.auth.admin.dependencies import get_current_admin_user, AdminUserDep
 from swx_core.controllers import team_controller
@@ -230,5 +234,43 @@ async def list_team_members(
             team_role_id=m.team_role_id,
             created_at=m.created_at,
         )
+        for m in members
+    ]
+
+
+@router.get("/{team_id}/members/enriched")
+async def list_team_members_enriched(
+    session: SessionDep,
+    team_id: UUID,
+) -> Any:
+    """List all members with full user and role details."""
+    from sqlalchemy.orm import joinedload
+    from swx_core.models.team_member import TeamMember
+    
+    result = await session.execute(
+        select(TeamMember)
+        .where(TeamMember.team_id == team_id)
+        .options(joinedload(TeamMember.user), joinedload(TeamMember.team_role))  # type: ignore[attribute]
+    )
+    members = result.unique().scalars().all()
+    
+    return [
+        {
+            "id": str(m.id),
+            "team_id": str(m.team_id),
+            "user": {
+                "id": str(m.user.id),  # type: ignore[union-attr]
+                "email": m.user.email,  # type: ignore[union-attr]
+                "full_name": m.user.full_name,  # type: ignore[union-attr]
+                "avatar_url": m.user.avatar_url,  # type: ignore[union-attr]
+            },
+            "team_role": {
+                "id": str(m.team_role.id),  # type: ignore[union-attr]
+                "key": m.team_role.key,  # type: ignore[union-attr]
+                "name": m.team_role.name,  # type: ignore[union-attr]
+                "permissions": m.team_role.permissions,  # type: ignore[union-attr]
+            },
+            "created_at": m.created_at.isoformat(),
+        }
         for m in members
     ]

@@ -16,6 +16,38 @@ async def list_teams_service(session: AsyncSession, skip: int = 0, limit: int = 
     return await team_repository.get_all_teams(session, skip, limit)
 
 
+async def list_user_teams_service(
+    session: AsyncSession, user_id: UUID, skip: int = 0, limit: int = 100
+) -> List[Team]:
+    """List teams where user is a member."""
+    stmt = (
+        select(Team)
+        .join(TeamMember, TeamMember.team_id == Team.id)  # pyright: ignore[reportArgumentType]
+        .where(TeamMember.user_id == user_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def get_user_team_service(session: AsyncSession, team_id: UUID, user_id: UUID) -> Team:
+    """Get team if user is a member."""
+    team = await team_repository.get_team_by_id(session, team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    member_result = await session.execute(
+        select(TeamMember).where(
+            and_(TeamMember.team_id == team_id, TeamMember.user_id == user_id)
+        )
+    )
+    if not member_result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="You are not a member of this team")
+    
+    return team
+
+
 async def create_team_service(
     session: AsyncSession, 
     team_in: TeamCreate,
