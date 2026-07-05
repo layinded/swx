@@ -2,6 +2,100 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.41] - 2026-07-05
+
+### Fixed - Critical Bugs from v2.7.40
+
+**Priority:** P0 (Critical production bugs)
+
+#### BUG-1: InvitationStatus StrEnum Case Mismatch with PostgreSQL ENUM
+
+**Problem:** `InvitationStatus` enum used lowercase values (`"pending"`, `"accepted"`, etc.) but PostgreSQL ENUM columns are case-sensitive. When asyncpg binds parameters, it uses the enum's `.name` attribute which is UPPERCASE (`PENDING`, `ACCEPTED`), causing PostgreSQL to reject values.
+
+**Symptoms:**
+- All `TeamInvitationService` queries filtering by `InvitationStatus.PENDING` failed with HTTP 500
+- Error: `invalid input value for enum invitationstatus: "PENDING"`
+
+**Fix:** Changed `InvitationStatus` enum values to uppercase to match PostgreSQL ENUM expectations:
+```python
+# BEFORE
+class InvitationStatus(str, Enum):
+    PENDING = "pending"    # lowercase
+    ACCEPTED = "accepted"  # lowercase
+
+# AFTER
+class InvitationStatus(str, Enum):
+    PENDING = "PENDING"    # uppercase
+    ACCEPTED = "ACCEPTED"  # uppercase
+```
+
+**Migration Required:** If you created PostgreSQL enums with lowercase values:
+```sql
+DROP TYPE IF EXISTS invitationstatus CASCADE;
+CREATE TYPE invitationstatus AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'EXPIRED', 'REVOKED');
+```
+
+**Files Changed:**
+- `swx_core/models/team_invitation.py` - Updated InvitationStatus enum values
+
+#### BUG-2: swx_team_member.role_id NOT NULL Constraint Violation
+
+**Problem:** The v2.7.40 model removed `role_id` from `TeamMember` (replaced by `team_role_id`), but the database column still exists as `NOT NULL` with no default. Creating team members only provides `team_role_id`, leaving `role_id` as NULL - which violates the constraint.
+
+**Symptoms:**
+- POST `/admin/team/member` failed with HTTP 500
+- Error: `null value in column "role_id" of relation "swx_team_member" violates not-null constraint`
+
+**Fix:** Users need to run a migration to make `role_id` nullable or drop the column entirely.
+
+**Migration Required:** See `MIGRATION_GUIDE_v2.7.41.md` for detailed migration steps:
+```python
+# Migration: make_team_member_role_id_nullable
+def upgrade() -> None:
+    op.alter_column(
+        'swx_team_member',
+        'role_id',
+        existing_type=sa.UUID(),
+        nullable=True
+    )
+```
+
+**Workaround Applied:** Users who already fixed this can skip the migration.
+
+**Files Changed:**
+- `MIGRATION_GUIDE_v2.7.41.md` - Added comprehensive migration guide
+- No model changes (model is correct, database needs migration)
+
+### Migration Guide
+
+See [MIGRATION_GUIDE_v2.7.41.md](./MIGRATION_GUIDE_v2.7.41.md) for:
+- Detailed migration steps
+- Verification procedures
+- Rollback instructions
+- Database schema changes
+
+### Breaking Changes
+
+**None** - These are pure bug fixes with no breaking API changes.
+
+### Verification Steps
+
+1. **InvitationStatus Fix:**
+   ```bash
+   curl -X POST http://localhost:8001/api/admin/team/invite \
+     -H "Authorization: Bearer $TOKEN" \
+     -d '{"team_id": "...", "invitee_email": "test@example.com", "team_role_id": "..."}'
+   # Should return 200 OK, not 500
+   ```
+
+2. **Team Member Creation:**
+   ```bash
+   curl -X POST http://localhost:8001/api/admin/team/member \
+     -H "Authorization: Bearer $TOKEN" \
+     -d '{"team_id": "...", "user_id": "...", "team_role_id": "..."}'
+   # Should return 200 OK, not 500
+   ```
+
 ## [2.7.40] - 2026-07-05
 
 ### Added - Enterprise Dashboard Features

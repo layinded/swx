@@ -19,11 +19,11 @@ from swx_core.models.base import Base
 
 class InvitationStatus(str, Enum):
     """Status of a team invitation."""
-    PENDING = "pending"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
-    REVOKED = "revoked"
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+    REVOKED = "REVOKED"
 
 
 class TeamInvitationBase(Base):
