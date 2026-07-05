@@ -2,6 +2,67 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.39] - 2026-07-05
+
+### Fixed - CRITICAL TeamInvitationService Session Method Bug
+
+**Severity:** Critical (ALL team invitation endpoints blocked)
+
+#### CRITICAL-4: TeamInvitationService Uses session.exec() on AsyncSession
+
+**Fixed:** Replaced all `.exec()` calls with `.execute()` for SQLAlchemy AsyncSession compatibility.
+
+**Issue:** TeamInvitationService used `.exec()` (SQLModel sync method) but routes inject raw SQLAlchemy AsyncSession which doesn't have .exec() method. This caused AttributeError on all team invitation endpoints.
+
+**Affected Endpoints:**
+- POST /api/team-invitations/ — Internal Server Error
+- GET /api/team-invitations/me — Internal Server Error
+- GET /api/team-invitations/team/{team_id} — Internal Server Error
+- POST /api/team-invitations/{token}/accept — Internal Server Error
+- POST /api/team-invitations/{token}/reject — Internal Server Error
+- DELETE /api/team-invitations/{invitation_id} — Internal Server Error
+
+**Error:**
+```
+AttributeError: 'AsyncSession' object has no attribute 'exec'
+```
+
+**Root Cause:**
+- Routes inject: `AsyncSession` (via `Depends(get_session)`)
+- Service expected: SQLModel Session with `.exec()` method
+- AsyncSession only has `.execute()` method
+
+**Changes:**
+- Lines 190, 197, 210, 214, 218, 222, 228, 236, 246, 258: `.exec()` → `.execute()`
+- Lines 193, 205: `.all()` → `.scalars().all()`
+- All helper methods: `.scalar_one_or_none()` unchanged (compatible)
+
+**Before:**
+```python
+result = await self.session.exec(select(TeamInvitation).where(...))
+return list(result.all())
+```
+
+**After:**
+```python
+result = await self.session.execute(select(TeamInvitation).where(...))
+return list(result.scalars().all())
+```
+
+### Files Modified
+
+- `swx_core/services/team_invitation_service.py` - Fixed all .exec() calls to use .execute()
+
+### Migration Required
+
+None - this is a code bug fix, not a schema change.
+
+### Breaking Changes
+
+None - all changes are internal implementation fixes.
+
+---
+
 ## [2.7.38] - 2026-07-05
 
 ### Fixed - Critical Schema and API Bugs

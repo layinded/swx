@@ -187,14 +187,14 @@ class TeamInvitationService:
         """List all invitations for a team (requires team owner permission)."""
         await self._validate_view_permission(user_id, team_id)
         
-        result = await self.session.exec(
+        result = await self.session.execute(
             select(TeamInvitation).where(TeamInvitation.team_id == team_id)
         )
-        return list(result.all())
+        return list(result.scalars().all())
     
     async def list_user_invitations(self, user_email: str) -> List[TeamInvitation]:
         """List all pending invitations for a user's email."""
-        result = await self.session.exec(
+        result = await self.session.execute(
             select(TeamInvitation).where(
                 and_(
                     TeamInvitation.invitee_email == user_email,
@@ -202,38 +202,34 @@ class TeamInvitationService:
                 )
             )
         )
-        return list(result.all())
+        return list(result.scalars().all())
     
     # Private helper methods
     
     async def _get_team(self, team_id: UUID) -> Team | None:
-        result = await self.session.exec(select(Team).where(Team.id == team_id))
+        result = await self.session.execute(select(Team).where(Team.id == team_id))
         return result.scalar_one_or_none()
     
     async def _get_user(self, user_id: UUID) -> User | None:
-        result = await self.session.exec(select(User).where(User.id == user_id))
+        result = await self.session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
     
     async def _get_team_role(self, team_role_id: UUID) -> TeamRole | None:
-        result = await self.session.exec(select(TeamRole).where(TeamRole.id == team_role_id))
+        result = await self.session.execute(select(TeamRole).where(TeamRole.id == team_role_id))
         return result.scalar_one_or_none()
     
     async def _get_invitation(self, invitation_id: UUID) -> TeamInvitation | None:
-        result = await self.session.exec(
-            select(TeamInvitation).where(TeamInvitation.id == invitation_id)
-        )
+        result = await self.session.execute(select(TeamInvitation).where(TeamInvitation.id == invitation_id))
         return result.scalar_one_or_none()
     
     async def _get_invitation_by_token(self, token: str) -> TeamInvitation | None:
-        result = await self.session.exec(
-            select(TeamInvitation).where(TeamInvitation.token == token)
-        )
+        result = await self.session.execute(select(TeamInvitation).where(TeamInvitation.token == token))
         return result.scalar_one_or_none()
     
     async def _get_team_member(
         self, team_id: UUID, user_id: UUID
     ) -> TeamMember | None:
-        result = await self.session.exec(
+        result = await self.session.execute(
             select(TeamMember).where(
                 and_(TeamMember.team_id == team_id, TeamMember.user_id == user_id)
             )
@@ -243,19 +239,19 @@ class TeamInvitationService:
     async def _get_team_member_by_email(
         self, team_id: UUID, email: str
     ) -> TeamMember | None:
-        user_result = await self.session.exec(
+        user_result = await self.session.execute(
             select(User).where(User.email == email)
         )
         user = user_result.scalar_one_or_none()
         if not user:
             return None
-        
+
         return await self._get_team_member(team_id, user.id)
     
     async def _get_pending_invitation(
         self, team_id: UUID, email: str
     ) -> TeamInvitation | None:
-        result = await self.session.exec(
+        result = await self.session.execute(
             select(TeamInvitation).where(
                 and_(
                     TeamInvitation.team_id == team_id,
@@ -265,7 +261,7 @@ class TeamInvitationService:
             )
         )
         return result.scalar_one_or_none()
-    
+
     async def _validate_invite_permission(self, user_id: UUID, team_id: UUID) -> None:
         """Check if user can invite to this team (owner or editor role)."""
         member = await self._get_team_member(team_id, user_id)
