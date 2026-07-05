@@ -2,6 +2,160 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.38] - 2026-07-05
+
+### Fixed - Critical Schema and API Bugs
+
+**Severity:** Critical (3 schema fixes, 1 API bug fix)
+
+#### CRITICAL-1: Team Model Missing Columns (Migration Fix)
+
+**Fixed:** Added migration for missing `swx_team` columns required by model.
+
+**Issue:** v2.7.37 Team model expected `owner_id`, `created_at`, `updated_at` columns that didn't exist in database.
+
+**Resolution:**
+- v2_7_22_schema_changes.py migration already exists (adds columns + FK cascades)
+- Verified migration is correct and complete
+- Created migration guide for FastPII team
+
+**Migration adds:**
+- `swx_team.owner_id` (UUID, nullable, FK → swx_users.id ON DELETE SET NULL)
+- `swx_team.created_at` (TIMESTAMP, default NOW())
+- `swx_team.updated_at` (TIMESTAMP, default NOW())
+- FK cascade updates on swx_user_role, swx_team_member, swx_users, etc.
+
+#### CRITICAL-2: TeamMember Missing Columns (NEW Migration)
+
+**Fixed:** Created v2_7_38_team_member_timestamps.py migration.
+
+**Issue:** TeamMember model expected `created_at` and `updated_at` columns that didn't exist in database.
+
+**Resolution:**
+- Created new migration: v2_7_38_team_member_timestamps.py
+- Adds `swx_team_member.created_at` (TIMESTAMP, default NOW())
+- Adds `swx_team_member.updated_at` (TIMESTAMP, default NOW())
+- UniqueConstraint(team_id, user_id) already in v2_7_24 migration
+
+**Migration:**
+```python
+# v2_7_38_team_member_timestamps.py
+def upgrade() -> None:
+    op.add_column("swx_team_member", sa.Column("created_at", ...))
+    op.add_column("swx_team_member", sa.Column("updated_at", ...))
+```
+
+#### CRITICAL-3: API Field Name Bug
+
+**Fixed:** `role_id` → `team_role_id` in team member endpoints.
+
+**Issue:** TeamMemberPublic responses returned `role_id` (legacy system role) instead of `team_role_id` (team-scoped role).
+
+**Before:**
+```python
+# team_route.py line 225
+return [TeamMemberPublic(id=m.id, ..., role_id=m.role_id) for m in members]
+
+# team_controller.py line 27
+return TeamMemberPublic(id=member.id, ..., role_id=member.role_id)
+```
+
+**After:**
+```python
+# team_route.py line 225
+return [TeamMemberPublic(
+    id=m.id,
+    team_id=m.team_id,
+    user_id=m.user_id,
+    team_role_id=m.team_role_id,
+    created_at=m.created_at,
+) for m in members]
+
+# team_controller.py line 27
+return TeamMemberPublic(
+    id=member.id,
+    team_id=member.team_id,
+    user_id=member.user_id,
+    team_role_id=member.team_role_id,
+    created_at=member.created_at,
+)
+```
+
+**Impact:**
+- ✅ Correct field name (`team_role_id`)
+- ✅ Added missing `created_at` field
+- ✅ Breaking change: clients must update to use `team_role_id`
+
+#### MEDIUM-1: Model Exports (Already Fixed)
+
+**Status:** ✅ Already fixed in v2.7.37
+
+All models properly exported in `swx_core/models/__init__.py`:
+- TeamRole, TeamRoleCreate, TeamRoleUpdate, TeamRolePublic, DEFAULT_TEAM_ROLES
+- TeamInvitation, TeamInvitationCreate, TeamInvitationPublic, InvitationStatus
+- TeamMemberUpdate
+
+**Usage:**
+```python
+from swx_core.models import TeamRole, TeamInvitation, TeamMemberUpdate
+```
+
+### Files Modified
+
+- `swx_core/database/migrations/v2_7_38_team_member_timestamps.py` - NEW: TeamMember timestamp columns
+- `swx_core/routes/admin/team_route.py` - Fixed role_id → team_role_id
+- `swx_core/controllers/team_controller.py` - Fixed role_id → team_role_id
+- `MIGRATION_GUIDE_v2.7.38.md` - NEW: Comprehensive migration guide
+
+### Migration Chain
+
+**Required Order:**
+```
+v2_7_22_schema_changes.py          # Team columns + FK cascades
+    ↓
+v2_7_24_team_member_unique.py      # TeamMember unique constraint
+    ↓
+v2_7_38_team_member_timestamps.py  # TeamMember timestamps
+```
+
+**Apply Migrations:**
+```bash
+alembic upgrade head
+```
+
+### Breaking Changes
+
+**API Response Field Change:**
+- `TeamMemberPublic.role_id` → `TeamMemberPublic.team_role_id`
+- Clients must update to use `team_role_id` field
+- Added `created_at` field to responses
+
+**Database Schema:**
+- New non-nullable columns with default values (safe migration)
+- No data loss or transformation required
+- Existing rows get `NOW()` as default timestamps
+
+### Documentation
+
+**Added:** `MIGRATION_GUIDE_v2.7.38.md` with:
+- Complete migration chain
+- Verification SQL queries
+- Rollback procedures
+- Breaking change details
+
+### For FastPII Team
+
+**Action Required:**
+1. Upgrade to v2.7.38
+2. Apply migrations in order:
+   ```bash
+   alembic upgrade v2_7_22_schema_changes
+   alembic upgrade v2_7_24_team_member_unique
+   alembic upgrade v2_7_38_team_member_timestamps
+   ```
+3. Update API clients to use `team_role_id` instead of `role_id`
+4. See `MIGRATION_GUIDE_v2.7.38.md` for detailed instructions
+
 ## [2.7.37] - 2026-07-02
 
 ### Added - Rate Limiting & CSRF Implementation

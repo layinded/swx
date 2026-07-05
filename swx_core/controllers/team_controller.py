@@ -24,7 +24,13 @@ async def delete_team_controller(session: AsyncSession, team_id: UUID) -> None:
 
 async def add_team_member_controller(session: AsyncSession, member_in: TeamMemberCreate) -> TeamMemberPublic:
     member = await team_service.add_team_member_service(session, member_in)
-    return TeamMemberPublic(id=member.id, team_id=member.team_id, user_id=member.user_id, role_id=member.role_id)
+    return TeamMemberPublic(
+        id=member.id,
+        team_id=member.team_id,
+        user_id=member.user_id,
+        team_role_id=member.team_role_id,
+        created_at=member.created_at,
+    )
 
 async def remove_team_member_controller(session: AsyncSession, member_id: UUID) -> None:
     return await team_service.remove_team_member_service(session, member_id)

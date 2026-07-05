@@ -2226,7 +2226,7 @@ wheels = [
 
 [[package]]
 name = "swx-core"
-version = "2.7.33"
+version = "2.7.37"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

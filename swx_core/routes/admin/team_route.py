@@ -222,4 +222,13 @@ async def list_team_members(
 ) -> Any:
     """List all members of a team."""
     members = await team_controller.list_team_members_controller(session, team_id)
-    return [TeamMemberPublic(id=m.id, team_id=m.team_id, user_id=m.user_id, role_id=m.role_id) for m in members]
+    return [
+        TeamMemberPublic(
+            id=m.id,
+            team_id=m.team_id,
+            user_id=m.user_id,
+            team_role_id=m.team_role_id,
+            created_at=m.created_at,
+        )
+        for m in members
+    ]
