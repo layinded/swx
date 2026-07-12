@@ -89,41 +89,40 @@ class BillingServiceProvider(ServiceProvider):
         return FeatureRegistry()
 
     def _register_default_features(self, registry) -> None:
-        """Register default features."""
-        from swx_core.services.billing.feature_registry import FeatureType
+        """Register default features if not already registered."""
+        from swx_core.services.billing.feature_registry import FeatureDefinition, FeatureType
 
-        # Register common features
-        registry.register(
-            key="api_requests",
-            name="API Requests",
-            feature_type=FeatureType.QUOTA,
-            default_value="1000",
-            description="Monthly API request limit",
-        )
-
-        registry.register(
-            key="team_members",
-            name="Team Members",
-            feature_type=FeatureType.QUOTA,
-            default_value="5",
-            description="Maximum team members",
-        )
-
-        registry.register(
-            key="advanced_analytics",
-            name="Advanced Analytics",
-            feature_type=FeatureType.BOOLEAN,
-            default_value="false",
-            description="Access to advanced analytics",
-        )
-
-        registry.register(
-            key="priority_support",
-            name="Priority Support",
-            feature_type=FeatureType.BOOLEAN,
-            default_value="false",
-            description="Priority support access",
-        )
+        core_features = [
+            FeatureDefinition(
+                key="api_requests",
+                name="API Requests",
+                feature_type=FeatureType.QUOTA,
+                unit="requests",
+                description="Monthly API request limit",
+            ),
+            FeatureDefinition(
+                key="team_members",
+                name="Team Members",
+                feature_type=FeatureType.QUOTA,
+                unit="members",
+                description="Maximum team members",
+            ),
+            FeatureDefinition(
+                key="advanced_analytics",
+                name="Advanced Analytics",
+                feature_type=FeatureType.BOOLEAN,
+                description="Access to advanced analytics",
+            ),
+            FeatureDefinition(
+                key="priority_support",
+                name="Priority Support",
+                feature_type=FeatureType.BOOLEAN,
+                description="Priority support access",
+            ),
+        ]
+        for feature in core_features:
+            if feature.key not in registry._features:
+                registry.register(feature)
 
 
 class MockBillingProvider:

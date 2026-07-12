@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.43] - 2026-07-12
+
+### Fixed - BillingServiceProvider Boot Failure
+
+**Priority:** P0 (Prevents billing from booting on startup)
+
+#### BUG: FeatureRegistry.register() called with keyword arguments instead of FeatureDefinition object
+
+**Problem:** `BillingServiceProvider._register_default_features()` called `registry.register()` with keyword arguments (`key=`, `name=`, `default_value=`, etc.), but `FeatureRegistry.register()` expects a single `FeatureDefinition` positional argument. Additionally, `default_value` is not a field on `FeatureDefinition`. This caused the entire billing service to fail to boot when `BILLING_ENABLED=true`.
+
+**Symptoms:**
+- Error: `FeatureRegistry.register() got an unexpected keyword argument 'key'`
+- No billing provider initialized
+- No subscription service available
+- All billing API endpoints return errors
+
+**Fix:** Replaced keyword argument calls with `FeatureDefinition` objects, removed nonexistent `default_value`, added `unit` for QUOTA features, and added deduplication check to avoid overwriting app-specific features.
+
+**Files Changed:**
+- `swx_core/providers/billing_provider.py` - `_register_default_features` now creates `FeatureDefinition` objects and deduplicates against existing registrations
+
 ## [2.7.42] - 2026-07-12
 
 ### Fixed - Critical Stripe Billing Bugs
