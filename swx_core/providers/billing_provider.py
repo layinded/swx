@@ -7,6 +7,8 @@ Registers billing services including:
 - Entitlement resolver
 """
 
+from typing import Any
+
 from swx_core.providers.base import ServiceProvider
 
 
@@ -132,19 +134,52 @@ class MockBillingProvider:
         return "mock"
 
     async def create_customer(
-        self, email: str, name: str = None, metadata: dict = None
+        self,
+        email: str,
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         return f"mock_customer_{email}"
 
     async def create_checkout_session(
-        self, customer_id: str, plan_id: str, success_url: str, cancel_url: str
+        self,
+        customer_id: str,
+        price_id: str,
+        success_url: str,
+        cancel_url: str,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         return "https://mock-checkout.example.com"
+
+    async def create_subscription(
+        self, customer_id: str, price_id: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return {
+            "id": f"mock_subscription_{customer_id}",
+            "customer": customer_id,
+            "price_id": price_id,
+            "status": "active",
+            "metadata": metadata or {},
+        }
 
     async def cancel_subscription(
         self, subscription_id: str, at_period_end: bool = True
     ) -> bool:
         return True
 
-    def verify_webhook(self, payload: bytes, signature: str) -> dict:
+    async def get_subscription(self, subscription_id: str) -> dict[str, Any]:
+        return {
+            "id": subscription_id,
+            "status": "active",
+            "current_period_start": 0,
+            "current_period_end": 0,
+        }
+
+    async def get_customer(self, customer_id: str) -> dict[str, Any]:
+        return {"id": customer_id, "email": "mock@example.com"}
+
+    async def create_portal_session(self, customer_id: str, return_url: str) -> str:
+        return "https://mock-portal.example.com"
+
+    def verify_webhook(self, payload: bytes, signature: str) -> dict[str, Any]:
         return {"type": "mock.event", "data": {}}

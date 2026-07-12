@@ -2,6 +2,63 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.42] - 2026-07-12
+
+### Fixed - Critical Stripe Billing Bugs
+
+**Priority:** P0 (Production checkout is broken without these fixes)
+
+#### BUG-1: create_checkout_session passes database UUID as Stripe price ID
+
+**Problem:** `StripeProvider.create_checkout_session()` passed `plan_id` (a database UUID like `550e8400-e29b-41d4-a716-446655440000`) to Stripe's `price` field, which expects a `price_xxx` identifier. Every checkout attempt failed with `resource_missing` error.
+
+**Fix:** Added `stripe_price_id` and `stripe_product_id` columns to the `Plan` model. Renamed the provider parameter from `plan_id` to `price_id` across all billing interfaces. The controller now resolves the Plan's `stripe_price_id` before passing it to Stripe.
+
+**Files Changed:**
+- `swx_core/models/billing.py` - Added `stripe_price_id`, `stripe_product_id`, `amount`, `currency` to Plan model
+- `swx_core/services/billing/stripe_provider.py` - `create_checkout_session` now takes `price_id` instead of `plan_id`
+- `swx_core/services/billing/billing_provider_base.py` - Updated interface: `plan_id` → `price_id`
+- `swx_core/providers/billing_provider.py` - Updated MockBillingProvider interface
+
+**Migration Required:** Add `stripe_price_id`, `stripe_product_id`, `amount`, `currency` columns to `swx_billing_plan` table.
+
+#### BUG-2: sync_stripe_subscription cannot create new subscriptions from webhooks
+
+**Problem:** When Stripe sent `customer.subscription.created`, the webhook handler silently dropped the event because no local subscription existed yet. Only subscriptions created via direct DB seeding persisted.
+
+**Fix:** `sync_stripe_subscription` now creates a local `Subscription` record when no existing match is found. It resolves the Stripe price ID to a local Plan via `stripe_price_id` and the Stripe customer ID to a local BillingAccount.
+
+**Files Changed:**
+- `swx_core/services/billing/subscription_service.py` - Added subscription creation from webhook events with Plan and BillingAccount resolution
+
+#### BUG-3: create_portal_session returns stub response
+
+**Problem:** `StripeProvider` had no `create_portal_session` implementation. Users couldn't manage subscriptions (cancel, upgrade, update payment method) without admin intervention.
+
+**Fix:** Implemented `create_portal_session` in both `StripeProvider` and `MockBillingProvider` using `stripe.billing_portal.Session.create`.
+
+**Files Changed:**
+- `swx_core/services/billing/stripe_provider.py` - Added `create_portal_session` method
+- `swx_core/services/billing/billing_provider_base.py` - Added `create_portal_session` to interface
+- `swx_core/providers/billing_provider.py` - Added `create_portal_session` to MockBillingProvider
+
+#### BUG-4: Missing checkout.session.completed webhook handler
+
+**Problem:** The webhook handler only processed `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`. The `checkout.session.completed` event was missing, causing delayed subscription sync.
+
+**Fix:** Added `checkout.session.completed` handling in the webhook job handler. It extracts the subscription ID from the checkout session and syncs the full Stripe subscription data.
+
+**Files Changed:**
+- `swx_core/services/job/handlers.py` - Added `checkout.session.completed` event handling
+
+### Code Clarity Applied
+
+Extracted helper functions to eliminate repeated logic:
+- `_utc_now_naive()` in `billing.py` for timestamp defaults
+- `_serialize_metadata()` in `stripe_provider.py` for Stripe metadata normalization
+- `_naive_utc_from_timestamp()` and `_resolve_stripe_price_id()` in `subscription_service.py`
+- `SUBSCRIPTION_SYNC_EVENT_TYPES` constant in `handlers.py`
+
 ## [2.7.41] - 2026-07-05
 
 ### Fixed - Critical Bugs from v2.7.40

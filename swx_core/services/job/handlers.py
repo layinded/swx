@@ -18,6 +18,16 @@ from swx_core.services.billing.stripe_provider import get_stripe_provider
 from swx_core.services.billing.subscription_service import SubscriptionService
 
 
+SUBSCRIPTION_SYNC_EVENT_TYPES = {
+    "customer.subscription.created",
+    "customer.subscription.updated",
+}
+
+
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 async def billing_sync_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handler for billing.sync jobs.
@@ -56,7 +66,7 @@ async def billing_sync_handler(session: AsyncSession, payload: Dict[str, Any]) -
     
     try:
         # Sync with Stripe
-        provider = get_stripe_provider()
+        _ = get_stripe_provider()
         # In a real implementation, we would fetch subscription from Stripe
         # and update local status if needed
         # For now, we'll just log the sync
@@ -86,67 +96,61 @@ async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]
     try:
         subscription_service = SubscriptionService(session)
         
-        # Handle different webhook event types
-        if event_type == "customer.subscription.updated":
-            stripe_subscription_id = event_data.get("id")
-            status = event_data.get("status")
-            
-            # Find subscription by Stripe ID
-            stmt = select(Subscription).where(
-                Subscription.stripe_subscription_id == stripe_subscription_id
-            )
-            result = await session.execute(stmt)
-            subscription = result.scalar_one_or_none()
-            
-            if subscription:
-                # Map Stripe status to our status
-                status_map = {
-                    "active": SubscriptionStatus.ACTIVE,
-                    "canceled": SubscriptionStatus.CANCELED,
-                    "past_due": SubscriptionStatus.PAST_DUE,
-                    "unpaid": SubscriptionStatus.CANCELED,
-                }
-                new_status = status_map.get(status, SubscriptionStatus.ACTIVE)
-                
-                if subscription.status != new_status:
-                    subscription.status = new_status
-                    if new_status == SubscriptionStatus.CANCELED:
-                        subscription.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                    session.add(subscription)
-                    await session.commit()
-                    logger.info(f"Updated subscription {subscription.id} status to {new_status}")
-        
+        if event_type in SUBSCRIPTION_SYNC_EVENT_TYPES:
+            await subscription_service.sync_stripe_subscription(event_data)
+
         elif event_type == "customer.subscription.deleted":
             stripe_subscription_id = event_data.get("id")
-            
-            # Find and cancel subscription
+
             stmt = select(Subscription).where(
                 Subscription.stripe_subscription_id == stripe_subscription_id
             )
             result = await session.execute(stmt)
             subscription = result.scalar_one_or_none()
-            
+
             if subscription:
                 subscription.status = SubscriptionStatus.CANCELED
-                subscription.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                subscription.ended_at = _utc_now_naive()
                 session.add(subscription)
                 await session.commit()
                 logger.info(f"Cancelled subscription {subscription.id}")
-        
+
+        elif event_type == "checkout.session.completed":
+            stripe_subscription_id = event_data.get("subscription")
+            if not isinstance(stripe_subscription_id, str) or not stripe_subscription_id:
+                logger.warning("Checkout session completed without subscription ID")
+                return {
+                    "processed": False,
+                    "event_type": event_type,
+                    "error": "Missing subscription ID",
+                }
+
+            provider = get_stripe_provider()
+            if provider is None:
+                logger.warning("Stripe provider unavailable for checkout session sync")
+                return {
+                    "processed": False,
+                    "event_type": event_type,
+                    "error": "Stripe provider unavailable",
+                }
+
+            subscription_data = await provider.get_subscription(stripe_subscription_id)
+            await subscription_service.sync_stripe_subscription(subscription_data)
+            logger.info(
+                f"Synced subscription {stripe_subscription_id} from checkout completion"
+            )
+
         elif event_type == "invoice.payment_failed":
-            # Handle payment failure - could trigger alerts or grace period
             stripe_subscription_id = event_data.get("subscription")
             logger.warning(f"Payment failed for subscription {stripe_subscription_id}")
-            # Could update subscription to PAST_DUE status here
-        
-        # Trigger alert for important events
+
         if event_type in ("customer.subscription.deleted", "invoice.payment_failed"):
             from swx_core.services.alert_engine import alert_engine
             from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertActorType
             
             await alert_engine.emit(
                 severity=AlertSeverity.WARNING,
-                source=AlertSource.BILLING,
+                source=AlertSource.SYSTEM,
                 event_type=f"BILLING_{event_type.upper()}",
                 message=f"Billing webhook event: {event_type}",
                 actor_type=AlertActorType.SYSTEM,
@@ -170,7 +174,6 @@ async def alert_send_handler(session: AsyncSession, payload: Dict[str, Any]) -> 
     logger.info(f"Sending alert {alert_id} via {channel}")
     
     try:
-        from swx_core.services.alert_engine import alert_engine
         from swx_core.services.channels.models import (
             AlertSeverity, AlertSource, AlertActorType, Alert
         )
@@ -255,12 +258,12 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
         from swx_core.models.audit_log import AuditLog
         
         # Aggregate by action
-        stmt = (
+        stmt = (  # pyright: ignore[reportArgumentType]
             select(
                 AuditLog.action,
                 AuditLog.resource_type,
                 AuditLog.outcome,
-                func.count(AuditLog.id).label("count")
+                func.count(AuditLog.id).label("count")  # pyright: ignore[reportArgumentType]
             )
             .where(
                 and_(
@@ -268,17 +271,17 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
                     AuditLog.timestamp <= date_to
                 )
             )
-            .group_by(AuditLog.action, AuditLog.resource_type, AuditLog.outcome)
+            .group_by(AuditLog.action, AuditLog.resource_type, AuditLog.outcome)  # pyright: ignore[reportArgumentType]
             .order_by(desc("count"))
         )
         result = await session.execute(stmt)
         aggregates = result.all()
         
         # Aggregate by actor type
-        stmt_actor = (
+        stmt_actor = (  # pyright: ignore[reportArgumentType]
             select(
                 AuditLog.actor_type,
-                func.count(AuditLog.id).label("count")
+                func.count(AuditLog.id).label("count")  # pyright: ignore[reportArgumentType]
             )
             .where(
                 and_(
@@ -292,10 +295,10 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
         actor_aggregates = result_actor.all()
         
         # Aggregate by outcome
-        stmt_outcome = (
+        stmt_outcome = (  # pyright: ignore[reportArgumentType]
             select(
                 AuditLog.outcome,
-                func.count(AuditLog.id).label("count")
+                func.count(AuditLog.id).label("count")  # pyright: ignore[reportArgumentType]
             )
             .where(
                 and_(
@@ -309,8 +312,8 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
         outcome_aggregates = result_outcome.all()
         
         # Total count
-        stmt_total = (
-            select(func.count(AuditLog.id))
+        stmt_total = (  # pyright: ignore[reportArgumentType]
+            select(func.count(AuditLog.id))  # pyright: ignore[reportArgumentType]
             .where(
                 and_(
                     AuditLog.timestamp >= date_from,
@@ -373,11 +376,12 @@ async def cache_refresh_handler(session: AsyncSession, payload: Dict[str, Any]) 
     logger.info(f"Refreshing cache: {cache_type}")
     
     try:
+        from swx_core.services.settings_service import SettingsService
+
         refreshed_items = []
         
         if cache_type == "all" or cache_type == "settings":
             # Refresh settings cache
-            from swx_core.services.settings_service import SettingsService
             SettingsService.invalidate_cache()
             refreshed_items.append("settings")
             logger.info("Invalidated settings cache")

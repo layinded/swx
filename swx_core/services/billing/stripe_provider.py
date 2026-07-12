@@ -4,74 +4,121 @@ Stripe Provider Implementation
 Implements the BillingProvider interface for Stripe.
 """
 
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Any, Optional
 from swx_core.services.billing.billing_provider_base import BillingProvider
 from swx_core.config.settings import settings
 
-if TYPE_CHECKING:
-    import stripe
+
+def _serialize_metadata(metadata: dict[str, Any] | None) -> dict[str, str] | None:
+    if not metadata:
+        return None
+
+    return {key: str(value) for key, value in metadata.items()}
 
 
 class StripeProvider(BillingProvider):
+    @property
+    def name(self) -> str:
+        return "stripe"
+
     def __init__(self, api_key: str, webhook_secret: str):
         import stripe
 
         stripe.api_key = api_key
-        self.webhook_secret = webhook_secret
-        self._stripe = stripe
+        self.webhook_secret: str = webhook_secret
+        self._stripe: Any = stripe
 
     async def create_customer(
         self,
         email: str,
-        name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
-        import stripe
+        customer_kwargs: dict[str, Any] = {"email": email}
+        if name is not None:
+            customer_kwargs["name"] = name
+        serialized_metadata = _serialize_metadata(metadata)
+        if serialized_metadata is not None:
+            customer_kwargs["metadata"] = serialized_metadata
 
-        customer = stripe.Customer.create(email=email, name=name, metadata=metadata)
+        customer = self._stripe.Customer.create(**customer_kwargs)
         return str(customer.id)
 
     async def create_checkout_session(
-        self, customer_id: str, plan_id: str, success_url: str, cancel_url: str
+        self,
+        customer_id: str,
+        price_id: str,
+        success_url: str,
+        cancel_url: str,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
-        import stripe
+        session_kwargs: dict[str, Any] = {
+            "customer": customer_id,
+            "payment_method_types": ["card"],
+            "line_items": [{"price": price_id, "quantity": 1}],
+            "mode": "subscription",
+            "success_url": success_url,
+            "cancel_url": cancel_url,
+        }
+        serialized_metadata = _serialize_metadata(metadata)
+        if serialized_metadata is not None:
+            session_kwargs["metadata"] = serialized_metadata
 
-        session = stripe.checkout.Session.create(
+        session = self._stripe.checkout.Session.create(**session_kwargs)
+        return str(session.url)
+
+    async def create_subscription(
+        self,
+        customer_id: str,
+        price_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        subscription_kwargs: dict[str, Any] = {
+            "customer": customer_id,
+            "items": [{"price": price_id}],
+        }
+        serialized_metadata = _serialize_metadata(metadata)
+        if serialized_metadata is not None:
+            subscription_kwargs["metadata"] = serialized_metadata
+
+        subscription = self._stripe.Subscription.create(**subscription_kwargs)
+        return dict(subscription)
+
+    async def get_subscription(self, subscription_id: str) -> dict[str, Any]:
+        subscription = self._stripe.Subscription.retrieve(subscription_id)
+        return dict(subscription)
+
+    async def get_customer(self, customer_id: str) -> dict[str, Any]:
+        customer = self._stripe.Customer.retrieve(customer_id)
+        return dict(customer)
+
+    async def create_portal_session(self, customer_id: str, return_url: str) -> str:
+        session = self._stripe.billing_portal.Session.create(
             customer=customer_id,
-            payment_method_types=["card"],
-            line_items=[
-                {
-                    "price": plan_id,
-                    "quantity": 1,
-                }
-            ],
-            mode="subscription",
-            success_url=success_url,
-            cancel_url=cancel_url,
+            return_url=return_url,
         )
         return str(session.url)
 
     async def cancel_subscription(
         self, subscription_id: str, at_period_end: bool = True
     ) -> bool:
-        import stripe
-
         if at_period_end:
-            stripe.Subscription.modify(subscription_id, cancel_at_period_end=True)
+            _ = self._stripe.Subscription.modify(
+                subscription_id, cancel_at_period_end=True
+            )
         else:
-            stripe.Subscription.delete(subscription_id)
+            subscription = self._stripe.Subscription.retrieve(subscription_id)
+            _ = subscription.delete()
         return True
 
-    def verify_webhook(self, payload: Any, sig_header: str) -> Any:
-        import stripe
-
+    def verify_webhook(self, payload: bytes, sig_header: str) -> Any:
         try:
-            event = stripe.Webhook.construct_event(
+            event = self._stripe.Webhook.construct_event(
                 payload, sig_header, self.webhook_secret
             )
             return event
-        except Exception as e:
-            raise ValueError(f"Webhook verification failed: {e}")
+        except Exception as exc:
+            raise ValueError(f"Webhook verification failed: {exc}")
 
 
 def get_stripe_provider() -> Optional[StripeProvider]:
