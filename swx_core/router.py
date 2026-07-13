@@ -17,7 +17,9 @@ from swx_core.config.discovery import discovery
 
 # Force UTF-8 encoding for Windows (fix Unicode errors)
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8")
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8")
 
 # Initialize the main API router
 router = APIRouter()
@@ -68,9 +70,9 @@ def router_module(
         include_prefix = settings.ROUTE_PREFIX.rstrip('/')
 
     # Determine prefix: check module-level ROUTE_PREFIX first, then router.prefix
-    route_prefix_attr = getattr(module, "ROUTE_PREFIX", None)
-    if route_prefix_attr is not None:
-        user_defined_prefix = route_prefix_attr.strip()
+    route_prefix = getattr(module, "ROUTE_PREFIX", None)
+    if route_prefix is not None:
+        user_defined_prefix = route_prefix.strip()
     else:
         user_defined_prefix = getattr(module.router, "prefix", "").strip()
 
@@ -81,13 +83,15 @@ def router_module(
 
         # For versioned routes, strip the version segment since it's already in include_prefix
         prefix_parts = list(subfolders)
-        if version and prefix_parts and prefix_parts[0] == version:
+        if version and prefix_parts[:1] == [version]:
             prefix_parts = prefix_parts[1:]
 
-        if prefix_parts and prefix_parts[-1].lower() == route_file.lower():
-            default_prefix = "/" + "/".join(prefix_parts)
-        else:
-            default_prefix = "/" + "/".join(prefix_parts + [route_file])
+        prefix_tail = (
+            prefix_parts
+            if prefix_parts and prefix_parts[-1].lower() == route_file.lower()
+            else prefix_parts + [route_file]
+        )
+        default_prefix = "/" + "/".join(prefix_tail)
         user_defined_prefix = default_prefix
         print(
             f"⚠️ No prefix set in {full_module_name}. Using default prefix: {user_defined_prefix}"
@@ -103,8 +107,6 @@ def router_module(
         version_prefix = f"/api/{version}"
         if user_defined_prefix.startswith(version_prefix):
             user_defined_prefix = user_defined_prefix[len(version_prefix):]
-            if not user_defined_prefix:
-                user_defined_prefix = ""
 
     # Set the user-defined prefix on the router (FastAPI will compose it with include_prefix)
     module.router.prefix = user_defined_prefix
@@ -113,10 +115,7 @@ def router_module(
     # The actual path will be: include_prefix + user_defined_prefix
     full_path = f"{include_prefix}{user_defined_prefix}"
     tag_parts = [part.capitalize() for part in full_path.split("/") if part]
-    if full_module_name.startswith("swx_core"):
-        tag_prefix = "Core API"
-    else:
-        tag_prefix = "User API"
+    tag_prefix = "Core API" if full_module_name.startswith("swx_core") else "User API"
 
     tag = f"{tag_prefix} - {' - '.join(tag_parts)}"
 
@@ -220,8 +219,7 @@ def load_user_routes(router: APIRouter):
         route_parts = full_module_name.split(".")
 
         if "routes" in route_parts:
-            idx = route_parts.index("routes")
-            path_parts = route_parts[idx + 1 :]
+            path_parts = route_parts[route_parts.index("routes") + 1 :]
 
             if path_parts and any(
                 part.startswith("v") and len(part) > 1 and part[1:].isdigit()
