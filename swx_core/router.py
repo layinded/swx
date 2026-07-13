@@ -31,6 +31,8 @@ def router_module(
 
     - If a user-defined prefix is set on the router, that prefix is used (prepended with the global prefix).
     - If no prefix is set, a default prefix is generated from the folder structure.
+    - For versioned routes, the version segment is stripped from the prefix to avoid duplication.
+    - Supports ROUTE_PREFIX module attribute to explicitly control prefix (use "/" for root-level).
     - Also normalizes route paths to avoid duplicate segments.
     """
     if not hasattr(module, "router"):
@@ -55,17 +57,37 @@ def router_module(
         print(f"⚠️ WARNING: No route parts found for module '{full_module_name}'")
         return
 
-    # Get the user-defined prefix from the router (if any)
-    user_defined_prefix = getattr(module.router, "prefix", "").strip()
+    # Build the version prefix for include_router (NOT including user_defined_prefix)
+    # FastAPI will compose: include_prefix + router.prefix + route.path
+    if version:
+        include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}/{version}"
+    elif settings.CORE_ROUTE_PREFIX:
+        core_prefix = settings.CORE_ROUTE_PREFIX.strip('/')
+        include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}/{core_prefix}"
+    else:
+        include_prefix = settings.ROUTE_PREFIX.rstrip('/')
+
+    # Determine prefix: check module-level ROUTE_PREFIX first, then router.prefix
+    route_prefix_attr = getattr(module, "ROUTE_PREFIX", None)
+    if route_prefix_attr is not None:
+        user_defined_prefix = route_prefix_attr.strip()
+    else:
+        user_defined_prefix = getattr(module.router, "prefix", "").strip()
 
     # If no prefix is provided, generate a default one from the folder structure
     if not user_defined_prefix:
         subfolders = route_parts[:-1]
         route_file = route_parts[-1].replace("_route", "").replace("_routes", "")
-        if subfolders and subfolders[-1].lower() == route_file.lower():
-            default_prefix = "/" + "/".join(subfolders)
+
+        # For versioned routes, strip the version segment since it's already in include_prefix
+        prefix_parts = list(subfolders)
+        if version and prefix_parts and prefix_parts[0] == version:
+            prefix_parts = prefix_parts[1:]
+
+        if prefix_parts and prefix_parts[-1].lower() == route_file.lower():
+            default_prefix = "/" + "/".join(prefix_parts)
         else:
-            default_prefix = "/" + "/".join(subfolders + [route_file])
+            default_prefix = "/" + "/".join(prefix_parts + [route_file])
         user_defined_prefix = default_prefix
         print(
             f"⚠️ No prefix set in {full_module_name}. Using default prefix: {user_defined_prefix}"
@@ -75,18 +97,14 @@ def router_module(
     if not user_defined_prefix.startswith("/"):
         user_defined_prefix = "/" + user_defined_prefix
 
-    # Build the version prefix for include_router (NOT including user_defined_prefix)
-    # FastAPI will compose: include_prefix + router.prefix + route.path
+    # For versioned routes, strip /api/{version} prefix from user_defined_prefix
+    # to prevent doubling (e.g., /api/v1/api/v1/auth → /api/v1/auth)
     if version:
-        # Versioned app routes: /api/v1/auth
-        include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}/{version}"
-    elif settings.CORE_ROUTE_PREFIX:
-        # Core routes with custom prefix: /api/v1/auth (when CORE_ROUTE_PREFIX="/v1")
-        core_prefix = settings.CORE_ROUTE_PREFIX.strip('/')
-        include_prefix = f"{settings.ROUTE_PREFIX.rstrip('/')}/{core_prefix}"
-    else:
-        # Core routes default: /api/auth
-        include_prefix = settings.ROUTE_PREFIX.rstrip('/')
+        version_prefix = f"/api/{version}"
+        if user_defined_prefix.startswith(version_prefix):
+            user_defined_prefix = user_defined_prefix[len(version_prefix):]
+            if not user_defined_prefix:
+                user_defined_prefix = ""
 
     # Set the user-defined prefix on the router (FastAPI will compose it with include_prefix)
     module.router.prefix = user_defined_prefix

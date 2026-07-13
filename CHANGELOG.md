@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.44] - 2026-07-13
+
+### Fixed - router_module() Doubles /api/v1 Prefix for Versioned Routes
+
+**Priority:** Medium — causes incorrect URL paths for production API endpoints
+
+#### BUG: router_module() doubles /api/v1 prefix and cannot produce root-level API paths
+
+**Problem:** `router_module()` composes final URL paths as `include_prefix + router.prefix + route.path`. For versioned routes, `include_prefix` is `/api/v1`. If a route module sets `prefix="/api/v1"` on its APIRouter, the result is a doubled prefix: `/api/v1/api/v1/detect/batch`. Additionally, auto-generated prefixes for versioned routes included a duplicate version segment (`/api/v1/v1/detection_api/detect`), and there was no way to opt out of prefix generation for root-level paths.
+
+**Fix:** Three changes to `router_module()`:
+
+1. **Strip `/api/{version}` from user-defined prefix** for versioned routes — prevents doubling when a module sets `prefix="/api/v1"`
+2. **Strip version segment from auto-generated prefix** — auto-generated prefixes for versioned routes no longer include the version segment since it's already in `include_prefix`
+3. **Support module-level `ROUTE_PREFIX` attribute** — allows explicit empty prefix opt-out via `ROUTE_PREFIX = ""` for root-level versioned paths
+
+**Files Changed:**
+- `swx_core/router.py` - Fixed prefix composition logic in `router_module()`
+
+**URL path resolution examples (after fix):**
+
+| Module | Router Prefix | Result Path |
+|---|---|---|
+| `app/routes/v1/auth.py` | `prefix=""` | `/api/v1/auth` |
+| `app/routes/v1/auth.py` | `prefix="/auth"` | `/api/v1/auth` |
+| `app/routes/v1/auth.py` | `prefix="/api/v1/auth"` | `/api/v1/auth` (stripped) |
+| `app/routes/v1/detect.py` | `ROUTE_PREFIX="/"` | `/api/v1` (root-level) |
+| `app/routes/v1/detect.py` | `ROUTE_PREFIX=""` | `/api/v1/detect` (auto) |
+
 ## [2.7.43] - 2026-07-12
 
 ### Fixed - BillingServiceProvider Boot Failure
