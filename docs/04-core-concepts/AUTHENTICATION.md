@@ -1,7 +1,7 @@
 # Authentication
 
-**Version:** 2.7.34  
-**Last Updated:** 2026-07-01
+**Version:** 2.7.45  
+**Last Updated:** 2026-07-22
 
 ---
 
@@ -46,15 +46,27 @@ Domain separation prevents **privilege escalation** and **cross-domain access**:
 ### Admin Domain
 
 **Model:** `AdminUser`  
-**Endpoint:** `/api/admin/auth/`  
+**Endpoints:** `/api/admin/auth/`  
 **Token Audience:** `"admin"`  
 **Routes:** `/api/admin/*`
+
+**Available Endpoints:**
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/admin/auth/` | POST | Login (returns access + refresh tokens) |
+| `/api/admin/auth/refresh` | POST | Refresh access token |
+| `/api/admin/auth/revoke` | POST | Revoke refresh token (logout) |
+| `/api/admin/auth/cookie/login` | POST | Login with httpOnly cookies (BFF pattern) |
+| `/api/admin/auth/cookie/refresh` | POST | Refresh tokens via httpOnly cookies |
+| `/api/admin/auth/cookie/logout` | POST | Clear httpOnly auth cookies |
 
 **Characteristics:**
 - Separate database table (`admin_user`)
 - Separate authentication flow
 - Admin-only access
 - Cannot access user domain
+- Supports both token and cookie-based authentication
 
 **Example:**
 ```python
@@ -172,47 +184,132 @@ POST /api/auth/refresh
    - Verifies password hash
    - Validates user is active
 
-3. Server generates access token
-   - Audience: "admin"
-   - Subject: admin email
-   - Expiration: 7 days (configurable)
+3. Server generates tokens
+   - Access token (audience: "admin")
+   - Refresh token (stored in DB)
 
-4. Server returns token
+4. Server returns tokens
    {
      "access_token": "eyJ...",
+     "refresh_token": "eyJ...",
      "token_type": "bearer"
    }
 
-5. Client stores token
-   - Use in Authorization header
-   - Authorization: Bearer eyJ...
+5. Client stores tokens
+   - Access token: Memory/localStorage
+   - Refresh token: Secure storage
 ```
 
 **Code Example:**
 ```python
-from fastapi import APIRouter, Depends
-from fastapi.security import OAuth2PasswordRequestForm
+from swx_core.controllers.admin_auth_controller import login_admin_controller
 from swx_core.models.token import Token
-from swx_core.auth.admin.dependencies import get_current_admin_user
 
-router = APIRouter(prefix="/admin/auth")
-
-@router.post("/", response_model=Token)
+@router.post("/admin/auth/", response_model=Token)
 async def login_admin(
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: SessionDep,
+    request: Request,
 ):
-    # Validate credentials
-    admin = await authenticate_admin(session, form_data.username, form_data.password)
-    
-    # Generate token
-    access_token = create_token(
-        subject=admin.email,
-        audience=TokenAudience.ADMIN,
-        expires_delta=timedelta(days=7),
-    )
-    
-    return Token(access_token=access_token, token_type="bearer")
+    return await login_admin_controller(session, form_data, request)
+```
+
+### Admin Token Refresh Flow
+
+```
+1. Client → POST /api/admin/auth/refresh
+   {
+     "refresh_token": "eyJ..."
+   }
+
+2. Server validates refresh token
+   - Checks signature and expiration
+   - Verifies token exists in database
+   - Confirms admin user is active
+
+3. Server returns new tokens
+   {
+     "access_token": "eyJ...",
+     "refresh_token": "eyJ...",
+     "token_type": "bearer"
+   }
+```
+
+### Admin Cookie-Based Authentication
+
+Admin auth also supports HTTP-only cookies for browser-based admin panels (BFF pattern):
+
+#### Login with Cookies
+
+```http
+POST /api/admin/auth/cookie/login
+Content-Type: application/x-www-form-urlencoded
+
+username=admin@example.com&password=securepassword
+```
+
+**Response:**
+```json
+{
+  "email": "admin@example.com",
+  "message": "Admin authentication successful"
+}
+```
+
+**Cookies Set:**
+- `swx_access_token` - HTTP-only, secure, path `/`
+- `swx_refresh_token` - HTTP-only, secure, path `/api`
+
+#### Refresh Tokens via Cookies
+
+```http
+POST /api/admin/auth/cookie/refresh
+```
+
+**Cookies Updated:**
+- New `swx_access_token` cookie
+- New `swx_refresh_token` cookie
+
+#### Logout via Cookies
+
+```http
+POST /api/admin/auth/cookie/logout
+```
+
+**Cookies Cleared:**
+- `swx_access_token` cookie deleted
+- `swx_refresh_token` cookie deleted
+
+**Frontend Example (Next.js Admin Panel):**
+```javascript
+async function adminLogin(email, password) {
+  const response = await fetch('/api/admin/auth/cookie/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
+    credentials: 'include'
+  })
+
+  if (response.ok) {
+    window.location.href = '/admin/dashboard'
+  }
+}
+
+async function adminRefresh() {
+  const response = await fetch('/api/admin/auth/cookie/refresh', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  return response.ok
+}
+
+async function adminLogout() {
+  await fetch('/api/admin/auth/cookie/logout', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  window.location.href = '/admin/login'
+}
 ```
 
 ### User Login Flow

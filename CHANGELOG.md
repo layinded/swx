@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.45] - 2026-07-22
+
+### Added - Admin Auth: Refresh Tokens, Cookie Routes, and Modular Architecture
+
+**Admin login now returns refresh tokens** (previously returned `refresh_token: null`):
+
+- `POST /api/admin/auth/` now returns both `access_token` and `refresh_token`
+- `POST /api/admin/auth/refresh` — new endpoint to refresh admin access tokens
+- `POST /api/admin/auth/revoke` — new endpoint to revoke admin refresh tokens (logout)
+
+**Admin cookie-based authentication** (BFF pattern for browser admin panels):
+
+- `POST /api/admin/auth/cookie/login` — authenticate and set httpOnly cookies
+- `POST /api/admin/auth/cookie/refresh` — refresh tokens via httpOnly cookies
+- `POST /api/admin/auth/cookie/logout` — clear httpOnly auth cookies
+
+**Architecture: Refactored admin auth into Repository-Service-Controller-Route pattern:**
+
+- `swx_core/repositories/admin_user_repository.py` — `get_admin_by_email()`, `authenticate_admin()`
+- `swx_core/services/admin_auth_service.py` — `login_admin_service()`, `refresh_admin_token_service()`, `logout_admin_service()`, `verify_admin_cookie_refresh()`, `set_auth_cookies()`, `clear_auth_cookies()`
+- `swx_core/controllers/admin_auth_controller.py` — Thin delegation layer
+- `swx_core/routes/admin/auth_route.py` — Core auth endpoints (login, refresh, revoke)
+- `swx_core/routes/admin/auth_cookie_route.py` — Cookie auth endpoints (cookie/login, cookie/refresh, cookie/logout)
+
+**Documentation:**
+
+- Updated AUTHENTICATION.md with admin refresh token flow, admin cookie auth endpoints, and frontend examples
+
+**Files Changed:**
+- `swx_core/repositories/admin_user_repository.py` - NEW: Admin user repository
+- `swx_core/services/admin_auth_service.py` - NEW: Admin auth business logic
+- `swx_core/controllers/admin_auth_controller.py` - NEW: Admin auth controller
+- `swx_core/routes/admin/auth_route.py` - MODIFIED: Refactored to use controller/service, added refresh/revoke endpoints
+- `swx_core/routes/admin/auth_cookie_route.py` - NEW: Admin cookie auth endpoints
+- `swx_core/routes/admin/__init__.py` - MODIFIED: Added auth_cookie_router
+- `docs/04-core-concepts/AUTHENTICATION.md` - MODIFIED: Updated admin auth docs
+
 ## [2.7.44] - 2026-07-13
 
 ### Fixed - router_module() Doubles /api/v1 Prefix for Versioned Routes
