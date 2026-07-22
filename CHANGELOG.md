@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.0] - 2026-07-22
+
+### Added - Database Engine Configuration via Environment Variables
+
+**Configurable connection pooling and statement timeout** — allows production deployments to tune database connections without forking swx-core.
+
+Previously, all pool parameters were hardcoded in `db.py` with no way to adjust them for production workloads. This caused connection exhaustion under high concurrency.
+
+**New settings:**
+
+| Setting | Default | Description |
+|---|---|---|
+| `DB_POOL_SIZE` | `20` | Base connection pool size for async engine |
+| `DB_MAX_OVERFLOW` | `10` | Max overflow connections beyond pool_size |
+| `DB_POOL_TIMEOUT` | `30` | Seconds to wait for a connection from pool |
+| `DB_POOL_RECYCLE` | `3600` | Seconds before recycling a connection |
+| `DB_POOL_USE_LIFO` | `False` | Use LIFO connection reuse (warmer connections) |
+| `DB_STATEMENT_TIMEOUT_MS` | `0` | PostgreSQL statement timeout in ms (0 = disabled) |
+| `DB_SYNC_POOL_SIZE` | `5` | Base pool size for sync engine (Celery workers) |
+| `DB_SYNC_MAX_OVERFLOW` | `5` | Max overflow for sync engine |
+
+**Backward compatible:** All defaults match the previous hardcoded values. No changes needed for existing deployments.
+
+**Recommended production values for high-concurrency:**
+
+```env
+DB_POOL_SIZE=30
+DB_MAX_OVERFLOW=40
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=1800
+DB_POOL_USE_LIFO=true
+DB_STATEMENT_TIMEOUT_MS=30000
+```
+
+**Files Changed:**
+- `swx_core/config/settings.py` - MODIFIED: Added 8 database pool configuration settings
+- `swx_core/database/db.py` - MODIFIED: Async and sync engines now use configurable pool settings, added statement_timeout support
+
 ## [2.8.0] - 2026-07-22
 
 ### Added - User Auth Caching (L1/L2 Redis)

@@ -176,6 +176,32 @@ class Settings(BaseSettings):
         default=None, description="Override async database URL (takes precedence)"
     )
 
+    # Database Pool Configuration
+    DB_POOL_SIZE: int = Field(
+        default=20, description="Base connection pool size for async engine"
+    )
+    DB_MAX_OVERFLOW: int = Field(
+        default=10, description="Max overflow connections beyond pool_size for async engine"
+    )
+    DB_POOL_TIMEOUT: int = Field(
+        default=30, description="Seconds to wait for a connection from pool before raising"
+    )
+    DB_POOL_RECYCLE: int = Field(
+        default=3600, description="Seconds before recycling a connection (prevents stale connections)"
+    )
+    DB_POOL_USE_LIFO: bool = Field(
+        default=False, description="Use LIFO connection reuse (warmer connections in production)"
+    )
+    DB_STATEMENT_TIMEOUT_MS: int = Field(
+        default=0, description="PostgreSQL statement timeout in milliseconds (0 = disabled)"
+    )
+    DB_SYNC_POOL_SIZE: int = Field(
+        default=5, description="Base connection pool size for sync engine (Celery workers)"
+    )
+    DB_SYNC_MAX_OVERFLOW: int = Field(
+        default=5, description="Max overflow connections beyond sync pool_size"
+    )
+
     @property
     def ASYNC_SQLALCHEMY_DATABASE_URI(self) -> str:
         if self.ASYNC_DATABASE_URL:

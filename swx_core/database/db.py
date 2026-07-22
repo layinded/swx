@@ -26,17 +26,24 @@ from sqlmodel import Session, create_engine
 from swx_core.config.settings import settings
 from swx_core.middleware.logging_middleware import logger
 
-# Create the async database engine with connection pooling
-# Includes resilience features:
-# - pool_pre_ping: Checks connection health before use (detects stale connections)
-# - pool_recycle: Recycles connections after 1 hour (prevents MySQL "gone away" errors)
+# Build connect_args for statement timeout (PostgreSQL only)
+_db_connect_args: dict[str, object] = {}
+if settings.DB_STATEMENT_TIMEOUT_MS > 0 and settings.DATABASE_TYPE in ("postgres", "postgresql"):
+    _db_connect_args["server_settings"] = {
+        "statement_timeout": str(settings.DB_STATEMENT_TIMEOUT_MS),
+    }
+
+# Create the async database engine with configurable connection pooling
 async_engine = create_async_engine(
     str(settings.ASYNC_SQLALCHEMY_DATABASE_URI),
-    echo=False,  # Disables verbose SQL logging for performance
-    pool_size=20,  # Maintain up to 20 active connections
-    max_overflow=10,  # Allow up to 10 extra connections when needed
-    pool_pre_ping=True,  # Enable connection health checks (detect stale connections)
-    pool_recycle=3600,  # Recycle connections after 1 hour (prevent stale connections)
+    echo=False,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_pre_ping=True,
+    pool_recycle=settings.DB_POOL_RECYCLE,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    pool_use_lifo=settings.DB_POOL_USE_LIFO,
+    connect_args=_db_connect_args,
 )
 
 # Async session factory for creating new database sessions
@@ -44,15 +51,15 @@ AsyncSessionLocal = async_sessionmaker(
     bind=async_engine, class_=AsyncSession, expire_on_commit=False
 )
 
-# Create the sync database engine (for background tasks/migrations if needed)
-# Same resilience features as async engine
+# Create the sync database engine (for background tasks/migrations)
 engine = create_engine(
     str(settings.SQLALCHEMY_DATABASE_URI),
     echo=False,
-    pool_size=5,
-    max_overflow=5,
-    pool_pre_ping=True,  # Enable connection health checks
-    pool_recycle=3600,  # Recycle connections after 1 hour
+    pool_size=settings.DB_SYNC_POOL_SIZE,
+    max_overflow=settings.DB_SYNC_MAX_OVERFLOW,
+    pool_pre_ping=True,
+    pool_recycle=settings.DB_POOL_RECYCLE,
+    connect_args=_db_connect_args,
 )
 
 # Sync session factory (legacy/isolated usage only)
