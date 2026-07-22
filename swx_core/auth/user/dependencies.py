@@ -11,7 +11,7 @@ Supports both:
 - httpOnly cookie (for browser-based apps using BFF pattern)
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
@@ -22,6 +22,7 @@ from sqlmodel import select
 
 from swx_core.auth.core.jwt import decode_token, TokenAudience
 from swx_core.auth.core.bearer_or_cookie import BearerOrCookieAuth
+from swx_core.auth.auth_cache import user_auth_cache
 from swx_core.config.settings import settings
 from swx_core.database.db import SessionDep
 from swx_core.models.user import User
@@ -34,19 +35,32 @@ from swx_core.core.tenant import set_current_tenant, set_super_admin
 user_auth = BearerOrCookieAuth()
 UserTokenDep = Annotated[HTTPAuthorizationCredentials | None, Depends(user_auth)]
 
+_USER_CACHE_FIELDS = (
+    "id", "email", "full_name", "is_active", "is_superuser",
+    "auth_provider", "provider_id", "avatar_url", "preferred_language",
+    "tenant_id", "created_at", "updated_at",
+)
+
+
+def _user_to_cache_dict(user: User) -> dict[str, Any]:
+    return {field: getattr(user, field) for field in _USER_CACHE_FIELDS}
+
+
+def _cache_dict_to_user(data: dict[str, Any]) -> User:
+    return User(**data)
+
 
 async def get_current_user(
     session: SessionDep,
     token: UserTokenDep,
     request: Request,
 ) -> User:
-    """
-    Retrieves and validates the currently authenticated user.
+    """Retrieves and validates the currently authenticated user.
 
     This function:
     1. Validates the JWT token with audience="user"
     2. Checks token scopes (if any)
-    3. Retrieves the user from database
+    3. Retrieves the user from L1/L2 cache or database
     4. Validates the user is active
 
     Supports token from:
@@ -64,7 +78,7 @@ async def get_current_user(
     Raises:
         HTTPException (401): If token is invalid, expired, or wrong audience.
         HTTPException (404): If user not found.
-        HTTPException (400): If admin account is inactive.
+        HTTPException (400): If user account is inactive.
     """
     if not token:
         await alert_engine.emit(
@@ -106,7 +120,22 @@ async def get_current_user(
             or "Token missing subject",
         )
 
-    # Query user from database
+    if settings.USER_CACHE_ENABLED:
+        cached = await user_auth_cache.get_profile(email)
+        if cached is not None:
+            user = _cache_dict_to_user(cached)
+            if not user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=translate(request, "inactive_user") or "User account is inactive",
+                )
+            if user.tenant_id:
+                set_current_tenant(user.tenant_id)
+            if user.is_superuser:
+                set_super_admin(True)
+            return user
+
+    # Query user from database (cache miss)
     statement = select(User).where(User.email == email)
     result = await session.execute(statement)
     user = result.scalar_one_or_none()
@@ -123,14 +152,18 @@ async def get_current_user(
             detail=translate(request, "inactive_user") or "User account is inactive",
         )
 
+    if settings.USER_CACHE_ENABLED:
+        cache_data = _user_to_cache_dict(user)
+        await user_auth_cache.set_profile(email, cache_data)
+        await user_auth_cache.set_profile(str(user.id), cache_data)
+
     if user.tenant_id:
         set_current_tenant(user.tenant_id)
-    
+
     if user.is_superuser:
         set_super_admin(True)
 
     return user
-
 
 # Type alias for dependency injection
 UserDep = Annotated[User, Depends(get_current_user)]

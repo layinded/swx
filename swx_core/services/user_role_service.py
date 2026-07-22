@@ -1,10 +1,11 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from uuid import UUID
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from swx_core.models.user_role import UserRole, UserRoleCreate
 from swx_core.repositories import user_role_repository, user_repository, role_repository
 from swx_core.events.dispatcher import event_bus, Event
+from swx_core.auth.auth_cache import invalidate_user_permissions
 
 
 async def assign_role_to_user_service(
@@ -25,7 +26,10 @@ async def assign_role_to_user_service(
         return existing
     
     user_role = await user_role_repository.assign_role_to_user(session, assignment)
-    
+
+    # Invalidate cached permissions after role assignment
+    await invalidate_user_permissions(assignment.user_id)
+
     await event_bus.emit(Event(
         name="user_role.assigned",
         payload={
@@ -51,6 +55,9 @@ async def remove_role_from_user_service(
     role_id = str(ur.role_id)
     
     await user_role_repository.remove_role_from_user(session, ur)
+
+    # Invalidate cached permissions after role removal
+    await invalidate_user_permissions(ur.user_id)
     
     await event_bus.emit(Event(
         name="user_role.removed",

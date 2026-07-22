@@ -36,6 +36,7 @@ from swx_core.repositories.user_repository import (
 )
 from swx_core.utils.language_helper import translate
 from swx_core.events.dispatcher import event_bus, Event
+from swx_core.auth.auth_cache import invalidate_user_cache
 
 
 async def update_user_profile_service(
@@ -61,7 +62,10 @@ async def update_user_profile_service(
     old_values = {"email": current_user.email, "full_name": current_user.full_name}
     updated_user = await update_user(session=session, db_user=current_user, user_in=user_in)
     new_values = {"email": updated_user.email, "full_name": updated_user.full_name}
-    
+
+    # Invalidate cached user profile so subsequent requests see the update
+    await invalidate_user_cache(updated_user.id, updated_user.email)
+
     await event_bus.emit(Event(
         name="user.updated",
         payload={
@@ -145,7 +149,10 @@ async def update_password_service(
         raise HTTPException(
             status_code=400, detail=translate(request, "password_update_failed")
         )
-    
+
+    # Invalidate cached user profile after password change
+    await invalidate_user_cache(current_user.id, current_user.email)
+
     await event_bus.emit(Event(
         name="user.password_changed",
         payload={
@@ -187,6 +194,9 @@ async def delete_user_service(
         raise HTTPException(
             status_code=400, detail=translate(request, "user_deletion_failed")
         )
+
+    # Invalidate cached user profile after deletion
+    await invalidate_user_cache(user_id, user_email)
     
     await event_bus.emit(Event(
         name="user.deleted",

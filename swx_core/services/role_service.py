@@ -6,6 +6,7 @@ from swx_core.models.role import Role, RoleCreate, RoleUpdate
 from swx_core.models.role_permission import RolePermission
 from swx_core.repositories import role_repository, role_permission_repository, permission_repository
 from swx_core.events.dispatcher import event_bus, Event
+from swx_core.config.settings import settings
 
 
 async def list_roles_service(session: AsyncSession, skip: int = 0, limit: int = 100) -> List[Role]:
@@ -123,7 +124,7 @@ async def assign_permission_to_role_service(
     permission_id: UUID,
     event_context: Dict[str, Any] | None = None,
 ) -> RolePermission:
-    role = await get_role_service(session, role_id)
+    await get_role_service(session, role_id)
     permission = await permission_repository.get_permission_by_id(session, permission_id)
     if not permission:
         raise HTTPException(status_code=404, detail="Permission not found")
@@ -133,7 +134,12 @@ async def assign_permission_to_role_service(
         return existing
 
     rp = await role_permission_repository.assign_permission_to_role(session, role_id, permission_id)
-    
+
+    # Invalidate all cached permissions when role-permission mapping changes
+    if settings.USER_CACHE_ENABLED:
+        from swx_core.auth.auth_cache import invalidate_all_permissions
+        await invalidate_all_permissions()
+
     await event_bus.emit(Event(
         name="role.permission_assigned",
         payload={
@@ -157,6 +163,11 @@ async def remove_permission_from_role_service(
         raise HTTPException(status_code=404, detail="Role-permission mapping not found")
     
     await role_permission_repository.remove_permission_from_role(session, rp)
+
+    # Invalidate all cached permissions when role-permission mapping changes
+    if settings.USER_CACHE_ENABLED:
+        from swx_core.auth.auth_cache import invalidate_all_permissions
+        await invalidate_all_permissions()
     
     await event_bus.emit(Event(
         name="role.permission_removed",

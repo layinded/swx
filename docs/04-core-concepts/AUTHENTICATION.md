@@ -1,6 +1,6 @@
 # Authentication
 
-**Version:** 2.7.45  
+**Version:** 2.8.0  
 **Last Updated:** 2026-07-22
 
 ---
@@ -12,8 +12,9 @@
 3. [Token Types](#token-types)
 4. [Authentication Flows](#authentication-flows)
 5. [Token Security](#token-security)
-6. [OAuth Integration](#oauth-integration)
-7. [Usage Examples](#usage-examples)
+6. [Auth Caching](#auth-caching)
+7. [OAuth Integration](#oauth-integration)
+8. [Usage Examples](#usage-examples)
 
 ---
 
@@ -995,6 +996,110 @@ except InvalidTokenError:
 - Skip audience validation
 - Log tokens in plain text
 - Disable PKCE for OAuth flows
+
+---
+
+## Auth Caching
+
+SwX-API v2.8.0 introduces **L1/L2 auth caching** to reduce database queries on every authenticated request.
+
+### Architecture
+
+```
+Request → L1 Cache (process-local) → L2 Cache (Redis) → Database
+                ↓ hit                  ↓ hit                ↓ miss
+             return user          return user          query + populate L1+L2
+```
+
+- **L1 cache**: In-process Python dict with timestamp-based TTL. Zero network round-trip.
+- **L2 cache**: Redis with structured key naming. Shared across processes.
+- **Graceful degradation**: If Redis is unavailable, falls back to L1-only, then database.
+
+### Key Naming
+
+Cache keys follow the pattern: `{env}:{app}:{scope}:{resource}:{identifier}:{version}`
+
+Examples:
+- `prod:nh:user:profile:user@example.com:v1` — cached user profile
+- `prod:nh:user:profile:550e8400:v1` — cached user profile by ID
+- `prod:nh:user:permissions:550e8400:v1` — cached user permissions
+- `prod:nh:admin:profile:admin@example.com:v1` — cached admin profile
+
+### Cached Fields
+
+**User profile** (excludes `hashed_password`):
+`id`, `email`, `full_name`, `is_active`, `is_superuser`, `auth_provider`, `provider_id`, `avatar_url`, `preferred_language`, `tenant_id`, `created_at`, `updated_at`
+
+**Admin profile** (excludes `hashed_password`):
+`id`, `email`, `full_name`, `is_active`, `auth_provider`, `provider_id`, `created_at`
+
+**User permissions**:
+`id`, `name`, `description`, `resource_type`, `action`
+
+### Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `USER_CACHE_ENABLED` | `False` | Enable L1/L2 cache for user auth lookups |
+| `USER_CACHE_TTL` | `300` | TTL in seconds for cached user profiles (5 min) |
+| `USER_PERMISSIONS_CACHE_TTL` | `120` | TTL in seconds for cached user permissions (2 min) |
+| `USER_CACHE_L1_MAX_ENTRIES` | `1000` | Maximum entries in process-local L1 cache |
+| `ADMIN_CACHE_ENABLED` | `False` | Enable L1/L2 cache for admin auth lookups |
+| `ADMIN_CACHE_TTL` | `300` | TTL in seconds for cached admin profiles (5 min) |
+
+**Enable caching in `.env`:**
+
+```env
+USER_CACHE_ENABLED=true
+ADMIN_CACHE_ENABLED=true
+USER_CACHE_TTL=300
+USER_PERMISSIONS_CACHE_TTL=120
+```
+
+### Invalidation Hooks
+
+Cache invalidation is automatic on data mutations:
+
+| Event | Invalidation |
+|---|---|
+| User profile update | Profile cache (by id + email) |
+| Password change | Profile cache (by id + email) |
+| User deletion | Profile cache (by id + email) |
+| Role assigned to user | Permissions cache (by user_id) |
+| Role removed from user | Permissions cache (by user_id) |
+| Permission assigned to role | ALL permission caches |
+| Permission removed from role | ALL permission caches |
+
+### Manual Invalidation
+
+For programmatic cache control:
+
+```python
+from swx_core.auth.auth_cache import (
+    invalidate_user_cache,
+    invalidate_user_permissions,
+    invalidate_admin_cache,
+    invalidate_all_permissions,
+)
+
+# Invalidate all cached data for a user
+await invalidate_user_cache(user_id="550e8400...", email="user@example.com")
+
+# Invalidate only permissions for a user
+await invalidate_user_permissions(user_id="550e8400...")
+
+# Invalidate all cached data for an admin
+await invalidate_admin_cache(admin_id="...", email="admin@example.com")
+
+# Invalidate ALL cached permissions (bulk invalidation)
+await invalidate_all_permissions()
+```
+
+### Backward Compatibility
+
+- **Default is OFF**: `USER_CACHE_ENABLED=False` and `ADMIN_CACHE_ENABLED=False` means no caching. All requests hit the database as before.
+- **No migration required**: No database schema changes. Simply enable the settings to activate caching.
+- **Redis optional**: If Redis is unavailable, L1 cache still works (per-process only).
 
 ---
 

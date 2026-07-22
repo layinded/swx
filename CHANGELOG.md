@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.8.0] - 2026-07-22
+
+### Added - User Auth Caching (L1/L2 Redis)
+
+**Redis-backed two-level cache for auth lookups** — dramatically reduces database queries on every authenticated request.
+
+- L1 cache: process-local dict with timestamp-based TTL (zero Redis round-trip)
+- L2 cache: Redis with structured key naming `{env}:{app}:{scope}:{resource}:{identifier}:{version}`
+- Cacheable fields exclude `hashed_password` for security
+- Graceful degradation: if Redis is unavailable, falls back to L1-only then DB
+- Backward compatible: `USER_CACHE_ENABLED=False` (default) = no caching
+
+**New settings:**
+
+| Setting | Default | Description |
+|---|---|---|
+| `USER_CACHE_ENABLED` | `False` | Enable L1/L2 cache for user auth lookups |
+| `USER_CACHE_TTL` | `300` | TTL in seconds for cached user profiles |
+| `USER_PERMISSIONS_CACHE_TTL` | `120` | TTL in seconds for cached user permissions |
+| `USER_CACHE_L1_MAX_ENTRIES` | `1000` | Maximum entries in process-local L1 cache |
+| `ADMIN_CACHE_ENABLED` | `False` | Enable L1/L2 cache for admin auth lookups |
+| `ADMIN_CACHE_TTL` | `300` | TTL in seconds for cached admin profiles |
+
+**Cached paths:**
+
+- `get_current_user()` — checks L1 → L2 → DB, populates L1+L2 on miss
+- `get_current_admin_user()` — checks L1 → L2 → DB, populates L1+L2 on miss
+- `get_user_permissions()` — checks L1 → L2 → DB, populates L1+L2 on miss
+
+**Cache invalidation hooks:**
+
+- `update_user_profile_service()` → invalidates user profile cache (by id + email)
+- `update_password_service()` → invalidates user profile cache
+- `delete_user_service()` → invalidates user profile cache
+- `assign_role_to_user_service()` → invalidates user permissions cache
+- `remove_role_from_user_service()` → invalidates user permissions cache
+- `assign_permission_to_role_service()` → invalidates ALL permission caches
+- `remove_permission_from_role_service()` → invalidates ALL permission caches
+
+**Files Changed:**
+- `swx_core/config/settings.py` - MODIFIED: Added auth cache configuration settings
+- `swx_core/auth/auth_cache.py` - NEW: AuthCache class with L1/L2, invalidation functions
+- `swx_core/auth/user/dependencies.py` - MODIFIED: get_current_user() now checks cache first
+- `swx_core/auth/admin/dependencies.py` - MODIFIED: get_current_admin_user() now checks cache first
+- `swx_core/rbac/helpers.py` - MODIFIED: get_user_permissions() now checks cache first
+- `swx_core/services/user_service.py` - MODIFIED: Added cache invalidation after profile/password/delete
+- `swx_core/services/user_role_service.py` - MODIFIED: Added cache invalidation after role assign/remove
+- `swx_core/services/role_service.py` - MODIFIED: Added cache invalidation after permission assign/remove
+- `docs/04-core-concepts/AUTHENTICATION.md` - MODIFIED: Added auth caching documentation
+
 ## [2.7.45] - 2026-07-22
 
 ### Added - Admin Auth: Refresh Tokens, Cookie Routes, and Modular Architecture

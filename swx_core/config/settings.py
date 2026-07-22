@@ -342,6 +342,32 @@ class Settings(BaseSettings):
         description="CSRF cookie maximum age in seconds",
     )
 
+    # Auth Cache Configuration
+    USER_CACHE_ENABLED: bool = Field(
+        default=False,
+        description="Enable Redis-backed L1/L2 cache for user auth lookups (backward compatible)",
+    )
+    USER_CACHE_TTL: int = Field(
+        default=300,
+        description="TTL in seconds for cached user profiles (default: 5 min)",
+    )
+    USER_PERMISSIONS_CACHE_TTL: int = Field(
+        default=120,
+        description="TTL in seconds for cached user permissions (default: 2 min)",
+    )
+    USER_CACHE_L1_MAX_ENTRIES: int = Field(
+        default=1000,
+        description="Maximum entries in process-local L1 cache",
+    )
+    ADMIN_CACHE_ENABLED: bool = Field(
+        default=False,
+        description="Enable Redis-backed L1/L2 cache for admin auth lookups (backward compatible)",
+    )
+    ADMIN_CACHE_TTL: int = Field(
+        default=300,
+        description="TTL in seconds for cached admin profiles (default: 5 min)",
+    )
+
     BILLING_ENABLED: bool = Field(
         default=False, description="Enable Stripe billing integration"
     )
