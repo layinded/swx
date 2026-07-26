@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,22 @@ from swx_core.models.role_permission import RolePermission
 from swx_core.repositories import role_repository, role_permission_repository, permission_repository
 from swx_core.events.dispatcher import event_bus, Event
 from swx_core.config.settings import settings
+
+
+async def _invalidate_role_caches() -> None:
+    """Invalidate role caches when role definitions change."""
+    if settings.USER_CACHE_ENABLED:
+        from swx_core.auth.auth_cache import invalidate_all_roles
+
+        await invalidate_all_roles()
+
+
+async def _invalidate_permission_caches() -> None:
+    """Invalidate permission caches when role-permission mappings change."""
+    if settings.USER_CACHE_ENABLED:
+        from swx_core.auth.auth_cache import invalidate_all_permissions
+
+        await invalidate_all_permissions()
 
 
 async def list_roles_service(session: AsyncSession, skip: int = 0, limit: int = 100) -> List[Role]:
@@ -67,6 +83,8 @@ async def update_role_service(
     role = await role_repository.update_role(session, role, role_in)
     new_values = {"name": role.name, "description": role.description}
     
+    await _invalidate_role_caches()
+    
     await event_bus.emit(Event(
         name="role.updated",
         payload={
@@ -97,7 +115,7 @@ async def delete_role_service(
     from swx_core.models.user_role import UserRole
     usage_statement = select(func.count()).select_from(UserRole).where(UserRole.role_id == role_id)
     result = await session.execute(usage_statement)
-    usage_count = result.scalar()
+    usage_count = result.scalar() or 0
     if usage_count > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -105,6 +123,8 @@ async def delete_role_service(
         )
         
     await role_repository.delete_role(session, role)
+    
+    await _invalidate_role_caches()
     
     await event_bus.emit(Event(
         name="role.deleted",
@@ -136,9 +156,7 @@ async def assign_permission_to_role_service(
     rp = await role_permission_repository.assign_permission_to_role(session, role_id, permission_id)
 
     # Invalidate all cached permissions when role-permission mapping changes
-    if settings.USER_CACHE_ENABLED:
-        from swx_core.auth.auth_cache import invalidate_all_permissions
-        await invalidate_all_permissions()
+    await _invalidate_permission_caches()
 
     await event_bus.emit(Event(
         name="role.permission_assigned",
@@ -165,9 +183,7 @@ async def remove_permission_from_role_service(
     await role_permission_repository.remove_permission_from_role(session, rp)
 
     # Invalidate all cached permissions when role-permission mapping changes
-    if settings.USER_CACHE_ENABLED:
-        from swx_core.auth.auth_cache import invalidate_all_permissions
-        await invalidate_all_permissions()
+    await _invalidate_permission_caches()
     
     await event_bus.emit(Event(
         name="role.permission_removed",

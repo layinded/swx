@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.8.0  
-**Last Updated:** 2026-07-22
+**Version:** 2.10.0  
+**Last Updated:** 2026-07-23
 
 ---
 
@@ -30,7 +30,54 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 
 ## Version History
 
-### Version 2.7.36 (2026-07-02)
+### Version 2.10.1 (2026-07-26)
+
+**Bug Fix: Module Loader Topological Sort**
+
+Fixed `dynamic_import` in `swx_core/utils/loader.py` to resolve module dependencies before loading, preventing `ImportError: partially initialized module` when cross-module imports exist.
+
+**Root Cause:** `pkgutil.iter_modules` returns modules in filesystem (alphabetical) order. When module A imports from module B but A comes first alphabetically, `importlib.import_module(A)` would fail because B hasn't been loaded yet — especially during reload when `_loading_modules` guards prevent re-entrant imports.
+
+**Fix:**
+- Added `_extract_imports_from_file()` — AST-based parser that scans Python files for intra-package import dependencies
+- Added `_topological_sort()` — Kahn's algorithm (BFS-based) that orders modules so dependencies load before dependents
+- `dynamic_import()` now runs in three phases: (1) discover modules + build dep graph, (2) topological sort, (3) load in dependency-safe order
+- Circular dependencies are handled gracefully — remaining modules after topological sort are appended in original order
+
+**Changed Files:**
+- `swx_core/utils/loader.py` — New `_extract_imports_from_file()`, `_topological_sort()`, and three-phase `dynamic_import()`
+
+**Backward Compatibility:** Fully backward compatible. Same function signatures, same return types. Only changes the loading order.
+
+### Version 2.10.0 (2026-07-23)
+
+**Feature: Extended Caching — Feature Flags, Roles, and Settings**
+
+Adds L1/L2 Redis-backed caching for feature flag lookups, role lookups, and runtime settings, following the same pattern as auth caching (v2.8.0). All caches are **disabled by default** for backward compatibility.
+
+**New Files:**
+- `swx_core/utils/runtime_cache.py` — RuntimeCache class for feature flags and settings (L1 process-local + L2 Redis)
+
+**New Configuration:**
+- `FEATURE_FLAG_CACHE_ENABLED` (default: False) — Enable feature flag caching
+- `FEATURE_FLAG_CACHE_TTL` (default: 300) — TTL in seconds for cached feature flags
+- `FEATURE_FLAG_CACHE_L1_MAX_ENTRIES` (default: 200) — Max L1 entries for feature flags
+- `SETTINGS_CACHE_ENABLED` (default: False) — Enable runtime settings caching
+- `SETTINGS_CACHE_TTL` (default: 60) — TTL in seconds for cached settings
+- `SETTINGS_CACHE_L1_MAX_ENTRIES` (default: 500) — Max L1 entries for settings
+
+**Changes:**
+- `swx_core/rbac/helpers.py` — `get_user_roles()` now checks L1→L2→DB when `USER_CACHE_ENABLED=True`
+- `swx_core/services/settings_helper.py` — `get_feature_flag()` now checks L1→L2→DB when `FEATURE_FLAG_CACHE_ENABLED=True`
+- `swx_core/services/settings_helper.py` — New `get_setting_cached()` for L1/L2 settings lookups
+- `swx_core/auth/auth_cache.py` — New `get_cached_roles()`, `set_cached_roles()`, `invalidate_user_roles()`, `invalidate_all_roles()`
+- `swx_core/services/user_role_service.py` — Invalidates role cache on assign/remove
+- `swx_core/services/role_service.py` — Invalidates role cache on update/delete
+- `swx_core/services/settings_crud_service.py` — Invalidates feature flag and settings caches on create/update
+
+**Backward Compatibility:** All new caches are opt-in (disabled by default). No behavior change unless explicitly enabled via environment variables.
+
+### Version 2.9.0 (2026-07-22)
 
 **CRITICAL SECURITY FIX: Cookie Login Token Leak**
 

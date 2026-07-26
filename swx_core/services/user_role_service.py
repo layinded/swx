@@ -5,7 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from swx_core.models.user_role import UserRole, UserRoleCreate
 from swx_core.repositories import user_role_repository, user_repository, role_repository
 from swx_core.events.dispatcher import event_bus, Event
-from swx_core.auth.auth_cache import invalidate_user_permissions
+from swx_core.auth.auth_cache import invalidate_user_permissions, invalidate_user_roles
+
+
+async def _invalidate_user_assignment_caches(user_id: UUID) -> None:
+    """Invalidate cached permissions and roles after role assignment changes."""
+    await invalidate_user_permissions(user_id)
+    await invalidate_user_roles(user_id)
 
 
 async def assign_role_to_user_service(
@@ -27,8 +33,8 @@ async def assign_role_to_user_service(
     
     user_role = await user_role_repository.assign_role_to_user(session, assignment)
 
-    # Invalidate cached permissions after role assignment
-    await invalidate_user_permissions(assignment.user_id)
+    # Invalidate cached permissions and roles after role assignment
+    await _invalidate_user_assignment_caches(assignment.user_id)
 
     await event_bus.emit(Event(
         name="user_role.assigned",
@@ -56,8 +62,8 @@ async def remove_role_from_user_service(
     
     await user_role_repository.remove_role_from_user(session, ur)
 
-    # Invalidate cached permissions after role removal
-    await invalidate_user_permissions(ur.user_id)
+    # Invalidate cached permissions and roles after role removal
+    await _invalidate_user_assignment_caches(ur.user_id)
     
     await event_bus.emit(Event(
         name="user_role.removed",

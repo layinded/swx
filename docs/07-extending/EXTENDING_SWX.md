@@ -1,7 +1,7 @@
 # Extending SwX-API
 
-**Version:** 2.7.15
-**Last Updated:** 2026-05-29
+**Version:** 2.9.0
+**Last Updated:** 2026-07-23
 
 ---
 
@@ -19,15 +19,15 @@
 
 ## Overview
 
-SwX-API is designed to be **extensible** while maintaining clean separation between framework code (`swx_core/`) and application code (`swx_app/`). This guide covers how to extend the framework safely.
+SwX-API is designed to be **extensible** while keeping framework code (`swx_core/`) and application code (`swx_app/`) separate. This guide shows how to extend the framework safely.
 
 ### Key Principles
 
-1. **Framework vs Application** - Framework code in `swx_core/`, app code in `swx_app/`
-2. **Automatic Discovery** - Routes and models automatically discovered
+1. **Framework vs Application** - framework code in `swx_core/`, app code in `swx_app/`
+2. **Automatic Discovery** - routes and models are discovered automatically
 3. **Layered Architecture** - Routes → Controllers → Services → Repositories → Models
 4. **Domain Separation** - Admin, User, and System domains
-5. **Permission-Based** - All endpoints protected by permissions
+5. **Permission-Based** - all endpoints are protected by permissions
 
 ---
 
@@ -57,7 +57,7 @@ SwX-API is designed to be **extensible** while maintaining clean separation betw
 - Reusable across applications
 - Framework-level functionality
 - Core infrastructure
-- Should not be modified
+- Do not modify
 
 **Application (`swx_app/`):**
 - Application-specific logic
@@ -114,7 +114,7 @@ swx_app/
 
 ## Route Module Structure
 
-Each route directory must have an `__init__.py` with a **module-level `router` variable** for proper discovery and mounting.
+Each route directory needs an `__init__.py` that exports a **module-level `router` variable** for discovery and mounting.
 
 ### Route Directory Pattern
 
@@ -151,8 +151,8 @@ __all__ = ["router"]
 ### Why This Matters
 
 Without the module-level `router` variable:
-- Routes appear "registered" in logs but **return 404**
-- SwX's route discovery expects `__init__.py` to export `router`
+- Routes may appear "registered" in logs but still **return 404**
+- SwX route discovery expects `__init__.py` to export `router`
 - Individual route files define their own `router`, but `__init__.py` must aggregate them
 
 ### Example: Auth Routes Directory
@@ -189,7 +189,122 @@ async def login(...):
 
 ## Extension Patterns
 
-### Pattern 1: Adding New Models
+### Pattern 1: Profile Extension (Extending Framework Tables)
+
+Create a separate table linked 1:1 to a framework table (e.g., `swx_users`):
+
+```python
+class UserProfile(SQLModel, table=True):
+    __tablename__ = "user_profile"
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="swx_users.id", unique=True, index=True)
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+```
+
+> **See [Extending Models](./EXTENDING_MODELS.md#pattern-1-one-to-one-profile-extension) for the complete step-by-step guide.**
+
+### Pattern 2: Composition with Mixins
+
+Use framework mixins for common fields on new models:
+
+```python
+from swx_core.utils.mixins import FullModelMixin
+
+class Product(FullModelMixin, table=True):
+    __tablename__ = "product"
+    name: str = Field(max_length=255)
+    price: float = Field(ge=0)
+```
+
+> **See [Extending Models](./EXTENDING_MODELS.md#pattern-2-composition-with-mixins) for all available mixins.**
+
+### Pattern 3: Feature Registry Extension
+
+Register new billable features without modifying framework code:
+
+```python
+from swx_core.services.billing.feature_registry import FeatureRegistry, FeatureDefinition
+from swx_core.models.billing import FeatureType
+
+FeatureRegistry.register(FeatureDefinition(
+    key="custom.branding",
+    name="Custom Branding",
+    description="Customize application branding.",
+    feature_type=FeatureType.BOOLEAN,
+))
+```
+
+> **See [Extending Models](./EXTENDING_MODELS.md#pattern-3-feature-registry-extension) for the complete feature registration guide.**
+
+### Pattern 4: CLI Resource Scaffolding
+
+Generate a complete CRUD resource:
+
+```bash
+swx make:resource Product          # Legacy pattern
+swx make:resource Product --base   # Base class pattern (recommended)
+```
+
+> **See [Extending Models](./EXTENDING_MODELS.md#pattern-4-cli-resource-scaffolding) for scaffolding options.**
+
+### Pattern 5: Base Class Pattern
+
+Use `BaseRepository`, `BaseService`, and `BaseController` for CRUD with minimal code:
+
+```python
+from swx_core.repositories.base import BaseRepository
+from swx_core.services.base import BaseService
+from swx_core.controllers.base import BaseController
+
+class ProductRepository(BaseRepository[Product]):
+    def __init__(self):
+        super().__init__(model=Product)
+
+class ProductService(BaseService[Product, ProductRepository]):
+    def __init__(self):
+        super().__init__(repository=ProductRepository())
+
+class ProductController(BaseController[Product, ProductCreate, ProductUpdate, ProductPublic]):
+    def __init__(self):
+        super().__init__(model=Product, schema_public=ProductPublic,
+                         schema_create=ProductCreate, schema_update=ProductUpdate,
+                         prefix="/products")
+        self.register_routes()
+```
+
+> **See [Extending Models](./EXTENDING_MODELS.md#pattern-5-base-class-pattern-crud) for the complete base class guide.**
+
+### Pattern 6: Service Layer Extension
+
+Extend core services or compose custom logic:
+
+```python
+from swx_core.services.user_service import UserService as CoreUserService
+
+class ExtendedUserService(CoreUserService):
+    async def get_user_with_profile(self, db, user_id: UUID) -> dict:
+        user = await self.get(db, user_id)
+        profile = await self.get_profile(db, user_id)
+        return {**user.model_dump(), "profile": profile}
+```
+
+> **See [Extending Models](./EXTENDING_MODELS.md#pattern-6-service-layer-extension) for composition and event hooks.**
+
+---
+
+## Detailed Guides
+
+For detailed documentation on each extension pattern, see:
+
+- **[Extending Models](./EXTENDING_MODELS.md)** — Complete guide with step-by-step examples for all six patterns
+- **[Custom Models](./CUSTOM_MODELS.md)** — Model patterns, relationships, and migration guide
+- **[Adding Features](./ADDING_FEATURES.md)** — Feature development workflow
+- **[Adding Entitlements](./ADDING_ENTITLEMENTS.md)** — Billing and entitlement integration
+
+---
+
+### Pattern 7: Adding New Models (Legacy)
 
 **Step 1: Create Model**
 ```python
@@ -245,7 +360,7 @@ from swx_app.models.product import Product, ProductCreate, ProductUpdate, Produc
 __all__ = ["Product", "ProductCreate", "ProductUpdate", "ProductPublic"]
 ```
 
-### Pattern 2: Adding New Routes
+### Pattern 8: Adding New Routes (Legacy)
 
 **Option 1: Use CLI Generator (Recommended)**
 
@@ -593,6 +708,7 @@ __all__ = ["product_router"]
 
 ## Next Steps
 
+- Read [Extending Models](./EXTENDING_MODELS.md) for the complete extension patterns guide
 - Read [Adding Features](./ADDING_FEATURES.md) for detailed feature addition
 - Read [Adding Entitlements](./ADDING_ENTITLEMENTS.md) for billing integration
 - Read [Adding Policies](./ADDING_POLICIES.md) for policy creation

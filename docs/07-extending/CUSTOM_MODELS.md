@@ -1,7 +1,7 @@
 # Custom Models
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.9.0  
+**Last Updated:** 2026-07-23
 
 ---
 
@@ -19,13 +19,13 @@
 
 ## Overview
 
-SwX-API uses **SQLModel** for database models, combining SQLAlchemy and Pydantic. This guide covers how to create custom models that integrate with the framework.
+SwX-API uses **SQLModel** for database models, combining SQLAlchemy and Pydantic. This guide shows how to create custom models that integrate with the framework.
 
 ### Key Principles
 
 1. **Inherit from Base** - Use `swx_core.models.base.Base`
 2. **Use SQLModel** - Combine database and API models
-3. **Automatic Discovery** - Models automatically registered
+3. **Automatic Discovery** - Models are registered automatically
 4. **Type Safety** - Use type hints throughout
 5. **Follow Patterns** - Use established patterns
 
@@ -106,9 +106,9 @@ class Product(ProductBase, Base, table=True):
 ### Model Registration
 
 **Automatic Discovery:**
-- Models in `swx_app/models/` automatically discovered
-- Models in `swx_core/models/` automatically discovered
-- No manual registration needed
+- Models in `swx_app/models/` are discovered automatically
+- Models in `swx_core/models/` are discovered automatically
+- No manual registration is needed
 
 **Export Model:**
 ```python
@@ -348,7 +348,9 @@ alembic current
 
 ## Extending SwX Framework Tables
 
-SwX framework tables use the `swx_` prefix to differentiate them from user-defined tables. Users should NOT directly modify framework tables. Instead, use one of these patterns:
+SwX framework tables use the `swx_` prefix to distinguish them from user-defined tables. Do not modify framework tables directly; use one of these patterns instead:
+
+> **For comprehensive step-by-step guides for each extension pattern, see [Extending Models](./EXTENDING_MODELS.md).**
 
 ### Framework Tables (swx_ prefix)
 
@@ -476,18 +478,19 @@ class Order(SQLModel, table=True):
 
 ### Migration for Extending Users
 
-If you need to add columns to track additional user data, create a new table rather than modifying `swx_users`:
+If you need to track additional user data, create a new table rather than modifying `swx_users`:
 
 1. Create a model with foreign key to `swx_users.id`
 2. Generate migration: `swx db revision -m "add_user_profile"`
 3. Apply migration: `swx db migrate`
 
-This approach keeps framework tables isolated and allows upgrades without data loss.
+This approach keeps framework tables isolated and supports upgrades without data loss.
 
 ---
 
 ## Next Steps
 
+- Read [Extending Models](./EXTENDING_MODELS.md) for the complete extension patterns guide with step-by-step examples
 - Read [Adding Features](./ADDING_FEATURES.md) for feature development
 - Read [Extending Guide](./EXTENDING_SWX.md) for extension patterns
 - Read [Architecture Documentation](../03-architecture/ARCHITECTURE.md) for system design

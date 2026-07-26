@@ -266,3 +266,83 @@ async def invalidate_all_permissions() -> None:
                 await redis.delete(*keys)
         except Exception as exc:
             logger.warning("Auth cache L2 bulk permissions delete failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Role Cache
+# ---------------------------------------------------------------------------
+
+_role_cache = AuthCache(
+    scope="user",
+    ttl=settings.USER_CACHE_TTL,
+    l1_max=settings.USER_CACHE_L1_MAX_ENTRIES,
+)
+
+
+async def get_cached_roles(user_id: str) -> Optional[List[Dict[str, Any]]]:
+    """Get cached roles for a user. Returns None if not cached."""
+    key = _build_key("user", "roles", user_id)
+    result = _role_cache._l1.get(key)
+    if result is not None:
+        return result
+
+    redis = await _role_cache._get_redis()
+    if redis is None:
+        return None
+    try:
+        raw = await redis.get(key)
+        if raw is None:
+            return None
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        _role_cache._l1.set(key, data, settings.USER_CACHE_TTL)
+        return data
+    except Exception as exc:
+        logger.warning("Role cache L2 get failed for %s: %s", key, exc)
+        return None
+
+
+async def set_cached_roles(user_id: str, roles: List[Dict[str, Any]]) -> None:
+    """Cache roles for a user."""
+    key = _build_key("user", "roles", user_id)
+    _role_cache._l1.set(key, roles, settings.USER_CACHE_TTL)
+
+    redis = await _role_cache._get_redis()
+    if redis is None:
+        return
+    try:
+        serialized = json.dumps(roles)
+        await redis.setex(key, settings.USER_CACHE_TTL, serialized)
+    except Exception as exc:
+        logger.warning("Role cache L2 set failed for %s: %s", key, exc)
+
+
+async def invalidate_user_roles(user_id: UUID | str) -> None:
+    """Invalidate cached roles for a user."""
+    uid = str(user_id)
+    key = _build_key("user", "roles", uid)
+    _role_cache._l1.delete(key)
+
+    redis = await _role_cache._get_redis()
+    if redis is None:
+        return
+    try:
+        await redis.delete(key)
+    except Exception as exc:
+        logger.warning("Role cache L2 delete failed for %s: %s", key, exc)
+
+
+async def invalidate_all_roles() -> None:
+    """Invalidate all cached role entries (L1 + L2).
+
+    Used when role definitions change, affecting all users with that role.
+    """
+    full_prefix = _build_prefix("user", "roles")
+    _role_cache._l1.delete_by_prefix(full_prefix)
+    redis = await _role_cache._get_redis()
+    if redis is not None:
+        try:
+            keys = await redis.keys(f"{full_prefix}*")
+            if keys:
+                await redis.delete(*keys)
+        except Exception as exc:
+            logger.warning("Role cache L2 bulk roles delete failed: %s", exc)

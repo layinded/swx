@@ -1,13 +1,12 @@
 """
 RBAC Helpers
 ------------
-This module provides core permission checking functions.
+This module provides core permission and role checking functions.
 
-These functions are used to check if a user has specific permissions
-or roles, either globally or within a team context.
+Supports L1/L2 caching when USER_CACHE_ENABLED=True (backward compatible).
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -19,7 +18,7 @@ from swx_core.models.role import Role
 from swx_core.models.user_role import UserRole
 from swx_core.models.role_permission import RolePermission
 from swx_core.models.team_member import TeamMember
-from swx_core.auth.auth_cache import user_auth_cache
+from swx_core.auth.auth_cache import user_auth_cache, get_cached_roles, set_cached_roles
 
 
 async def get_user_roles(
@@ -28,20 +27,45 @@ async def get_user_roles(
     team_id: Optional[UUID] = None,
     domain: Optional[str] = None,
 ) -> List[Role]:
-    """Get all roles assigned to a user."""
-    query = select(Role).join(UserRole).where(UserRole.user_id == user_id)
+    """Get all roles assigned to a user.
+
+    When USER_CACHE_ENABLED=True, checks L1 → L2 → DB for roles.
+    When disabled (default), queries DB directly (backward compatible).
+    """
+    user_id_str = str(user_id)
+
+    if settings.USER_CACHE_ENABLED:
+        cached = await get_cached_roles(user_id_str)
+        if cached is not None:
+            return [Role(**r) for r in cached]
+
+    query = select(Role).join(UserRole).where(cast(Any, UserRole.user_id) == user_id)
 
     if team_id is not None:
-        query = query.where(UserRole.team_id == team_id)
+        query = query.where(cast(Any, UserRole.team_id) == team_id)
     else:
-        # Get global roles (no team_id)
-        query = query.where(UserRole.team_id.is_(None))
+        query = query.where(cast(Any, UserRole.team_id).is_(None))
 
     if domain is not None:
-        query = query.where(Role.domain == domain)
+        query = query.where(cast(Any, Role.domain) == domain)
 
     result = await session.execute(query)
-    return list(result.scalars().all())
+    roles = list(result.scalars().all())
+
+    if settings.USER_CACHE_ENABLED and roles:
+        role_data = [
+            {
+                "id": str(role.id),
+                "name": role.name,
+                "description": role.description,
+                "domain": role.domain,
+                "is_system_role": role.is_system_role,
+            }
+            for role in roles
+        ]
+        await set_cached_roles(user_id_str, role_data)
+
+    return roles
 
 
 async def get_user_permissions(
@@ -68,7 +92,7 @@ async def get_user_permissions(
     query = (
         select(Permission)
         .join(RolePermission)
-        .where(RolePermission.role_id.in_(role_ids))
+        .where(cast(Any, RolePermission.role_id).in_(role_ids))
     )
 
     result = await session.execute(query)
@@ -77,9 +101,14 @@ async def get_user_permissions(
     # Store in cache
     if settings.USER_CACHE_ENABLED and permissions:
         perm_data = [
-            {"id": str(p.id), "name": p.name, "description": p.description,
-             "resource_type": p.resource_type, "action": p.action}
-            for p in permissions
+            {
+                "id": str(permission.id),
+                "name": permission.name,
+                "description": permission.description,
+                "resource_type": permission.resource_type,
+                "action": permission.action,
+            }
+            for permission in permissions
         ]
         await user_auth_cache.set_permissions(str(user_id), perm_data)
 
@@ -98,9 +127,7 @@ async def has_permission(
         return True
 
     permissions = await get_user_permissions(session, user.id, team_id=team_id)
-    permission_names = [p.name for p in permissions]
-
-    return permission_name in permission_names
+    return permission_name in {permission.name for permission in permissions}
 
 
 async def has_role(
@@ -112,9 +139,7 @@ async def has_role(
 ) -> bool:
     """Check if a user has a specific role."""
     roles = await get_user_roles(session, user.id, team_id=team_id, domain=domain)
-    role_names = [r.name for r in roles]
-
-    return role_name in role_names
+    return role_name in {role.name for role in roles}
 
 
 async def check_team_permission(

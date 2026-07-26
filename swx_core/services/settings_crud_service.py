@@ -6,7 +6,7 @@ Service layer for system settings CRUD operations with validation and audit.
 
 import json
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -17,9 +17,9 @@ from swx_core.models.system_config import (
     SystemConfigUpdate,
     SystemConfigHistory,
     SettingValueType,
-    SettingCategory,
 )
 from swx_core.middleware.logging_middleware import logger
+from swx_core.config.settings import settings as env_settings
 from swx_core.services.settings_service import SettingsService
 from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
 from swx_core.services.alert_engine import alert_engine
@@ -48,6 +48,20 @@ def validate_setting_value(value: str, value_type: SettingValueType) -> bool:
         return True
     except (ValueError, json.JSONDecodeError):
         return False
+
+
+async def _invalidate_runtime_setting_caches(key: str) -> None:
+    # Invalidate L1/L2 runtime caches if enabled
+    if env_settings.FEATURE_FLAG_CACHE_ENABLED and key.startswith("feature."):
+        from swx_core.utils.runtime_cache import invalidate_feature_flag
+
+        flag_key = key.removeprefix("feature.")
+        await invalidate_feature_flag(flag_key)
+
+    if env_settings.SETTINGS_CACHE_ENABLED:
+        from swx_core.utils.runtime_cache import invalidate_cached_setting
+
+        await invalidate_cached_setting(key)
 
 
 def validate_security_guards(key: str, value: str, value_type: SettingValueType) -> tuple[bool, Optional[str]]:
@@ -159,22 +173,21 @@ async def create_setting_service(
         raise HTTPException(status_code=400, detail=error_msg)
     
     # Create setting
-    config = SystemConfig(
-        key=setting_in.key,
-        value=setting_in.value,
-        value_type=setting_in.value_type,
-        category=setting_in.category,
-        description=setting_in.description,
-        is_sensitive=False,  # Always False - validation enforces
-        updated_by=updated_by,
-        metadata_=setting_in.metadata or {},
+    config = SystemConfig.model_validate(
+        {
+            **setting_in.model_dump(exclude={"metadata"}),
+            "is_sensitive": False,
+            "updated_by": updated_by,
+            "metadata_": setting_in.metadata or {},
+        }
     )
     session.add(config)
     await session.commit()
     await session.refresh(config)
     
-    # Invalidate cache
     SettingsService.invalidate_cache(setting_in.key)
+
+    await _invalidate_runtime_setting_caches(setting_in.key)
     
     logger.info(f"Created setting: {setting_in.key} = {setting_in.value}")
     return config
@@ -189,6 +202,7 @@ async def update_setting_service(
     """Update a setting with validation and audit."""
     # Get existing
     config = await get_setting_service(session, key)
+    assert config is not None
     old_value = config.value
     
     # Update fields
@@ -214,7 +228,7 @@ async def update_setting_service(
     if setting_in.is_active is not None:
         config.is_active = setting_in.is_active
     if setting_in.metadata is not None:
-        config.metadata_ = setting_in.metadata
+        setattr(config, "metadata_", setting_in.metadata)
     
     config.updated_by = updated_by
     config.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -232,10 +246,9 @@ async def update_setting_service(
     await session.commit()
     await session.refresh(config)
     
-    # Invalidate cache
     SettingsService.invalidate_cache(key)
-    
-    # Audit log
+
+    await _invalidate_runtime_setting_caches(key)
     audit = get_audit_logger(session)
     await audit.log_event(
         action="system_config.update",
@@ -279,10 +292,11 @@ async def get_setting_history_service(
     """Get change history for a setting."""
     # First get the config to find its ID
     config = await get_setting_service(session, key)
+    assert config is not None
     
     stmt = select(SystemConfigHistory).where(
         SystemConfigHistory.config_id == config.id
-    ).order_by(SystemConfigHistory.updated_at.desc()).limit(limit)
+    ).order_by(cast(Any, SystemConfigHistory.updated_at).desc()).limit(limit)
     
     result = await session.execute(stmt)
     return list(result.scalars().all())

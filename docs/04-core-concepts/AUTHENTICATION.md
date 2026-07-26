@@ -1065,10 +1065,14 @@ Cache invalidation is automatic on data mutations:
 | User profile update | Profile cache (by id + email) |
 | Password change | Profile cache (by id + email) |
 | User deletion | Profile cache (by id + email) |
-| Role assigned to user | Permissions cache (by user_id) |
-| Role removed from user | Permissions cache (by user_id) |
+| Role assigned to user | Role cache (by user_id) + Permissions cache (by user_id) |
+| Role removed from user | Role cache (by user_id) + Permissions cache (by user_id) |
+| Role updated | ALL role caches |
+| Role deleted | ALL role caches |
 | Permission assigned to role | ALL permission caches |
 | Permission removed from role | ALL permission caches |
+
+> **Full caching documentation:** See [CACHING.md](./CACHING.md) for feature flag, role, and settings caching.
 
 ### Manual Invalidation
 
@@ -1080,6 +1084,8 @@ from swx_core.auth.auth_cache import (
     invalidate_user_permissions,
     invalidate_admin_cache,
     invalidate_all_permissions,
+    invalidate_user_roles,
+    invalidate_all_roles,
 )
 
 # Invalidate all cached data for a user
@@ -1088,11 +1094,17 @@ await invalidate_user_cache(user_id="550e8400...", email="user@example.com")
 # Invalidate only permissions for a user
 await invalidate_user_permissions(user_id="550e8400...")
 
+# Invalidate roles for a user
+await invalidate_user_roles(user_id="550e8400...")
+
 # Invalidate all cached data for an admin
 await invalidate_admin_cache(admin_id="...", email="admin@example.com")
 
 # Invalidate ALL cached permissions (bulk invalidation)
 await invalidate_all_permissions()
+
+# Invalidate ALL cached roles (bulk invalidation)
+await invalidate_all_roles()
 ```
 
 ### Backward Compatibility
@@ -1129,6 +1141,7 @@ await invalidate_all_permissions()
 
 ## Next Steps
 
+- Read [Caching](./CACHING.md) for full caching documentation (feature flags, roles, settings)
 - Read [RBAC Documentation](./RBAC.md) for authorization
 - Read [Security Model](../05-security/SECURITY_MODEL.md) for security details
 - Read [API Usage Guide](../06-api-usage/API_USAGE.md) for API examples

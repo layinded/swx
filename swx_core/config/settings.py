@@ -394,6 +394,34 @@ class Settings(BaseSettings):
         description="TTL in seconds for cached admin profiles (default: 5 min)",
     )
 
+    # Feature Flag Cache Configuration
+    FEATURE_FLAG_CACHE_ENABLED: bool = Field(
+        default=False,
+        description="Enable Redis-backed L1/L2 cache for feature flag lookups (backward compatible)",
+    )
+    FEATURE_FLAG_CACHE_TTL: int = Field(
+        default=300,
+        description="TTL in seconds for cached feature flags (default: 5 min)",
+    )
+    FEATURE_FLAG_CACHE_L1_MAX_ENTRIES: int = Field(
+        default=200,
+        description="Maximum entries in process-local L1 cache for feature flags",
+    )
+
+    # Settings Cache Configuration
+    SETTINGS_CACHE_ENABLED: bool = Field(
+        default=False,
+        description="Enable Redis-backed L1/L2 cache for runtime settings lookups (backward compatible)",
+    )
+    SETTINGS_CACHE_TTL: int = Field(
+        default=60,
+        description="TTL in seconds for cached runtime settings (default: 1 min)",
+    )
+    SETTINGS_CACHE_L1_MAX_ENTRIES: int = Field(
+        default=500,
+        description="Maximum entries in process-local L1 cache for settings",
+    )
+
     BILLING_ENABLED: bool = Field(
         default=False, description="Enable Stripe billing integration"
     )

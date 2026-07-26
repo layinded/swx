@@ -29,6 +29,7 @@ Framework-grade documentation for production deployment.
 
 ## 04. Core Concepts
 
+- [CACHING.md](04-core-concepts/CACHING.md) - L1/L2 caching: auth, feature flags, roles, settings (NEW)
 - [CORE_PATTERNS.md](04-core-concepts/CORE_PATTERNS.md) - Design patterns overview
 - [BASE_CLASSES.md](04-core-concepts/BASE_CLASSES.md) - Controller-Service-Repository pattern (NEW)
 - [UTILITIES.md](04-core-concepts/UTILITIES.md) - Utilities reference (NEW)
@@ -62,6 +63,7 @@ Framework-grade documentation for production deployment.
 ## 07. Extending
 
 - [EXTENSION_GUIDE.md](07-extending/EXTENSION_GUIDE.md) - Complete extensibility guide
+- [EXTENDING_MODELS.md](07-extending/EXTENDING_MODELS.md) - Model extension patterns (Profile, Mixins, Feature Registry, Base Classes, Service Extension) (NEW)
 - [CUSTOM_PROVIDERS.md](07-extending/CUSTOM_PROVIDERS.md) - Service providers
 - [CUSTOM_GUARDS.md](07-extending/CUSTOM_GUARDS.md) - Authentication guards
 - [CUSTOM_MIDDLEWARE.md](07-extending/CUSTOM_MIDDLEWARE.md) - Middleware
