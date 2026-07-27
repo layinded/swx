@@ -1,7 +1,7 @@
 # Rate Limiting & Abuse Protection
 
-**Version:** 2.7.22  
-**Last Updated:** 2026-06-29
+**Version:** 2.11.0  
+**Last Updated:** 2026-07-27
 
 ---
 
@@ -13,10 +13,13 @@
 4. [Plan-Based Limits](#plan-based-limits)
 5. [Rate Limit Algorithm](#rate-limit-algorithm)
 6. [Skip Paths](#skip-paths)
-7. [Usage Examples](#usage-examples)
-8. [Abuse Detection](#abuse-detection)
-9. [Operational Tuning](#operational-tuning)
-10. [Troubleshooting](#troubleshooting)
+7. [Fail-Open Mode](#fail-open-mode)
+8. [Database-Driven Overrides](#database-driven-overrides)
+9. [Billing Plan Resolution](#billing-plan-resolution)
+10. [Usage Examples](#usage-examples)
+11. [Abuse Detection](#abuse-detection)
+12. [Operational Tuning](#operational-tuning)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -28,7 +31,7 @@ SwX-API includes a **comprehensive rate limiting system** that protects the API 
 - **Feature-aware** - Different limits for API requests, billing, search, export
 - **Endpoint-aware** - Different limits for read, write, delete operations
 - **Time-windowed** - Burst (1 minute), sustained (1 hour), daily (24 hours)
-- **Fail-closed** - Denies requests if Redis unavailable
+- **Fail-closed** - Denies requests if Redis unavailable (configurable via `RATE_LIMIT_FAIL_OPEN`)
 
 ### Key Features
 
@@ -40,6 +43,10 @@ SwX-API includes a **comprehensive rate limiting system** that protects the API 
 - ✅ **Redis-backed** - Scalable across multiple workers
 - ✅ **Audit logging** - All rate limit events logged
 - ✅ **Abuse detection** - Automatic detection of abuse patterns
+- ✅ **Configurable skip paths** - Custom paths exempt via `RATE_LIMIT_SKIP_PATHS` setting
+- ✅ **Fail-open mode** - `RATE_LIMIT_FAIL_OPEN` for development without Redis
+- ✅ **Database-driven overrides** - Runtime limit overrides via SystemConfig
+- ✅ **Billing plan in JWT** - Plan resolved at login, embedded in token claim
 
 ---
 
@@ -299,7 +306,15 @@ skip_paths = [
 
 ### Customizing Skip Paths
 
-**In middleware:**
+**Via settings (recommended):**
+```python
+# .env
+RATE_LIMIT_SKIP_PATHS=["/api/webhooks","/api/auth/callback"]
+```
+
+Paths from this setting are **appended** to the built-in defaults.
+
+**Programmatically (overrides defaults entirely):**
 ```python
 from swx_core.middleware.rate_limit_middleware import RateLimitMiddleware
 
@@ -311,6 +326,122 @@ app.add_middleware(
     ]
 )
 ```
+
+---
+
+## Fail-Open Mode
+
+### Default Behavior (Fail-Closed)
+
+By default, rate limiting **denies all requests** when Redis is unavailable. This prevents abuse during outages but can cause total service blackout.
+
+### Enabling Fail-Open
+
+For development or non-critical environments:
+
+```python
+# .env
+RATE_LIMIT_FAIL_OPEN=true
+```
+
+When enabled, requests are **allowed through** if Redis is unavailable, with a warning logged. This is useful for:
+- Local development without Redis
+- Staging environments
+- Graceful degradation during Redis maintenance
+
+### Disabling Rate Limiting Entirely
+
+```python
+# .env
+RATE_LIMIT_ENABLED=false
+```
+
+The middleware skips all processing when disabled.
+
+---
+
+## Database-Driven Overrides
+
+### Overview
+
+Rate limits can be overridden at runtime via **SystemConfig** entries without code changes or restarts. This enables per-plan, per-feature, and per-endpoint customization.
+
+### Configuration
+
+Overrides are stored as SystemConfig entries with:
+- **Category:** `RATE_LIMIT`
+- **Key pattern:** `rate_limit.{plan}.{feature}.{endpoint_class}.{limit_type}`
+- **Value type:** `INT`
+- **is_active:** `true` to enable
+
+### Example Overrides
+
+| Key | Value | Effect |
+|-----|-------|--------|
+| `rate_limit.pro.api_requests.read.burst` | `500` | Pro plan: 500 reads/min (was 200) |
+| `rate_limit.free.search.read.daily` | `50000` | Free plan: 50K search reads/day (was 100K) |
+| `rate_limit.team.billing.write.burst` | `100` | Team plan: 100 billing writes/min (was 50) |
+
+### How It Works
+
+1. On first request, the middleware loads all active `RATE_LIMIT` configs from SystemConfig into an in-memory cache
+2. For each rate limit check, the cache is consulted first
+3. If an override exists, it takes precedence over the hardcoded `RATE_LIMITS` registry
+4. If no override exists, the registry default is used
+
+### Managing Overrides
+
+Use the existing admin settings API:
+
+```bash
+# Create an override
+curl -X POST /api/admin/settings \
+  -H "Authorization: Bearer <admin-token>" \
+  -d '{
+    "key": "rate_limit.pro.api_requests.read.burst",
+    "value": "500",
+    "value_type": "int",
+    "category": "rate_limit",
+    "description": "Increase Pro read burst limit"
+  }'
+
+# Reload overrides after manual DB changes
+# (happens automatically on next app restart)
+```
+
+### Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `RATE_LIMIT_OVERRIDE_ENABLED` | `true` | Enable/disable DB-driven overrides |
+
+---
+
+## Billing Plan Resolution
+
+### How Plans Are Resolved
+
+The rate-limit middleware resolves each user's billing plan via the JWT `billing_plan` claim:
+
+1. **At login** — `auth_service.py` calls `get_user_plan_key(session, user_id)` which queries `BillingAccount → Subscription → Plan` via the repository layer
+2. **In JWT** — The plan key (e.g., `"pro"`, `"enterprise"`) is embedded as a `billing_plan` claim in the access token
+3. **At request time** — The middleware decodes the JWT and reads the `billing_plan` claim to select the correct rate limit tier
+
+### Plan Resolution Chain
+
+```
+User → BillingAccount (owner_id, type=USER)
+     → Subscription (status in ACTIVE/TRIALING/PAST_DUE, not expired)
+     → Plan.key (e.g., "free", "pro", "team", "enterprise")
+```
+
+### Fallback Behavior
+
+- No BillingAccount → `"free"`
+- No active Subscription → `"free"`
+- Expired Subscription → `"free"`
+- JWT without `billing_plan` claim (old tokens) → `"free"`
+- Any error → `"free"`
 
 ---
 

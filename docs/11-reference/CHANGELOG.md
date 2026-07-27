@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.10.0  
-**Last Updated:** 2026-07-23
+**Version:** 2.11.0  
+**Last Updated:** 2026-07-27
 
 ---
 
@@ -29,6 +29,60 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.11.0 (2026-07-27)
+
+**Rate Limiting Overhaul: 6 Bug Fixes + 2 Features**
+
+#### Bug Fixes
+
+1. **apply_middleware() ignores skip_paths** — `RateLimitMiddleware.__init__` now merges built-in defaults with the `RATE_LIMIT_SKIP_PATHS` setting, allowing downstream apps to exempt custom paths without subclassing.
+
+2. **RATE_LIMIT_ENABLED never checked** — `dispatch()` now returns early when `RATE_LIMIT_ENABLED=False`, properly disabling rate limiting for local development.
+
+3. **Fail-closed on Redis outage blocks ALL requests** — Added `RATE_LIMIT_FAIL_OPEN` setting (default `False`). When enabled, requests are allowed through with a warning log if Redis is unavailable, preventing total service blackout during Redis outages.
+
+4. **decode_responses=False causes type mismatches** — Fixed Redis client creation in `apply_middleware()` to use `decode_responses=True`, consistent with the rest of the codebase.
+
+5. **get_limit() returns 1 for missing registry entries** — Now falls back to the `free` plan's `api_requests` limits before returning the restrictive default of 1. Missing entries are logged at `ERROR` level instead of `WARNING`.
+
+6. **_actor_from_bearer() hardcodes billing_plan="free"** — Now reads the `billing_plan` claim from the JWT payload with a `"free"` fallback, making billing-aware rate limiting functional.
+
+#### Features
+
+1. **Database-driven rate limit overrides** — Rate limits can now be overridden at runtime via SystemConfig entries with `RATE_LIMIT` category. Keys follow the pattern `rate_limit.{plan}.{feature}.{endpoint_class}.{limit_type}` (e.g., `rate_limit.pro.api_requests.read.burst`). Overrides are loaded lazily on first request and cached in-memory. Controlled by `RATE_LIMIT_OVERRIDE_ENABLED` setting (default `True`).
+
+2. **Billing plan resolution in JWT** — Access tokens now include a `billing_plan` claim resolved from the user's active subscription at login time. The rate-limit middleware reads this claim to apply plan-correct limits. Plan resolution follows `BillingAccount → Subscription → Plan` via the repository layer.
+
+#### New Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `RATE_LIMIT_SKIP_PATHS` | `[]` | Additional paths to skip rate limiting |
+| `RATE_LIMIT_FAIL_OPEN` | `False` | Allow requests when Redis unavailable |
+| `RATE_LIMIT_OVERRIDE_ENABLED` | `True` | Enable DB-driven overrides via SystemConfig |
+
+#### New Files
+
+- `swx_core/repositories/billing_repository.py` — Billing plan resolution queries
+- `swx_core/repositories/system_config_repository.py` — SystemConfig rate limit queries
+- `swx_core/services/billing/plan_helper.py` — `get_user_plan_key()` service
+- `swx_core/services/rate_limit/rate_limit_override.py` — Override cache + resolver
+
+#### Changed Files
+
+- `swx_core/config/settings.py` — 3 new rate limit settings
+- `swx_core/middleware/rate_limit_middleware.py` — Bug fixes 1-4, 6 + override integration
+- `swx_core/services/rate_limit/rate_limiter.py` — Bug fix 3 (fail-open support)
+- `swx_core/services/rate_limit/limit_registry.py` — Bug fix 5 (sensible fallback)
+- `swx_core/services/rate_limit/__init__.py` — Export override functions
+- `swx_core/auth/core/jwt.py` — `billing_plan` claim support in `create_token()`
+- `swx_core/security/refresh_token_service.py` — `billing_plan` param in `create_access_token()`
+- `swx_core/services/auth_service.py` — Plan resolution at all 3 token creation sites
+
+**Backward Compatibility:** Fully backward compatible. All new settings have safe defaults. Existing JWT tokens without `billing_plan` claim default to `"free"`.
+
+---
 
 ### Version 2.10.1 (2026-07-26)
 

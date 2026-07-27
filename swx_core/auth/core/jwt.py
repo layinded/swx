@@ -32,6 +32,7 @@ def create_token(
     scopes: Optional[list[str]] = None,
     auth_provider: str = "local",
     secret_key: Optional[str] = None,
+    billing_plan: Optional[str] = None,
 ) -> str:
     """
     Create a JWT token with explicit audience and scopes.
@@ -43,6 +44,8 @@ def create_token(
         scopes: Optional list of permission scopes.
         auth_provider: Authentication provider (default: "local").
         secret_key: Optional secret key (defaults to settings.SECRET_KEY).
+        billing_plan: Optional billing plan key embedded in the token
+            (e.g. "free", "pro"). Used by rate-limit middleware.
 
     Returns:
         Encoded JWT token string.
@@ -60,6 +63,9 @@ def create_token(
 
     if scopes:
         to_encode["scope"] = " ".join(scopes)
+
+    if billing_plan:
+        to_encode["billing_plan"] = billing_plan
 
     return jwt.encode(
         to_encode,

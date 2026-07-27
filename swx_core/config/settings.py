@@ -345,6 +345,18 @@ class Settings(BaseSettings):
         default=5,
         description="Maximum cookie auth attempts per minute per IP",
     )
+    RATE_LIMIT_SKIP_PATHS: list[str] = Field(
+        default=[],
+        description="Additional paths to skip rate limiting (appended to built-in defaults)",
+    )
+    RATE_LIMIT_FAIL_OPEN: bool = Field(
+        default=False,
+        description="Allow requests through when Redis is unavailable (True for dev, False for prod)",
+    )
+    RATE_LIMIT_OVERRIDE_ENABLED: bool = Field(
+        default=True,
+        description="Enable database-driven rate limit overrides via SystemConfig (RATE_LIMIT category)",
+    )
 
     # CSRF Protection Configuration
     CSRF_ENABLED: bool = Field(

@@ -22,7 +22,7 @@ from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, delete
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional, cast
 
 from swx_core.config.settings import settings
 from swx_core.models.refresh_token import RefreshToken
@@ -35,6 +35,7 @@ def create_access_token(
     expires_delta: timedelta,
     auth_provider: str = "local",
     scopes: Optional[list[str]] = None,
+    billing_plan: str = "free",
 ) -> str:
     """
     Generate a short-lived JWT access token for user domain.
@@ -46,6 +47,8 @@ def create_access_token(
         expires_delta (timedelta): The expiration duration of the token.
         auth_provider (str, optional): The authentication provider (default: "local").
         scopes (Optional[list[str]]): Optional list of permission scopes.
+        billing_plan (str): Billing plan key embedded in the JWT claim
+            (default: "free"). Used by rate-limit middleware.
 
     Returns:
         str: The encoded JWT access token with audience="user".
@@ -56,6 +59,7 @@ def create_access_token(
         expires_delta=expires_delta,
         scopes=scopes,
         auth_provider=auth_provider,
+        billing_plan=billing_plan,
     )
 
 
@@ -209,6 +213,8 @@ async def revoke_all_tokens(session: AsyncSession, email: str) -> None:
         session (AsyncSession): The database session.
         email (str): The email of the user whose tokens should be revoked.
     """
-    statement = delete(RefreshToken).where(RefreshToken.user_email == email)
+    statement = delete(RefreshToken).where(
+        cast(Any, RefreshToken.user_email == email)
+    )
     await session.execute(statement)
     await session.commit()

@@ -13,7 +13,7 @@ Features:
 """
 
 import time
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -65,6 +65,30 @@ class RateLimiter:
             LimitWindow.HOUR: 3600,
             LimitWindow.DAY: 86400,
         }
+
+    def _fail_result(self, limit: int, window: LimitWindow) -> RateLimitResult:
+        """Return a result based on RATE_LIMIT_FAIL_OPEN setting."""
+        from swx_core.config.settings import settings
+
+        if getattr(settings, "RATE_LIMIT_FAIL_OPEN", False):
+            logger.warning("Redis unavailable, rate limit check allowed (fail-open)")
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            return RateLimitResult(
+                allowed=True,
+                limit=limit,
+                remaining=max(0, limit - 1),
+                reset_at=now,
+                retry_after=None,
+            )
+        logger.warning("Redis unavailable, rate limit check denied (fail-closed)")
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        return RateLimitResult(
+            allowed=False,
+            limit=limit,
+            remaining=0,
+            reset_at=now,
+            retry_after=self._window_seconds[window],
+        )
     
     async def check_limit(
         self,
@@ -87,14 +111,7 @@ class RateLimiter:
         """
         if not self.redis:
             # Fail closed: if Redis unavailable, deny
-            logger.warning("Redis unavailable, rate limit check denied (fail-closed)")
-            return RateLimitResult(
-                allowed=False,
-                limit=limit,
-                remaining=0,
-                reset_at=datetime.now(timezone.utc).replace(tzinfo=None),
-                retry_after=self._window_seconds[window]
-            )
+            return self._fail_result(limit, window)
         
         try:
             window_seconds = self._window_seconds[window]
@@ -117,8 +134,7 @@ class RateLimiter:
             # Set expiration
             pipe.expire(key, window_seconds)
             
-            results = await pipe.execute()
-            current_count = results[1]  # Count before adding current request
+            _, current_count, _, _ = await pipe.execute()
             
             # Check if limit exceeded
             allowed = current_count < limit
@@ -139,13 +155,7 @@ class RateLimiter:
         except Exception as e:
             logger.error(f"Error checking rate limit: {e}", exc_info=True)
             # Fail closed
-            return RateLimitResult(
-                allowed=False,
-                limit=limit,
-                remaining=0,
-                reset_at=datetime.now(timezone.utc).replace(tzinfo=None),
-                retry_after=self._window_seconds[window]
-            )
+            return self._fail_result(limit, window)
     
     async def get_usage(
         self,

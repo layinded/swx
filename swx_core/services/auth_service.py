@@ -25,7 +25,6 @@ from typing import Any, Callable, Awaitable
 from fastapi import HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
-from swx_core.config.settings import settings
 from swx_core.email.email_service import generate_reset_password_email, send_email
 from swx_core.models.common import Message
 from swx_core.models.user import User, UserCreate, UserNewPassword
@@ -47,6 +46,7 @@ from swx_core.security.refresh_token_service import (
     revoke_refresh_token,
     revoke_all_tokens,
 )
+from swx_core.services.billing.plan_helper import get_user_plan_key
 from swx_core.rbac.helpers import get_user_permissions
 from swx_core.utils.language_helper import translate
 
@@ -55,7 +55,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def login_user_service(
-    session: AsyncSession, form_data: OAuth2PasswordRequestForm, request: Request = None
+    session: AsyncSession,
+    form_data: OAuth2PasswordRequestForm,
+    request: Request = None,  # pyright: ignore[reportArgumentType]
 ) -> Token:
     """
     Handles user login using email and password authentication.
@@ -86,10 +88,12 @@ async def login_user_service(
     from swx_core.services.settings_helper import get_token_expiration
     access_token_expires = await get_token_expiration(session, "access")
     refresh_token_expires = await get_token_expiration(session, "refresh")
+    billing_plan = await get_user_plan_key(session, existing_user.id)
     access_token = create_access_token(
         existing_user.email,
         expires_delta=access_token_expires,
-        scopes=scopes if scopes else None,
+        scopes=scopes or None,
+        billing_plan=billing_plan,
     )
     refresh_token = await create_refresh_token(
         session, existing_user.email, expires_delta=refresh_token_expires
@@ -119,7 +123,6 @@ async def login_social_user_service(
     Emits:
         user.login.social: Event with payload {email, provider, context}
     """
-    from swx_core.repositories.user_repository import get_user_by_email
     user = await get_user_by_email(session=session, email=user_email)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -130,8 +133,12 @@ async def login_social_user_service(
     from swx_core.services.settings_helper import get_token_expiration
     access_token_expires = await get_token_expiration(session, "access")
     refresh_token_expires = await get_token_expiration(session, "refresh")
+    billing_plan = await get_user_plan_key(session, user.id)
     access_token = create_access_token(
-        user_email, expires_delta=access_token_expires, scopes=scopes if scopes else None
+        user_email,
+        expires_delta=access_token_expires,
+        scopes=scopes or None,
+        billing_plan=billing_plan,
     )
     refresh_token = await create_refresh_token(
         session, user_email, expires_delta=refresh_token_expires
@@ -189,11 +196,13 @@ async def refresh_access_token_service(
     from swx_core.services.settings_helper import get_token_expiration
     access_token_expires = await get_token_expiration(session, "access")
     refresh_token_expires = await get_token_expiration(session, "refresh")
+    billing_plan = await get_user_plan_key(session, user.id)
     new_access_token = create_access_token(
         email,
         expires_delta=access_token_expires,
         auth_provider=auth_provider,
-        scopes=scopes if scopes else None,
+        scopes=scopes or None,
+        billing_plan=billing_plan,
     )
     new_refresh_token = await create_refresh_token(
         session, email, expires_delta=refresh_token_expires, auth_provider=auth_provider
@@ -306,7 +315,10 @@ async def register_user_service(
         from swx_core.middleware.logging_middleware import logger
         logger.error(f"Error creating user: {e}")
         error_str = str(e).lower()
-        if "unique" in error_str or "duplicate" in error_str or "already exists" in error_str:
+        if any(
+            marker in error_str
+            for marker in ("unique", "duplicate", "already exists")
+        ):
             raise HTTPException(
                 status_code=400, detail=translate(request, "user_already_exists")
             )
@@ -370,7 +382,11 @@ async def logout_service(session: AsyncSession, request_data: TokenRefreshReques
     return {"message": translate(request, "logged_out_successfully")}
 
 
-async def recover_password_service(email: str, session: AsyncSession, request: Request = None) -> Message:
+async def recover_password_service(
+    email: str,
+    session: AsyncSession,
+    request: Request = None,  # pyright: ignore[reportArgumentType]
+) -> Message:
     """
     Sends a password reset email to the user.
 
@@ -396,6 +412,10 @@ async def recover_password_service(email: str, session: AsyncSession, request: R
             status_code=400, detail=translate(request, "account_disabled")
         )
     password_reset_token = await generate_password_reset_token(session, email=email)
+    if password_reset_token is None:
+        raise HTTPException(
+            status_code=400, detail=translate(request, "password_reset_not_available")
+        )
     email_data = generate_reset_password_email(
         email_to=existing_user.email, email=email, token=password_reset_token
     )
@@ -408,7 +428,9 @@ async def recover_password_service(email: str, session: AsyncSession, request: R
 
 
 async def reset_password_service(
-    session: AsyncSession, body: UserNewPassword, request: Request = None
+    session: AsyncSession,
+    body: UserNewPassword,
+    request: Request = None,  # pyright: ignore[reportArgumentType]
 ) -> Message:
     """
     Resets the user's password and revokes all active tokens.
@@ -421,7 +443,13 @@ async def reset_password_service(
     Returns:
         Message: A success message indicating that the password has been reset.
     """
-    email = verify_password_reset_token(body.token)
+    token = body.token
+    if token is None:
+        raise HTTPException(
+            status_code=400, detail=translate(request, "invalid_or_expired_reset_token")
+        )
+
+    email = verify_password_reset_token(token)
     if not email:
         raise HTTPException(
             status_code=400, detail=translate(request, "invalid_or_expired_reset_token")
@@ -431,7 +459,13 @@ async def reset_password_service(
         raise HTTPException(
             status_code=404, detail=translate(request, "user_not_found")
         )
-    existing_user.hashed_password = get_password_hash(body.new_password)
+    new_password = body.new_password
+    if new_password is None:
+        raise HTTPException(
+            status_code=400, detail=translate(request, "invalid_or_expired_reset_token")
+        )
+
+    existing_user.hashed_password = await get_password_hash(new_password)
     session.add(existing_user)
     await session.commit()
     await revoke_all_tokens(session, email)

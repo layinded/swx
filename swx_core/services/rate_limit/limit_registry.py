@@ -6,7 +6,7 @@ Central registry for rate limit configurations.
 No hardcoded limits in code - all limits defined here.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 from swx_core.middleware.logging_middleware import logger
 
 
@@ -137,12 +137,26 @@ def get_limit(
     limit = endpoint_limits.get(limit_type, 0)
     
     if limit == 0:
-        # Fail-closed: if limit not found, default to very restrictive
-        logger.warning(
-            f"Rate limit not found for plan={plan}, feature={feature}, "
-            f"endpoint={endpoint_class}, type={limit_type}. Using fail-closed default."
+        # Fall back to free/api_requests before locking users out
+        free_api = (
+            RATE_LIMITS.get("free", {})
+            .get("api_requests", {})
+            .get(endpoint_class, {})
         )
-        return 1  # Very restrictive default
+        fallback = free_api.get(limit_type, 0)
+        if fallback > 0:
+            logger.error(
+                f"Rate limit not found for plan={plan}, feature={feature}, "
+                f"endpoint={endpoint_class}, type={limit_type}. "
+                f"Falling back to free/api_requests ({fallback})."
+            )
+            return fallback
+
+        logger.error(
+            f"Rate limit not found for plan={plan}, feature={feature}, "
+            f"endpoint={endpoint_class}, type={limit_type}. No fallback available."
+        )
+        return 1  # Last resort: very restrictive default
     
     return limit
 
@@ -187,12 +201,11 @@ def get_endpoint_class(method: str) -> str:
     method_upper = method.upper()
     if method_upper == "GET":
         return "read"
-    elif method_upper in ("POST", "PUT", "PATCH"):
+    if method_upper in ("POST", "PUT", "PATCH"):
         return "write"
-    elif method_upper == "DELETE":
+    if method_upper == "DELETE":
         return "delete"
-    else:
-        return "read"  # Default to read
+    return "read"  # Default to read
 
 
 def get_feature_from_path(path: str) -> str:
@@ -209,9 +222,8 @@ def get_feature_from_path(path: str) -> str:
     
     if "/billing" in path_lower:
         return "billing"
-    elif "/search" in path_lower or "/query" in path_lower:
+    if "/search" in path_lower or "/query" in path_lower:
         return "search"
-    elif "/export" in path_lower or "/download" in path_lower:
+    if "/export" in path_lower or "/download" in path_lower:
         return "export"
-    else:
-        return "api_requests"  # Default
+    return "api_requests"  # Default

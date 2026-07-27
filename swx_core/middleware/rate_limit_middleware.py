@@ -16,7 +16,7 @@ Features:
 """
 
 from typing import Optional
-from fastapi import Request, HTTPException, status, FastAPI
+from fastapi import Request, status, FastAPI
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -29,6 +29,11 @@ from swx_core.services.rate_limit import (
     get_feature_from_path,
     LimitWindow,
     set_rate_limiter,
+)
+from swx_core.services.rate_limit.rate_limit_override import (
+    get_override,
+    is_loaded as overrides_loaded,
+    load_overrides,
 )
 from swx_core.middleware.logging_middleware import logger
 from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
@@ -45,30 +50,38 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     - Endpoint class (read/write/delete)
     """
 
-    def __init__(self, app: ASGIApp, skip_paths: Optional[list] = None):
-        """
-        Initialize rate limit middleware.
+    _DEFAULT_SKIP_PATHS = [
+        "/api/utils/health-check",
+        "/api/utils/health",  # Health check should not be rate limited
+        "/api/utils/language",  # Language endpoints should not be rate limited
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+        "/",  # Root endpoint should not be rate limited
+    ]
 
-        Args:
-            app: ASGI application
-            skip_paths: Paths to skip rate limiting (e.g., health checks)
+    def __init__(self, app: ASGIApp, skip_paths: Optional[list[str]] = None):
+        """Initialize rate limit middleware.
+
+        When *skip_paths* is ``None`` the built-in defaults are merged
+        with ``RATE_LIMIT_SKIP_PATHS`` from settings.
         """
         super().__init__(app)
-        self.skip_paths = (
-            skip_paths
-            or [
-                "/api/utils/health-check",
-                "/api/utils/health",  # Health check should not be rate limited
-                "/api/utils/language",  # Language endpoints should not be rate limited
-                "/docs",
-                "/openapi.json",
-                "/redoc",
-                "/",  # Root endpoint should not be rate limited
-            ]
-        )
+        if skip_paths is not None:
+            self.skip_paths = skip_paths
+        else:
+            from swx_core.config.settings import settings
+
+            extra = list(getattr(settings, "RATE_LIMIT_SKIP_PATHS", []) or [])
+            self.skip_paths = list(self._DEFAULT_SKIP_PATHS) + extra
 
     async def dispatch(self, request: Request, call_next):
         """Process request with rate limiting."""
+        from swx_core.config.settings import settings
+
+        if not settings.RATE_LIMIT_ENABLED:
+            return await call_next(request)
+
         # Skip rate limiting for certain paths
         if any(request.url.path.startswith(path) for path in self.skip_paths):
             return await call_next(request)
@@ -83,9 +96,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Resolve plan
         plan = resolve_plan(actor_type, billing_plan)
 
+        # Lazy-load DB overrides from SystemConfig on first request
+        if getattr(settings, "RATE_LIMIT_OVERRIDE_ENABLED", True) and not overrides_loaded():
+            try:
+                from swx_core.database.db import AsyncSessionLocal
+
+                async with AsyncSessionLocal() as session:
+                    await load_overrides(session)
+            except Exception as e:
+                logger.warning(f"Could not load rate limit overrides: {e}")
+
+        def _resolve_limit(ftype: str, eclass: str, ltype: str) -> int:
+            override = get_override(plan, ftype, eclass, ltype)
+            if override is not None:
+                return override
+            return get_limit(plan, ftype, eclass, ltype)
+
         # Get limits (check burst first, then sustained)
-        burst_limit = get_limit(plan, feature, endpoint_class, "burst")
-        sustained_limit = get_limit(plan, feature, endpoint_class, "sustained")
+        burst_limit = _resolve_limit(feature, endpoint_class, "burst")
+        sustained_limit = _resolve_limit(feature, endpoint_class, "sustained")
 
         # Build rate limit keys
         limiter = get_rate_limiter()
@@ -121,7 +150,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         # Check daily limit (24 hour window)
-        daily_limit = get_limit(plan, feature, endpoint_class, "daily")
+        daily_limit = _resolve_limit(feature, endpoint_class, "daily")
         daily_key = f"rate_limit:{actor_type}:{actor_id}:{feature}:{endpoint_class}:24h"
         daily_result = await limiter.check_limit(
             daily_key, daily_limit, LimitWindow.DAY
@@ -159,7 +188,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return None
         try:
             import jwt
-            from swx_core.auth.core.jwt import decode_token, TokenAudience
+            from swx_core.auth.core.jwt import TokenAudience
             from swx_core.config.settings import settings
 
             payload = jwt.decode(
@@ -175,7 +204,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if aud == TokenAudience.ADMIN.value:
                 return ("admin", sub, None)
             if aud == TokenAudience.USER.value:
-                return ("user", sub, "free")
+                billing_plan = payload.get("billing_plan", "free")
+                return ("user", sub, billing_plan)
             return None
         except Exception:
             return None
@@ -201,7 +231,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Middleware runs before route deps; resolve from Bearer JWT if present
         from_bearer = self._actor_from_bearer(request)
-        if from_bearer:
+        if from_bearer is not None:
             return from_bearer
 
         # Anonymous request - use IP address as identifier
@@ -220,7 +250,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             from swx_core.database.db import AsyncSessionLocal
 
             async with AsyncSessionLocal() as session:
-                resolver = EntitlementResolver(session)
+                _resolver = EntitlementResolver(session)
                 # Get user's active plan
                 # This is a simplified version - in production, fetch from subscription
                 # For now, default to "free"
@@ -307,7 +337,7 @@ def apply_middleware(app: FastAPI) -> None:
         from swx_core.config.settings import settings
 
         if settings.REDIS_ENABLED:
-            redis_client = aioredis.from_url(settings.redis_url, decode_responses=False)
+            redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
             # Skip startup ping: we may already be inside an event loop (uvicorn).
             # Connection is verified on first use; failures are handled fail-closed.
             logger.info(
