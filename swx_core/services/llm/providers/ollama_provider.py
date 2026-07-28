@@ -1,3 +1,4 @@
+import logging
 from json import JSONDecodeError
 from json import loads
 from time import monotonic
@@ -9,6 +10,9 @@ from swx_core.contracts.llm import LLMRequest, LLMResponse
 from swx_core.services.llm.providers import BaseLLMProvider
 
 
+logger = logging.getLogger(__name__)
+
+
 class OllamaProvider(BaseLLMProvider):
     def __init__(self, base_url: str, api_key: str | None, provider_config: dict[str, Any] | None = None):
         self.base_url = base_url.rstrip("/")
@@ -17,14 +21,15 @@ class OllamaProvider(BaseLLMProvider):
         self.config = provider_config or {}
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
-        started = monotonic()
+        started_at = monotonic()
         model_name = self.config.get("model_name", "llama3.2")
         try:
+            messages = _messages(request)
             response = await self.client.post(
                 "/api/chat",
                 json={
                     "model": model_name,
-                    "messages": _messages(request),
+                    "messages": messages,
                     "stream": False,
                     "options": {"temperature": request.temperature, "num_predict": request.max_tokens, "top_p": request.top_p},
                 },
@@ -41,14 +46,16 @@ class OllamaProvider(BaseLLMProvider):
                 tokens_used=prompt_tokens + completion_tokens,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
-                latency_ms=int((monotonic() - started) * 1000),
+                latency_ms=int((monotonic() - started_at) * 1000),
             )
         except Exception as exc:  # noqa: BLE001
-            return LLMResponse(False, "", error=str(exc), model=model_name, provider="ollama", latency_ms=int((monotonic() - started) * 1000))
+            logger.error("LLM provider %s failed: %s", self.__class__.__name__, exc)
+            return LLMResponse(False, "", error=str(exc), model=model_name, provider="ollama", latency_ms=int((monotonic() - started_at) * 1000))
 
     async def stream(self, request: LLMRequest) -> AsyncGenerator[str, None]:
         model_name = self.config.get("model_name", "llama3.2")
-        async with self.client.stream("POST", "/api/chat", json={"model": model_name, "messages": _messages(request), "stream": True, "options": {"temperature": request.temperature, "num_predict": request.max_tokens, "top_p": request.top_p}}) as response:
+        messages = _messages(request)
+        async with self.client.stream("POST", "/api/chat", json={"model": model_name, "messages": messages, "stream": True, "options": {"temperature": request.temperature, "num_predict": request.max_tokens, "top_p": request.top_p}}) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if not line:
@@ -70,4 +77,8 @@ class OllamaProvider(BaseLLMProvider):
 
 
 def _messages(request: LLMRequest) -> list[dict[str, str]]:
-    return ([{"role": "system", "content": request.system_prompt}] if request.system_prompt else []) + [{"role": "user", "content": request.prompt}]
+    messages: list[dict[str, str]] = []
+    if request.system_prompt:
+        messages.append({"role": "system", "content": request.system_prompt})
+    messages.append({"role": "user", "content": request.prompt})
+    return messages

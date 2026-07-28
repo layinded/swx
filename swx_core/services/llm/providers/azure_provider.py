@@ -1,5 +1,6 @@
 # pyright: reportMissingImports=false
 
+import logging
 from time import monotonic
 from typing import Any, AsyncGenerator
 
@@ -12,6 +13,9 @@ from swx_core.contracts.llm import LLMRequest, LLMResponse
 from swx_core.services.llm.providers import BaseLLMProvider
 
 
+logger = logging.getLogger(__name__)
+
+
 class AzureProvider(BaseLLMProvider):
     def __init__(self, api_key: str | None, endpoint: str | None, deployment: str | None, provider_config: dict[str, Any] | None = None):
         if AsyncAzureOpenAI is None:
@@ -20,12 +24,13 @@ class AzureProvider(BaseLLMProvider):
         self.config = provider_config or {}
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
-        started = monotonic()
+        started_at = monotonic()
         model_name = self.config.get("deployment", self.config.get("model_name", "gpt-4o"))
         try:
+            messages = _messages(request)
             response = await self.client.chat.completions.create(
                 model=model_name,
-                messages=_messages(request),
+                messages=messages,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
                 top_p=request.top_p,
@@ -40,14 +45,16 @@ class AzureProvider(BaseLLMProvider):
                 tokens_used=int(usage.total_tokens if usage else 0),
                 prompt_tokens=int(usage.prompt_tokens if usage else 0),
                 completion_tokens=int(usage.completion_tokens if usage else 0),
-                latency_ms=int((monotonic() - started) * 1000),
+                latency_ms=int((monotonic() - started_at) * 1000),
             )
         except Exception as exc:  # noqa: BLE001
-            return LLMResponse(False, "", error=str(exc), model=model_name, provider="azure", latency_ms=int((monotonic() - started) * 1000))
+            logger.error("LLM provider %s failed: %s", self.__class__.__name__, exc)
+            return LLMResponse(False, "", error=str(exc), model=model_name, provider="azure", latency_ms=int((monotonic() - started_at) * 1000))
 
     async def stream(self, request: LLMRequest) -> AsyncGenerator[str, None]:
         model_name = self.config.get("deployment", self.config.get("model_name", "gpt-4o"))
-        async with self.client.chat.completions.stream(model=model_name, messages=_messages(request), temperature=request.temperature, max_tokens=request.max_tokens, top_p=request.top_p) as stream:
+        messages = _messages(request)
+        async with self.client.chat.completions.stream(model=model_name, messages=messages, temperature=request.temperature, max_tokens=request.max_tokens, top_p=request.top_p) as stream:
             async for event in stream:
                 if event.type == "content.delta" and getattr(event, "delta", None):
                     yield str(event.delta)
@@ -61,4 +68,8 @@ class AzureProvider(BaseLLMProvider):
 
 
 def _messages(request: LLMRequest) -> list[dict[str, str]]:
-    return ([{"role": "system", "content": request.system_prompt}] if request.system_prompt else []) + [{"role": "user", "content": request.prompt}]
+    messages: list[dict[str, str]] = []
+    if request.system_prompt:
+        messages.append({"role": "system", "content": request.system_prompt})
+    messages.append({"role": "user", "content": request.prompt})
+    return messages

@@ -1,6 +1,7 @@
-from typing import cast
-from typing import Protocol
+import logging
+from typing import Protocol, cast
 
+from fastapi import HTTPException
 from typing_extensions import override
 
 try:
@@ -9,6 +10,9 @@ except ImportError:
     httpx = None  # type: ignore[assignment]
 
 from swx_core.services.billing.providers import LocalPaymentProvider
+
+
+logger = logging.getLogger(__name__)
 
 
 class _ResponseLike(Protocol):
@@ -29,15 +33,33 @@ class FlutterwaveProvider(LocalPaymentProvider):
     async def _request(self, method: str, path: str, json: dict[str, object] | None = None) -> dict[str, object]:
         if httpx is None:
             raise RuntimeError("httpx is required for Flutterwave provider")
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
-            response = cast(_ResponseLike, cast(object, await client.request(method, path, json=json, headers={"Authorization": f"Bearer {self.secret_key}", "Content-Type": "application/json"})))
-            response.raise_for_status()
-            payload = response.json()
-        return cast(dict[str, object], payload.get("data", payload))
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
+                response = cast(
+                    _ResponseLike,
+                    cast(
+                        object,
+                        await client.request(
+                            method,
+                            path,
+                            json=json,
+                            headers={
+                                "Authorization": f"Bearer {self.secret_key}",
+                                "Content-Type": "application/json",
+                            },
+                        ),
+                    ),
+                )
+                response.raise_for_status()
+                response_data = response.json()
+        except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+            logger.exception("Flutterwave request failed for %s %s", method, path)
+            raise HTTPException(status_code=503, detail="Flutterwave service unavailable") from exc
+        return cast(dict[str, object], response_data.get("data", response_data))
 
     @override
     async def initialize_payment(self, amount: int, currency: str, email: str, reference: str, callback_url: str, **kwargs: object) -> dict[str, object]:
-        payload = {
+        request_payload = {
             "tx_ref": reference,
             "amount": amount,
             "currency": currency.upper(),
@@ -45,7 +67,7 @@ class FlutterwaveProvider(LocalPaymentProvider):
             "customer": {"email": email},
             "meta": kwargs.get("metadata", {}),
         }
-        data = await self._request("POST", "/payments", payload)
+        data = await self._request("POST", "/payments", request_payload)
         return {"provider": "flutterwave", "reference": reference, "link": data.get("link"), "id": data.get("id"), "raw": data}
 
     @override

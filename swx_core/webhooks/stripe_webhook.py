@@ -9,18 +9,16 @@ Implements production-grade webhook handling with:
 - Async job enqueue (non-blocking)
 """
 
-import hashlib
-import time
-from typing import Dict, Any, Optional
-from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, HTTPException, status, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Request, status
 
 from swx_core.config.settings import settings
 from swx_core.middleware.logging_middleware import logger
 from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
+from swx_core.services.billing.stripe_provider import is_valid_stripe_webhook_secret
 
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
@@ -31,10 +29,10 @@ class WebhookResult:
     """Result of webhook processing."""
 
     status: str
-    event_id: str = None
-    event_type: str = None
-    job_id: str = None
-    message: str = None
+    event_id: str | None = None
+    event_type: str | None = None
+    job_id: str | None = None
+    message: str | None = None
 
 
 class StripeWebhookHandler:
@@ -118,13 +116,14 @@ class StripeWebhookHandler:
             event = stripe.Webhook.construct_event(
                 payload, signature, self.webhook_secret
             )
-        except stripe.error.SignatureVerificationError as e:
-            logger.warning(f"Stripe webhook signature verification failed: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid signature"
-            )
-        except Exception as e:
-            logger.error(f"Stripe webhook parsing error: {e}")
+        except Exception as exc:
+            if exc.__class__.__name__ == "SignatureVerificationError":
+                logger.warning(f"Stripe webhook signature verification failed: {exc}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid signature",
+                )
+            logger.error(f"Stripe webhook parsing error: {exc}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid payload"
             )
@@ -180,9 +179,8 @@ class StripeWebhookHandler:
 
         # 5. Enqueue for async processing
         try:
-            job = await self._enqueue_job(
-                stripe_event_id, event_type, event["data"]["object"]
-            )
+            event_object = event["data"]["object"]
+            job = await self._enqueue_job(stripe_event_id, event_type, event_object)
 
             logger.info(
                 f"Enqueued Stripe webhook event: {stripe_event_id} "
@@ -196,8 +194,8 @@ class StripeWebhookHandler:
                 job_id=str(job.id) if job else None,
             )
 
-        except Exception as e:
-            logger.error(f"Failed to enqueue webhook event: {e}", exc_info=True)
+        except Exception as exc:
+            logger.error(f"Failed to enqueue webhook event: {exc}", exc_info=True)
 
             # Store for retry
             if self.redis:
@@ -212,7 +210,7 @@ class StripeWebhookHandler:
                 status="error",
                 event_id=stripe_event_id,
                 event_type=event_type,
-                message=str(e),
+                message=str(exc),
             )
 
     async def _enqueue_job(
@@ -247,7 +245,6 @@ class StripeWebhookHandler:
         from swx_core.services.job.handlers import billing_webhook_handler
 
         # Create a session if needed
-        session = None
         if self.session_factory:
             async with self.session_factory() as session:
                 await billing_webhook_handler(
@@ -273,6 +270,10 @@ def get_webhook_handler() -> Optional[StripeWebhookHandler]:
     if not settings.is_billing_available:
         return None
 
+    webhook_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", None)
+    if not isinstance(webhook_secret, str) or not is_valid_stripe_webhook_secret(webhook_secret):
+        return None
+
     if _handler is None:
         # Get Redis client if available
         redis_client = None
@@ -286,7 +287,7 @@ def get_webhook_handler() -> Optional[StripeWebhookHandler]:
             pass
 
         _handler = StripeWebhookHandler(
-            webhook_secret=getattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_mock"),
+            webhook_secret=webhook_secret,
             redis_client=redis_client,
         )
 
@@ -301,7 +302,11 @@ async def stripe_webhook(request: Request):
             detail="Billing not enabled. Install swx-core[billing] and set BILLING_ENABLED=true",
         )
     handler = get_webhook_handler()
-    payload = await request.body()
+    if handler is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Stripe webhook secret is not configured with a valid whsec_ value",
+        )
     payload = await request.body()
 
     # Get signature header
@@ -328,10 +333,7 @@ async def stripe_webhook(request: Request):
     if result.status == "duplicate":
         return {"received": True, "status": "duplicate"}
 
-    if result.status == "replay_ignored":
-        return {"received": True, "status": "ignored"}
-
-    if result.status == "ignored":
+    if result.status in {"replay_ignored", "ignored"}:
         return {"received": True, "status": "ignored"}
 
     if result.status == "error":

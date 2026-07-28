@@ -7,9 +7,10 @@ Handles subscription lifecycle management.
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from fastapi import HTTPException
 from sqlmodel import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.models.billing import (
     BillingAccount, 
@@ -58,11 +59,11 @@ class SubscriptionService:
             if isinstance(plan_id, str):
                 return plan_id
 
-        items = stripe_data.get("items")
-        if not isinstance(items, dict):
+        stripe_items = stripe_data.get("items")
+        if not isinstance(stripe_items, dict):
             return None
 
-        item_rows = items.get("data")
+        item_rows = stripe_items.get("data")
         if not isinstance(item_rows, list) or not item_rows:
             return None
 
@@ -86,25 +87,21 @@ class SubscriptionService:
         """
         Ensures a billing account exists for the given owner.
         """
-        stmt = select(BillingAccount).where(
-            and_(
-                BillingAccount.owner_id == owner_id,
-                BillingAccount.account_type == account_type
-            )
-        )
+        stmt = select(BillingAccount).where(and_(BillingAccount.owner_id == owner_id, BillingAccount.account_type == account_type))
         result = await self.session.execute(stmt)
         account = result.scalar_one_or_none()
 
         if not account:
-            account = BillingAccount(
-                owner_id=owner_id,
-                account_type=account_type,
-                billing_email=billing_email
-            )
-            self.session.add(account)
-            await self.session.commit()
-            await self.session.refresh(account)
-            logger.info(f"Created new billing account for {account_type}:{owner_id}")
+            account = BillingAccount(owner_id=owner_id, account_type=account_type, billing_email=billing_email)
+            try:
+                self.session.add(account)
+                await self.session.commit()
+                await self.session.refresh(account)
+            except Exception:
+                await self.session.rollback()
+                logger.exception("Failed to create billing account for %s:%s", account_type, owner_id)
+                raise
+            logger.info("Created new billing account for %s:%s", account_type, owner_id)
 
         return account
 
@@ -125,19 +122,14 @@ class SubscriptionService:
             raise HTTPException(status_code=404, detail=f"Plan '{plan_key}' not found")
 
         # 2. Deactivate existing active subscriptions
-        stmt = select(Subscription).where(
-            and_(
-                Subscription.account_id == account_id,
-                Subscription.status == SubscriptionStatus.ACTIVE
-            )
-        ).with_for_update()
+        stmt = select(Subscription).where(and_(Subscription.account_id == account_id, Subscription.status == SubscriptionStatus.ACTIVE)).with_for_update()
         result = await self.session.execute(stmt)
         active_subs = result.scalars().all()
         ended_at = self._utc_now_naive()
-        for sub in active_subs:
-            sub.status = SubscriptionStatus.CANCELED
-            sub.ended_at = ended_at
-            self.session.add(sub)
+        for active_subscription in active_subs:
+            active_subscription.status = SubscriptionStatus.CANCELED
+            active_subscription.ended_at = ended_at
+            self.session.add(active_subscription)
 
         current_period_start = self._utc_now_naive()
         subscription = Subscription(
@@ -145,16 +137,19 @@ class SubscriptionService:
             plan_id=plan.id,
             status=SubscriptionStatus.ACTIVE,
             current_period_start=current_period_start,
-            current_period_end=current_period_start + timedelta(
-                days=BILLING_INTERVAL_DAYS.get(plan.billing_interval, 30)
-            ),
-            stripe_subscription_id=stripe_subscription_id
+            current_period_end=current_period_start + timedelta(days=BILLING_INTERVAL_DAYS.get(plan.billing_interval, 30)),
+            stripe_subscription_id=stripe_subscription_id,
         )
-        self.session.add(subscription)
-        await self.session.commit()
-        await self.session.refresh(subscription)
+        try:
+            self.session.add(subscription)
+            await self.session.commit()
+            await self.session.refresh(subscription)
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Failed to create subscription for account %s and plan %s", account_id, plan_key)
+            raise
         
-        logger.info(f"Created subscription for account {account_id} to plan {plan_key}")
+        logger.info("Created subscription for account %s to plan %s", account_id, plan_key)
         return subscription
 
     async def cancel_subscription(self, subscription_id: uuid.UUID, immediate: bool = False):
@@ -172,9 +167,14 @@ class SubscriptionService:
             subscription.cancel_at_period_end = True
             subscription.canceled_at = self._utc_now_naive()
 
-        self.session.add(subscription)
-        await self.session.commit()
-        logger.info(f"Subscription {subscription_id} canceled (immediate={immediate})")
+        try:
+            self.session.add(subscription)
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Failed to cancel subscription %s", subscription_id)
+            raise
+        logger.info("Subscription %s canceled (immediate=%s)", subscription_id, immediate)
 
     async def sync_stripe_subscription(self, stripe_data: dict[str, object]):
         """
@@ -211,18 +211,23 @@ class SubscriptionService:
             subscription.current_period_end = period_end
             subscription.cancel_at_period_end = cancel_at_period_end
 
-            self.session.add(subscription)
-            await self.session.commit()
-            logger.info(f"Synced subscription {stripe_id} from Stripe")
+            try:
+                self.session.add(subscription)
+                await self.session.commit()
+            except Exception:
+                await self.session.rollback()
+                logger.exception("Failed to sync existing Stripe subscription %s", stripe_id)
+                raise
+            logger.info("Synced subscription %s from Stripe", stripe_id)
             return
 
         customer_id = stripe_data.get("customer")
         if not isinstance(customer_id, str):
-            logger.warning(f"No Stripe customer found for subscription {stripe_id}")
+            logger.warning("No Stripe customer found for subscription %s", stripe_id)
             return
 
         if not stripe_price_id:
-            logger.warning(f"No Stripe price found for subscription {stripe_id}")
+            logger.warning("No Stripe price found for subscription %s", stripe_id)
             return
 
         plan_stmt = select(Plan).where(Plan.stripe_price_id == stripe_price_id)
@@ -230,7 +235,7 @@ class SubscriptionService:
         plan = plan_result.scalar_one_or_none()
 
         if not plan:
-            logger.warning(f"No local plan found for Stripe price {stripe_price_id}")
+            logger.warning("No local plan found for Stripe price %s", stripe_price_id)
             return
 
         account_stmt = select(BillingAccount).where(
@@ -240,9 +245,7 @@ class SubscriptionService:
         account = account_result.scalar_one_or_none()
 
         if not account:
-            logger.warning(
-                f"No local account found for Stripe customer {customer_id}"
-            )
+            logger.warning("No local account found for Stripe customer %s", customer_id)
             return
 
         subscription = Subscription(
@@ -254,9 +257,14 @@ class SubscriptionService:
             current_period_end=period_end,
             cancel_at_period_end=cancel_at_period_end,
         )
-        self.session.add(subscription)
-        await self.session.commit()
-        logger.info(f"Created subscription {stripe_id} from Stripe webhook")
+        try:
+            self.session.add(subscription)
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Failed to create Stripe subscription %s from webhook", stripe_id)
+            raise
+        logger.info("Created subscription %s from Stripe webhook", stripe_id)
 
 def get_subscription_service(session: AsyncSession) -> SubscriptionService:
     return SubscriptionService(session)

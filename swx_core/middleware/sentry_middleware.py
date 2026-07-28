@@ -6,19 +6,30 @@ This module initializes Sentry for error monitoring in production environments.
 Features:
 - Captures unhandled exceptions.
 - Provides error tracking and logging with Sentry.
+- Validates DSN format before initialization.
+- Gracefully degrades if Sentry SDK is unavailable or DSN is invalid.
 
 Functions:
 - `setup_sentry_middleware()`: Configures Sentry SDK.
 - `apply_middleware(app)`: Called by dynamic middleware loader.
 """
 
+import logging
+
 from swx_core.config.settings import settings
+from swx_core.config.validation import is_valid_dsn
+
+logger = logging.getLogger(__name__)
 
 
 def setup_sentry_middleware():
     if not settings.MONITORING_ENABLED:
         return
-    if not getattr(settings, "SENTRY_DSN", None):
+    sentry_dsn = getattr(settings, "SENTRY_DSN", None)
+    if not sentry_dsn:
+        return
+    if not is_valid_dsn(str(sentry_dsn)):
+        logger.warning("Sentry DSN is invalid or contains a placeholder — skipping initialization")
         return
     if settings.ENVIRONMENT == "local":
         return
@@ -28,14 +39,17 @@ def setup_sentry_middleware():
     except ImportError:
         return
 
-    sentry_sdk.init(dsn=str(settings.SENTRY_DSN), enable_tracing=True)
+    try:
+        sentry_sdk.init(dsn=str(sentry_dsn), enable_tracing=True)
+        logger.info("Sentry SDK initialized successfully")
+    except Exception:
+        logger.exception("Failed to initialize Sentry SDK — monitoring disabled")
 
 
 def apply_middleware(app):
     """
     Apply Sentry middleware (called by dynamic middleware loader).
 
-    This function is called automatically by swx_core.utils.loader.load_middleware().
     Sentry doesn't use FastAPI middleware - it hooks into Python directly.
 
     Args:

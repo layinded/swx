@@ -2,38 +2,37 @@ import os
 import re
 from typing import Any
 
-ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
-
-
-def _substitute(value: str, replacement: str) -> str:
-    return ENV_VAR_PATTERN.sub(lambda _: replacement, value)
+ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::(?:-)?([^}]*))?\}")
 
 
 def _resolve_value(value: str) -> str:
-    match = ENV_VAR_PATTERN.search(value)
-    if not match:
+    if not ENV_VAR_PATTERN.search(value):
         return value
-    env_var, default = match.group(1), match.group(2)
-    env_value = os.environ.get(env_var)
-    if env_value is not None:
-        return _substitute(value, env_value)
-    if default is not None:
-        return _substitute(value, default)
-    raise ValueError(f"Required environment variable '{env_var}' is not set")
+
+    def replace_match(match: re.Match[str]) -> str:
+        env_var, default = match.group(1), match.group(2)
+        env_value = os.environ.get(env_var)
+        if env_value is not None:
+            return env_value
+        if default is not None:
+            return default
+        raise ValueError(f"Required environment variable '{env_var}' is not set")
+
+    return ENV_VAR_PATTERN.sub(replace_match, value)
 
 
 def resolve_config(config: dict[str, Any]) -> dict[str, Any]:
-    resolved: dict[str, Any] = {}
+    resolved_config: dict[str, Any] = {}
     for key, value in config.items():
         if isinstance(value, str):
-            resolved[key] = _resolve_value(value)
+            resolved_config[key] = _resolve_value(value)
         elif isinstance(value, dict):
-            resolved[key] = resolve_config(value)
+            resolved_config[key] = resolve_config(value)
         elif isinstance(value, list):
-            resolved[key] = [_resolve_value(item) if isinstance(item, str) else item for item in value]
+            resolved_config[key] = [_resolve_value(item) if isinstance(item, str) else item for item in value]
         else:
-            resolved[key] = value
-    return resolved
+            resolved_config[key] = value
+    return resolved_config
 
 
 def mask_api_key(key: str | None) -> str:

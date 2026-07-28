@@ -2,6 +2,125 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.14.3] - 2026-07-28
+
+### Fixed — Edge Case & Security Hardening (27 issues from comprehensive audit)
+
+Security and robustness fixes across billing, LLM, notification, compliance, and config modules. All changes are backward compatible.
+
+---
+
+#### P0 Critical
+
+- **Sentry middleware: placeholder DSN crashes** — `setup_sentry_middleware()` now validates DSN format via `is_valid_dsn()` before initializing Sentry. Invalid or placeholder DSNs (e.g., `<YOUR_DSN>`) are rejected with a logged warning instead of crashing at runtime.
+
+- **Config resolver: multi-variable substitution bug** — `${HOST:-localhost}:${PORT:-5432}` now correctly resolves to `localhost:5432` instead of `localhost:localhost`. The `_substitute()` method was replaced with a per-match callback in `_resolve_value()` that processes each `${…}` placeholder independently.
+
+- **Config resolver: single-colon default syntax** — `${VAR:default}` (single colon, no dash) is now supported alongside `${VAR:-default}`.
+
+- **Config cache: ValueError on missing env vars** — `resolve_config_value()` in `config_cache.py` now catches `ValueError` from `resolve_config()` when environment variables are missing, returning the fallback value instead of crashing.
+
+- **Stripe provider: mock key bypasses validation** — `get_stripe_provider()` now validates that `sk_live_`/`sk_test_` keys are not mock placeholders (e.g., `sk_test_mock...`). Mock keys no longer pass truthiness checks.
+
+- **Webhook secret: mock secret bypasses validation** — `stripe_webhook.py` webhook handler now rejects `whsec_mock` and similar mock secrets via `is_valid_webhook_secret()`.
+
+- **Billing provider: Stripe key format validation** — `billing_provider.py` now validates Stripe API key prefix (`sk_live_`/`sk_test_`) and rejects placeholder patterns before making API calls.
+
+---
+
+#### P1 High
+
+- **Billing providers: HTTP error handling** — Flutterwave, Paystack, and Mpesa providers now catch `httpx` transport and HTTP status errors, log them with `logger.exception()`, and re-raise as `HTTPException(503)` for consistent upstream error handling.
+
+- **Subscription service: rollback on write failures** — All four `session.add()`/`session.commit()` write paths in `subscription_service.py` now wrap operations in `try/except`, call `await session.rollback()`, log the error, and re-raise.
+
+- **LLM providers: error logging in fallback paths** — `openai_provider.py`, `azure_provider.py`, `anthropic_provider.py`, and `ollama_provider.py` now log `logger.error()` inside their existing `except Exception as exc` blocks instead of silently swallowing errors during fallback.
+
+- **Notification providers: graceful failure handling** — `twilio_provider.py`, `sendgrid_provider.py`, `africas_talking_provider.py`, and `smtp_provider.py` now catch HTTP/SMTP transport errors, log stack traces, and return structured failure payloads instead of raising exceptions upstream.
+
+- **Sentry middleware: init guard** — `SentryMiddleware.__init__()` now wraps SDK initialization in `try/except` so a misconfigured DSN or network failure doesn't prevent the entire app from starting.
+
+---
+
+#### P2 Infrastructure
+
+- **New module: `swx_core/config/validation.py`** — Shared validation utilities (`is_valid_config_value`, `is_valid_api_key`, `is_valid_dsn`, `is_valid_redis_url`, `is_valid_webhook_secret`) for checking that config values are not placeholders, mocks, or malformed. Exported via `swx_core.config.__init__`.
+
+- **Security validation strengthened** — `security_validation.py` Python identifier checks, keyword detection, and path traversal patterns improved for stricter input validation.
+
+---
+
+### Changed Files
+
+| File | Change |
+|---|---|
+| `swx_core/config/validation.py` | **New** — Shared config validation utilities |
+| `swx_core/config/__init__.py` | Export validation functions |
+| `swx_core/middleware/sentry_middleware.py` | DSN validation + try/except init guard |
+| `swx_core/services/llm/config_resolver.py` | Multi-variable substitution fix, single-colon syntax support |
+| `swx_core/services/compliance/config_cache.py` | ValueError handling on missing env vars |
+| `swx_core/services/billing/stripe_provider.py` | Mock key validation |
+| `swx_core/providers/billing_provider.py` | Stripe API key format validation |
+| `swx_core/webhooks/stripe_webhook.py` | Webhook secret mock rejection |
+| `swx_core/services/billing/providers/flutterwave_provider.py` | HTTP error handling + logging |
+| `swx_core/services/billing/providers/paystack_provider.py` | HTTP error handling + logging |
+| `swx_core/services/billing/providers/mpesa_provider.py` | HTTP error handling + logging |
+| `swx_core/services/billing/subscription_service.py` | Rollback on write failures + logging |
+| `swx_core/services/llm/providers/openai_provider.py` | Error logging in fallback path |
+| `swx_core/services/llm/providers/azure_provider.py` | Error logging in fallback path |
+| `swx_core/services/llm/providers/anthropic_provider.py` | Error logging in fallback path |
+| `swx_core/services/llm/providers/ollama_provider.py` | Error logging in fallback path |
+| `swx_core/services/notifications/providers/twilio_provider.py` | Graceful failure handling + logging |
+| `swx_core/services/notifications/providers/sendgrid_provider.py` | Graceful failure handling + logging |
+| `swx_core/services/notifications/providers/africas_talking_provider.py` | Graceful failure handling + logging |
+| `swx_core/services/notifications/providers/smtp_provider.py` | Graceful failure handling + logging |
+| `swx_core/cli/commands/security_validation.py` | Strengthened identifier/keyword/path validation |
+
+**Backward Compatibility:** Fully backward compatible. All fixes are defensive — they add validation, logging, and error handling without changing any public APIs or behavior for correctly configured systems.
+
+---
+
+## [2.14.2] - 2026-07-28
+
+### Fixed — Test Suite Hardening
+
+- **244 tests passing, 2 skipped (passlib) — 100% pass rate**
+- Fixed `security_validation.py` Python identifier validation, keyword checking, and path traversal patterns
+- Completed `SimpleNamespace` mock attributes for API key scoping tests
+- Added `passlib` import skip for environments without passlib installed
+- Exported `FEATURE_FLAG_CACHE_TTL` module-level constant from settings
+- Fixed env var syntax in compliance service tests (`${VAR}` → `${VAR}`)
+- Fixed mask assertion in compliance event tests
+- Fixed template key assertions in webhook service tests
+
+---
+
+## [2.14.1] - 2026-07-28
+
+### Fixed — Tier 3 Test Fixes
+
+- Fixed all Tier 3 feature test failures (Conversation State, AI Safety, Enterprise SSO, Status Page, Data Transfer, Feature Flags)
+- Corrected model field references, import paths, and test assertions
+
+---
+
+## [2.14.0] - 2026-07-28
+
+### Added — Tier 3 Feature Suite (6 enterprise features)
+
+Six production-grade features following the SwX Repository → Service → Controller → Route pattern with event emission, caching, and database-driven configuration.
+
+#### 10. Conversation State
+#### 11. AI Safety & Content Filtering
+#### 12. Enterprise SSO
+#### 13. Status Page
+#### 14. Data Export/Import
+#### 15. Feature Flags & A/B Testing
+
+*(See v2.14.0 detailed changelog in docs/11-reference/CHANGELOG.md)*
+
+---
+
 ## [2.13.0] - 2026-07-28
 
 ### Added — Tier 2 Feature Suite (4 enterprise features)

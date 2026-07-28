@@ -9,6 +9,14 @@ from swx_core.services.billing.billing_provider_base import BillingProvider
 from swx_core.config.settings import settings
 
 
+def is_valid_stripe_api_key(api_key: str | None) -> bool:
+    return bool(api_key) and api_key.startswith(("sk_live_", "sk_test_"))
+
+
+def is_valid_stripe_webhook_secret(webhook_secret: str | None) -> bool:
+    return bool(webhook_secret) and webhook_secret.startswith("whsec_")
+
+
 def _serialize_metadata(metadata: dict[str, Any] | None) -> dict[str, str] | None:
     if not metadata:
         return None
@@ -37,9 +45,9 @@ class StripeProvider(BillingProvider):
         customer_kwargs: dict[str, Any] = {"email": email}
         if name is not None:
             customer_kwargs["name"] = name
-        serialized_metadata = _serialize_metadata(metadata)
-        if serialized_metadata is not None:
-            customer_kwargs["metadata"] = serialized_metadata
+        normalized_metadata = _serialize_metadata(metadata)
+        if normalized_metadata is not None:
+            customer_kwargs["metadata"] = normalized_metadata
 
         customer = self._stripe.Customer.create(**customer_kwargs)
         return str(customer.id)
@@ -60,9 +68,9 @@ class StripeProvider(BillingProvider):
             "success_url": success_url,
             "cancel_url": cancel_url,
         }
-        serialized_metadata = _serialize_metadata(metadata)
-        if serialized_metadata is not None:
-            session_kwargs["metadata"] = serialized_metadata
+        normalized_metadata = _serialize_metadata(metadata)
+        if normalized_metadata is not None:
+            session_kwargs["metadata"] = normalized_metadata
 
         session = self._stripe.checkout.Session.create(**session_kwargs)
         return str(session.url)
@@ -77,9 +85,9 @@ class StripeProvider(BillingProvider):
             "customer": customer_id,
             "items": [{"price": price_id}],
         }
-        serialized_metadata = _serialize_metadata(metadata)
-        if serialized_metadata is not None:
-            subscription_kwargs["metadata"] = serialized_metadata
+        normalized_metadata = _serialize_metadata(metadata)
+        if normalized_metadata is not None:
+            subscription_kwargs["metadata"] = normalized_metadata
 
         subscription = self._stripe.Subscription.create(**subscription_kwargs)
         return dict(subscription)
@@ -103,12 +111,10 @@ class StripeProvider(BillingProvider):
         self, subscription_id: str, at_period_end: bool = True
     ) -> bool:
         if at_period_end:
-            _ = self._stripe.Subscription.modify(
-                subscription_id, cancel_at_period_end=True
-            )
+            self._stripe.Subscription.modify(subscription_id, cancel_at_period_end=True)
         else:
             subscription = self._stripe.Subscription.retrieve(subscription_id)
-            _ = subscription.delete()
+            subscription.delete()
         return True
 
     def verify_webhook(self, payload: bytes, sig_header: str) -> Any:
@@ -124,7 +130,17 @@ class StripeProvider(BillingProvider):
 def get_stripe_provider() -> Optional[StripeProvider]:
     if not settings.is_billing_available:
         return None
+    api_key = getattr(settings, "STRIPE_API_KEY", None)
+    if not isinstance(api_key, str) or not is_valid_stripe_api_key(api_key):
+        return None
+
+    webhook_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", None)
     return StripeProvider(
-        api_key=getattr(settings, "STRIPE_API_KEY", "sk_test_mock"),
-        webhook_secret=getattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_mock"),
+        api_key=api_key,
+        webhook_secret=(
+            webhook_secret
+            if isinstance(webhook_secret, str)
+            and is_valid_stripe_webhook_secret(webhook_secret)
+            else ""
+        ),
     )

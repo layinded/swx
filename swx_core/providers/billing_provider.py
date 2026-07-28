@@ -49,17 +49,23 @@ class BillingServiceProvider(ServiceProvider):
                     self.singleton("billing.provider", MyCustomBillingProvider)
         """
         from swx_core.config.settings import settings
+        from swx_core.services.billing.stripe_provider import (
+            StripeProvider,
+            is_valid_stripe_api_key,
+            is_valid_stripe_webhook_secret,
+        )
 
         # Check for Stripe configuration
         stripe_api_key = getattr(settings, "STRIPE_API_KEY", None)
         stripe_webhook_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", None)
 
-        if stripe_api_key:
-            from swx_core.services.billing.stripe_provider import StripeProvider
-
+        if isinstance(stripe_api_key, str) and is_valid_stripe_api_key(stripe_api_key):
             return StripeProvider(
                 api_key=stripe_api_key,
-                webhook_secret=stripe_webhook_secret or "whsec_mock",
+                webhook_secret=stripe_webhook_secret
+                if isinstance(stripe_webhook_secret, str)
+                and is_valid_stripe_webhook_secret(stripe_webhook_secret)
+                else "",
             )
 
         # Return mock provider if no billing configured
