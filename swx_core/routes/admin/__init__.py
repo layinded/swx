@@ -14,9 +14,13 @@ from .user_role_route import router as user_role_router
 from .user_route import router as user_router
 from .audit_route import router as audit_router
 from .consent_route import router as consent_router
+from .compliance_route import router as compliance_router
 from .ledger_route import router as ledger_router
 from .llm_route import router as llm_router
+from .notification_provider_route import router as notification_provider_router
 from .organization_route import router as organization_router
+from .api_key_route import router as api_key_router
+from .webhook_route import router as webhook_router
 
 router = APIRouter()
 router.include_router(auth_router)
@@ -33,6 +37,10 @@ router.include_router(user_role_router)
 router.include_router(user_router)
 router.include_router(audit_router)
 router.include_router(consent_router)
+router.include_router(compliance_router)
 router.include_router(ledger_router)
 router.include_router(llm_router)
+router.include_router(notification_provider_router)
 router.include_router(organization_router)
+router.include_router(api_key_router)
+router.include_router(webhook_router)

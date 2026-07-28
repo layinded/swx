@@ -508,6 +508,12 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str | None = Field(
         default=None, description="Stripe webhook secret"
     )
+    WEBHOOK_ENABLED: bool = Field(default=True, description="Enable outbound webhooks")
+    WEBHOOK_DEFAULT_RETRY_COUNT: int = Field(default=3, description="Default outbound webhook retry count")
+    WEBHOOK_DEFAULT_RETRY_DELAY: int = Field(default=60, description="Default outbound webhook retry delay seconds")
+    WEBHOOK_DEFAULT_TIMEOUT: int = Field(default=30, description="Default outbound webhook timeout seconds")
+    WEBHOOK_MAX_RETRIES: int = Field(default=5, description="Maximum outbound webhook retries")
+    WEBHOOK_CIRCUIT_BREAKER_THRESHOLD: int = Field(default=5, description="Outbound webhook circuit breaker threshold")
     LOCAL_CURRENCY_ENABLED: bool = True
     PAYSTACK_SECRET_KEY: str = "${PAYSTACK_SECRET_KEY}"
     PAYSTACK_PUBLIC_KEY: str = "${PAYSTACK_PUBLIC_KEY}"
@@ -587,3 +593,39 @@ class Settings(BaseSettings):
 
 # Instantiate settings
 settings = Settings()  # pyright: ignore[reportCallIssue]
+
+# Compliance Audit Settings
+COMPLIANCE_ENABLED: bool = True
+COMPLIANCE_DEFAULT_SEVERITY: str = "info"
+COMPLIANCE_DEFAULT_DATA_CLASSIFICATION: str = "PUBLIC"
+COMPLIANCE_DEFAULT_IP_MASKING: str = "partial"  # full | partial | none
+COMPLIANCE_DEFAULT_RETENTION_DAYS: int = 365
+COMPLIANCE_AUTO_MASK_IP: bool = True
+COMPLIANCE_AUTO_REDACT_FIELDS: bool = True
+COMPLIANCE_DATA_SUBJECT_REQUEST_EXPIRY_DAYS: int = 30
+
+# Notification Settings
+NOTIFICATION_ENABLED: bool = True
+NOTIFICATION_DEFAULT_FROM_EMAIL: str = "noreply@example.com"
+NOTIFICATION_DEFAULT_FROM_NAME: str = "SwX App"
+NOTIFICATION_DEFAULT_RETRY_COUNT: int = 3
+NOTIFICATION_DEFAULT_TIMEOUT: int = 30
+NOTIFICATION_PROVIDER_CACHE_TTL: int = 30
+NOTIFICATION_TEMPLATE_CACHE_TTL: int = 30
+NOTIFICATION_RATE_LIMIT_DAILY: int = 100
+NOTIFICATION_RATE_LIMIT_HOURLY: int = 20
+
+# API Key Scoping Settings
+API_KEY_ENABLED: bool = True
+API_KEY_DEFAULT_EXPIRY_DAYS: int = 90
+API_KEY_ROTATION_GRACE_HOURS: int = 24
+API_KEY_DEFAULT_RATE_LIMIT: int = 60
+API_KEY_CACHE_TTL: int = 300
+
+# Webhook Settings
+WEBHOOK_ENABLED: bool = settings.WEBHOOK_ENABLED
+WEBHOOK_DEFAULT_RETRY_COUNT: int = settings.WEBHOOK_DEFAULT_RETRY_COUNT
+WEBHOOK_DEFAULT_RETRY_DELAY: int = settings.WEBHOOK_DEFAULT_RETRY_DELAY
+WEBHOOK_DEFAULT_TIMEOUT: int = settings.WEBHOOK_DEFAULT_TIMEOUT
+WEBHOOK_MAX_RETRIES: int = settings.WEBHOOK_MAX_RETRIES
+WEBHOOK_CIRCUIT_BREAKER_THRESHOLD: int = settings.WEBHOOK_CIRCUIT_BREAKER_THRESHOLD

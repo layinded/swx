@@ -13,7 +13,10 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.models.audit_log import AuditLog
+from swx_core.config.settings import COMPLIANCE_AUTO_MASK_IP, COMPLIANCE_AUTO_REDACT_FIELDS
 from swx_core.middleware.logging_middleware import logger
+from swx_core.services.compliance.field_redaction_service import redact_fields
+from swx_core.services.compliance.ip_masking_service import mask_ip
 
 
 class ActorType(str, Enum):
@@ -25,6 +28,10 @@ class ActorType(str, Enum):
 class AuditOutcome(str, Enum):
     SUCCESS = "success"
     FAILURE = "failure"
+    DENIED_INSUFFICIENT_ROLE = "denied_insufficient_role"
+    DENIED_CONSENT_REQUIRED = "denied_consent_required"
+    DENIED_DATA_CLASSIFICATION = "denied_data_classification"
+    DENIED_POLICY = "denied_policy"
 
 
 class AuditLogger:
@@ -45,6 +52,9 @@ class AuditLogger:
         outcome: Union[AuditOutcome, str] = AuditOutcome.SUCCESS,
         context: Optional[Dict[str, Any]] = None,
         request: Optional[Request] = None,
+        severity: str = "info",
+        data_classification: Optional[str] = None,
+        access_result: Optional[str] = None,
     ) -> None:
         """
         Records an audit log entry asynchronously.
@@ -65,12 +75,16 @@ class AuditLogger:
             request_id = None
 
             if request:
-                ip_address = request.client.host if request.client else None
+                client = request.client
+                ip_address = client.host if client else None
                 user_agent = request.headers.get("user-agent")
                 request_id = getattr(request.state, "request_id", None)
 
             # Filter sensitive data from context
             safe_context = self._filter_sensitive_data(context or {})
+            if COMPLIANCE_AUTO_REDACT_FIELDS:
+                safe_context = await redact_fields(self.session, safe_context, data_classification)
+            masked_ip = await mask_ip(self.session, ip_address) if COMPLIANCE_AUTO_MASK_IP else None
 
             audit_entry = AuditLog(
                 actor_type=actor_type.value if isinstance(actor_type, ActorType) else actor_type,
@@ -79,7 +93,11 @@ class AuditLogger:
                 resource_type=resource_type,
                 resource_id=resource_id,
                 outcome=outcome.value if isinstance(outcome, AuditOutcome) else outcome,
+                severity=severity,
+                data_classification=data_classification,
+                access_result=access_result,
                 ip_address=ip_address,
+                masked_ip=masked_ip,
                 user_agent=user_agent,
                 request_id=request_id,
                 context=safe_context,
@@ -102,16 +120,15 @@ class AuditLogger:
             "password", "hashed_password", "token", "access_token", "refresh_token",
             "secret", "secret_key", "client_secret", "authorization", "cookie"
         }
-        
-        filtered = {}
-        for k, v in data.items():
-            if k.lower() in sensitive_keys:
-                filtered[k] = "[REDACTED]"
-            elif isinstance(v, dict):
-                filtered[k] = self._filter_sensitive_data(v)
-            else:
-                filtered[k] = v
-        return filtered
+
+        return {
+            key: "[REDACTED]"
+            if key.lower() in sensitive_keys
+            else self._filter_sensitive_data(value)
+            if isinstance(value, dict)
+            else value
+            for key, value in data.items()
+        }
 
 
 def get_audit_logger(session: AsyncSession) -> AuditLogger:

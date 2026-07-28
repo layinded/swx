@@ -2,6 +2,139 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.13.0] - 2026-07-28
+
+### Added — Tier 2 Feature Suite (4 enterprise features)
+
+Four production-grade features following the SwX Repository → Service → Controller → Route pattern with event emission, caching where appropriate, database-driven configuration, and full documentation.
+
+---
+
+#### 6. Compliance Audit
+
+GDPR/CCPA-compliant audit logging with severity levels, data classification, field redaction, IP masking, retention policies, and data subject request handling (access, deletion, portability, rectification, restriction).
+
+**New tables:** `swx_compliance_config`, `swx_data_subject_request`, `swx_retention_policy`
+
+**Extended models:** AuditLog gains `severity`, `data_classification`, `access_result`, `masked_ip` fields. AuditOutcome enum gains `DENIED_INSUFFICIENT_ROLE`, `DENIED_CONSENT_REQUIRED`, `DENIED_DATA_CLASSIFICATION`, `DENIED_POLICY`.
+
+**Events:** `compliance.data_accessed`, `compliance.consent_violation`, `compliance.data_exported`, `compliance.config_updated`, `compliance.data_subject_request_created`
+
+**Caching:** Compliance config cached with 30s TTL, invalidated on CRUD.
+
+**Auto-masking:** AuditLogger automatically masks IPs and redacts sensitive fields based on compliance config.
+
+**Endpoints:** Admin (`/admin/compliance/*`), User GDPR (`/user/gdpr/*`)
+
+**Files:** 6 new service modules, 3 models, 1 repository, 2 controllers, 4 route modules. Migration: `d1f6e4a9c3b2`.
+
+---
+
+#### 7. Notification Factory
+
+Multi-provider notification system with circuit breaker fallback, Jinja2 template rendering, delivery tracking, and preference management. Supports SMTP, SendGrid, Twilio, and Africa's Talking.
+
+**New tables:** `swx_email_provider_config`, `swx_sms_provider_config`, `swx_notification`, `swx_notification_preference`, `swx_notification_template`
+
+**Events:** `notification.sent`, `notification.failed`, `notification.template_created`, `notification.preference_updated`
+
+**Caching:** Provider configs cached indefinitely (keyed by config hash). Templates cached with 30s TTL.
+
+**Provider fallback:** Circuit breaker per provider with automatic failover to next provider in chain.
+
+**Endpoints:** Admin (`/admin/notifications/*`), User (`/user/notifications/*`)
+
+**Files:** 7 service modules + 4 provider implementations, 5 models, 1 repository, 1 controller, 4 route modules. Migration: `e7a3c1b2d4f5`.
+
+---
+
+#### 8. API Key Scoping
+
+SHA-256 hashed API key management with resource:action scope patterns, wildcards, key rotation with grace period, and per-key rate limit overrides.
+
+**New tables:** `swx_api_key`, `swx_api_key_scope`
+
+**Events:** `api_key.created`, `api_key.revoked`, `api_key.rotated`, `api_key.scope_changed`
+
+**Key rotation:** Grace period (`API_KEY_ROTATION_GRACE_HOURS`, default 24h) allows both old and new keys during transition.
+
+**Scope patterns:** `resource:action` (e.g., `users:read`), `resource:*` (all actions), `*:read` (read across resources), `*:*` (full access).
+
+**Endpoints:** Admin (`/admin/api-keys/*`), User (`/user/api-keys/*`)
+
+**Files:** 2 models, 1 repository, 2 services, 1 controller, 4 route modules. Migration: `f8b2d5e7a1c3`.
+
+---
+
+#### 9. Webhook System
+
+Outbound webhook delivery with HMAC-SHA256 signature verification, circuit breaker per endpoint, exponential backoff retry with jitter, wildcard event subscription matching, and delivery status tracking.
+
+**New tables:** `swx_webhook_endpoint`, `swx_webhook_delivery`, `swx_webhook_event`
+
+**Events:** `webhook.endpoint_created`, `webhook.endpoint_updated`, `webhook.endpoint_deleted`, `webhook.delivery_created`, `webhook.delivery_delivered`, `webhook.delivery_retrying`, `webhook.delivery_failed`, `webhook.delivery_retry_requested`, `webhook.subscription_updated`
+
+**Signing:** HMAC-SHA256 with `${ENV_VAR}` secret resolution via config_resolver.
+
+**Retry:** Exponential backoff with jitter, configurable retry count/delay/timeout per endpoint. Circuit breaker per endpoint using existing resilience module.
+
+**Wildcard matching:** `user.*` matches `user.created`, `user.updated`, etc. `*` matches all events.
+
+**Endpoints:** Admin (`/admin/webhooks/*`), User (`/user/webhooks/*`)
+
+**Files:** 4 service modules, 3 models, 1 repository, 1 controller, 4 route modules. Migration: `a91c4e2f7b6d`.
+
+---
+
+### Migration Chain
+
+```
+d1f6e4a9c3b2 (compliance audit)
+  → e7a3c1b2d4f5 (notification factory)
+    → f8b2d5e7a1c3 (api key scoping)
+      → a91c4e2f7b6d (webhook system)
+```
+
+### Configuration
+
+All new settings use database-driven defaults with `${ENV_VAR}` credential resolution:
+
+| Setting | Default | Description |
+|---|---|---|
+| `COMPLIANCE_ENABLED` | `True` | Enable compliance audit logging |
+| `COMPLIANCE_DEFAULT_SEVERITY` | `"medium"` | Default audit log severity |
+| `COMPLIANCE_DEFAULT_DATA_CLASSIFICATION` | `"internal"` | Default data classification |
+| `COMPLIANCE_IP_MASKING_ENABLED` | `True` | Auto-mask IPs in audit logs |
+| `COMPLIANCE_FIELD_REDACTION_ENABLED` | `True` | Auto-redact sensitive fields |
+| `NOTIFICATION_ENABLED` | `True` | Enable notification system |
+| `NOTIFICATION_DEFAULT_PROVIDER_CHAIN` | `"smtp"` | Default provider fallback chain |
+| `NOTIFICATION_CIRCUIT_BREAKER_THRESHOLD` | `5` | Failures before circuit opens |
+| `NOTIFICATION_TEMPLATE_CACHE_TTL` | `30` | Template cache TTL in seconds |
+| `API_KEY_ROTATION_GRACE_HOURS` | `24` | Hours both keys valid during rotation |
+| `WEBHOOK_ENABLED` | `True` | Enable outbound webhooks |
+| `WEBHOOK_DEFAULT_RETRY_COUNT` | `3` | Default retry count per delivery |
+| `WEBHOOK_DEFAULT_RETRY_DELAY` | `60` | Default retry delay in seconds |
+| `WEBHOOK_DEFAULT_TIMEOUT` | `30` | Default HTTP timeout in seconds |
+| `WEBHOOK_MAX_RETRIES` | `10` | Maximum retries across all deliveries |
+| `WEBHOOK_CIRCUIT_BREAKER_THRESHOLD` | `5` | Failures before circuit opens |
+
+### Documentation
+
+New docs added under `docs/04-core-concepts/`:
+- `COMPLIANCE_AUDIT.md`
+- `NOTIFICATION_FACTORY.md`
+- `API_KEY_SCOPING.md`
+- `WEBHOOK_SYSTEM.md`
+
+### Tests
+
+New test files:
+- `tests/services/test_compliance_events.py`
+- `tests/services/test_compliance_services.py`
+- `tests/services/test_api_key_scoping.py`
+- `tests/services/test_webhook_services.py`
+- `tests/bootstrap/test_webhook_routes.py`
+
 ## [2.12.0] - 2026-07-28
 
 ### Added — Tier 1 Feature Suite (5 enterprise features)

@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.11.0  
-**Last Updated:** 2026-07-27
+**Version:** 2.13.0  
+**Last Updated:** 2026-07-28
 
 ---
 
@@ -29,6 +29,45 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.13.0 (2026-07-28)
+
+**Tier 2 Feature Suite: 4 Enterprise Features**
+
+Four production-grade features: Compliance Audit, Notification Factory, API Key Scoping, and Webhook System. All follow Repository → Service → Controller → Route pattern with event emission, caching, and database-driven configuration.
+
+#### New Features
+
+1. **Compliance Audit** — GDPR/CCPA audit logging with severity, data classification, field redaction, IP masking, retention policies, and data subject request handling (access, deletion, portability, rectification, restriction). Migration: `d1f6e4a9c3b2`.
+
+2. **Notification Factory** — Multi-provider notifications (SMTP, SendGrid, Twilio, Africa's Talking) with circuit breaker fallback, Jinja2 templates, delivery tracking, and preference management. Migration: `e7a3c1b2d4f5`.
+
+3. **API Key Scoping** — SHA-256 hashed API key management with resource:action scope patterns, wildcards, key rotation with grace period, and per-key rate limit overrides. Migration: `f8b2d5e7a1c3`.
+
+4. **Webhook System** — Outbound webhook delivery with HMAC-SHA256 signing, circuit breaker per endpoint, exponential backoff retry with jitter, wildcard event subscription, and delivery status tracking. Migration: `a91c4e2f7b6d`.
+
+#### New Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `COMPLIANCE_ENABLED` | `True` | Enable compliance audit logging |
+| `COMPLIANCE_DEFAULT_SEVERITY` | `"medium"` | Default audit log severity |
+| `NOTIFICATION_ENABLED` | `True` | Enable notification system |
+| `API_KEY_ROTATION_GRACE_HOURS` | `24` | Hours both keys valid during rotation |
+| `WEBHOOK_ENABLED` | `True` | Enable outbound webhooks |
+| `WEBHOOK_DEFAULT_RETRY_COUNT` | `3` | Default retry count per delivery |
+| `WEBHOOK_CIRCUIT_BREAKER_THRESHOLD` | `5` | Failures before circuit opens |
+
+#### New Documentation
+
+- `docs/04-core-concepts/COMPLIANCE_AUDIT.md`
+- `docs/04-core-concepts/NOTIFICATION_FACTORY.md`
+- `docs/04-core-concepts/API_KEY_SCOPING.md`
+- `docs/04-core-concepts/WEBHOOK_SYSTEM.md`
+
+**Backward Compatibility:** Fully backward compatible. All new settings have safe defaults.
+
+---
 
 ### Version 2.11.0 (2026-07-27)
 

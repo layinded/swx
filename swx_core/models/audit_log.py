@@ -1,3 +1,5 @@
+# pyright: reportUnannotatedClassAttribute=false, reportMissingTypeArgument=false, reportAssignmentType=false
+
 """
 Audit Log Model
 ---------------
@@ -8,7 +10,7 @@ Audit logs are immutable and append-only. No updates or deletes are allowed.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Any, Dict
+from typing import Optional
 from sqlalchemy import Column, DateTime, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -25,11 +27,15 @@ class AuditLogBase(Base):
     resource_type: Optional[str] = Field(default=None, index=True, max_length=255)
     resource_id: Optional[str] = Field(default=None, index=True, max_length=255)
     outcome: str = Field(index=True, max_length=50)  # success | failure
+    severity: Optional[str] = Field(default="info", index=True, max_length=20)
+    data_classification: Optional[str] = Field(default=None, index=True, max_length=50)
+    access_result: Optional[str] = Field(default=None, index=True, max_length=50)
     ip_address: Optional[str] = Field(default=None, max_length=50)
+    masked_ip: Optional[str] = Field(default=None, max_length=50)
     user_agent: Optional[str] = Field(default=None, max_length=500)
     request_id: Optional[str] = Field(default=None, index=True, max_length=255)
     # Using 'context' instead of 'metadata' to avoid conflict with SQLAlchemy MetaData
-    context: dict = Field(
+    context: dict[str, object] = Field(
         default_factory=dict,
         sa_column=Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
     )
@@ -39,7 +45,7 @@ class AuditLog(AuditLogBase, table=True):
     """
     Database model representing an audit log entry.
     """
-    __tablename__ = "swx_audit_log"
+    __tablename__ = "swx_audit_log"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
