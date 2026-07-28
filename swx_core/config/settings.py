@@ -1,3 +1,5 @@
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
+
 """
 Application Settings Configuration
 ----------------------------------
@@ -18,7 +20,8 @@ Configuration Sections:
 """
 
 import secrets
-from typing import Any, List, Literal
+from typing import ClassVar
+from typing import Literal
 from pydantic import Field, field_validator, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -52,7 +55,7 @@ class Settings(BaseSettings):
         FIRST_SUPERUSER_PASSWORD (str): Default superuser password.
     """
 
-    model_config = SettingsConfigDict(
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         env_ignore_empty=True,
@@ -60,14 +63,16 @@ class Settings(BaseSettings):
     )
 
     # API Configuration
-    PROJECT_NAME: str
+    PROJECT_NAME: str = "SwX API"
     ROUTE_PREFIX: str = Field("/api", description="Base API route prefix")
     CORE_ROUTE_PREFIX: str = Field(
         "",
-        description="Prefix for core framework routes. Empty string puts core routes at /api/auth. "
-        "Set to '/v1' to mount core routes at /api/v1/auth for consistency with app versioned routes.",
+        description=(
+            "Prefix for core framework routes. Empty string puts core routes at /api/auth. "
+            "Set to '/v1' to mount core routes at /api/v1/auth for consistency with app versioned routes."
+        ),
     )
-    API_VERSIONS: List[str] = Field(["v1", "v2"], description="Supported API versions")
+    API_VERSIONS: list[str] = Field(["v1", "v2"], description="Supported API versions")
     DEFAULT_API_VERSION: str = Field("v1", description="Default API version")
     STRICT_ROUTE_LOADING: bool = Field(
         False,
@@ -92,7 +97,7 @@ class Settings(BaseSettings):
     )
 
     @field_validator("LOG_LEVEL", mode="before")
-    def normalize_log_level(cls, v: Any) -> str:
+    def normalize_log_level(cls, v: object) -> object:
         """Normalize LOG_LEVEL to lowercase."""
         if isinstance(v, str):
             return v.lower()
@@ -123,7 +128,7 @@ class Settings(BaseSettings):
     )
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
-    def parse_cors_string(cls, v: Any) -> list[str]:
+    def parse_cors_string(cls, v: object) -> list[str]:
         """
         Parses a comma-separated string into a list of CORS origins.
 
@@ -139,20 +144,20 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [i.strip() for i in v.split(",")]
         elif isinstance(v, list):
-            return v
+            return [str(i) for i in v]
         raise ValueError(f"Invalid CORS origin format: {v}")
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def all_cors_origins(self) -> List[str]:
+    def all_cors_origins(self) -> list[str]:
         """Ensures CORS settings return a valid list."""
-        origins = (
+        origins: list[str] = (
             list(self.BACKEND_CORS_ORIGINS)
             if isinstance(self.BACKEND_CORS_ORIGINS, list)
             else [self.BACKEND_CORS_ORIGINS]
         )
         origins.extend([self.FRONTEND_HOST, self.BACKEND_HOST])
-        return list(set(origins))
+        return sorted(set(origins))
 
     # Detect Docker Environment
     DOCKERIZED: bool = Field(
@@ -437,6 +442,48 @@ class Settings(BaseSettings):
     BILLING_ENABLED: bool = Field(
         default=False, description="Enable Stripe billing integration"
     )
+    CONSENT_ENABLED: bool = Field(
+        default=True, description="Enable consent management framework"
+    )
+    CONSENT_AUTO_EXPIRE_DAYS: int = Field(
+        default=0, description="Auto-expire consents after N days (0 = disabled)"
+    )
+    LEDGER_ENABLED: bool = Field(
+        default=True, description="Enable append-only ledger framework"
+    )
+    LEDGER_BALANCE_CACHE_TTL: int = Field(
+        default=300, description="TTL in seconds for ledger balance cache"
+    )
+    LEDGER_ALLOW_NEGATIVE_BALANCE: bool = Field(
+        default=False, description="Allow balances to go negative"
+    )
+    LLM_ENABLED: bool = Field(
+        default=True, description="Enable database-driven LLM provider routing"
+    )
+    LLM_DEFAULT_TIMEOUT: int = Field(
+        default=60, description="Default timeout in seconds for provider calls"
+    )
+    LLM_CIRCUIT_BREAKER_THRESHOLD: int = Field(
+        default=5, description="Failures before opening an LLM provider circuit"
+    )
+    LLM_CIRCUIT_BREAKER_RESET_SECONDS: int = Field(
+        default=30, description="Seconds before a provider circuit can half-open"
+    )
+    LLM_MAX_RETRIES: int = Field(
+        default=3, description="Maximum retries for resilient provider calls"
+    )
+    LLM_USAGE_LOG_ENABLED: bool = Field(
+        default=True, description="Persist LLM usage logs for cost and latency tracking"
+    )
+    ORGANIZATION_ENABLED: bool = Field(
+        default=True, description="Enable organization management framework"
+    )
+    ORGANIZATION_MAX_MEMBERS: int = Field(
+        default=0, description="Maximum members allowed per organization (0 = unlimited)"
+    )
+    ORGANIZATION_INVITATION_EXPIRY_DAYS: int = Field(
+        default=7, description="Days before organization invitations expire"
+    )
     AUTO_ASSIGN_DEFAULT_ROLE: bool = Field(
         default=True,
         description="Automatically assign DEFAULT_USER_ROLE to new users on registration",
@@ -461,6 +508,20 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str | None = Field(
         default=None, description="Stripe webhook secret"
     )
+    LOCAL_CURRENCY_ENABLED: bool = True
+    PAYSTACK_SECRET_KEY: str = "${PAYSTACK_SECRET_KEY}"
+    PAYSTACK_PUBLIC_KEY: str = "${PAYSTACK_PUBLIC_KEY}"
+    FLUTTERWAVE_SECRET_KEY: str = "${FLUTTERWAVE_SECRET_KEY}"
+    FLUTTERWAVE_PUBLIC_KEY: str = "${FLUTTERWAVE_PUBLIC_KEY}"
+    FLUTTERWAVE_ENCRYPTION_KEY: str = "${FLUTTERWAVE_ENCRYPTION_KEY}"
+    MPESA_CONSUMER_KEY: str = "${MPESA_CONSUMER_KEY}"
+    MPESA_CONSUMER_SECRET: str = "${MPESA_CONSUMER_SECRET}"
+    MPESA_PASSKEY: str = "${MPESA_PASSKEY}"
+    MPESA_SHORTCODE: str = "${MPESA_SHORTCODE}"
+    MPESA_ENV: str = "sandbox"
+    EXCHANGE_RATE_SYNC_INTERVAL_HOURS: int = 6
+    DEFAULT_TAX_JURISDICTION: str = "NG"
+    DEFAULT_BASE_CURRENCY: str = "USD"
 
     MONITORING_ENABLED: bool = Field(
         default=False, description="Enable Sentry monitoring"
@@ -505,7 +566,7 @@ class Settings(BaseSettings):
         if not self.JOBS_ENABLED:
             return False
         try:
-            import celery
+            import celery  # pyright: ignore[reportMissingTypeStubs]
 
             return celery is not None
         except ImportError:
@@ -525,4 +586,4 @@ class Settings(BaseSettings):
 
 
 # Instantiate settings
-settings = Settings()
+settings = Settings()  # pyright: ignore[reportCallIssue]

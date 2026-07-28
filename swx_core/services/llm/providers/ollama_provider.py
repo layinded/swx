@@ -1,0 +1,73 @@
+from json import JSONDecodeError
+from json import loads
+from time import monotonic
+from typing import Any, AsyncGenerator
+
+import httpx
+
+from swx_core.contracts.llm import LLMRequest, LLMResponse
+from swx_core.services.llm.providers import BaseLLMProvider
+
+
+class OllamaProvider(BaseLLMProvider):
+    def __init__(self, base_url: str, api_key: str | None, provider_config: dict[str, Any] | None = None):
+        self.base_url = base_url.rstrip("/")
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        self.client = httpx.AsyncClient(base_url=self.base_url, headers=headers, timeout=60)
+        self.config = provider_config or {}
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        started = monotonic()
+        model_name = self.config.get("model_name", "llama3.2")
+        try:
+            response = await self.client.post(
+                "/api/chat",
+                json={
+                    "model": model_name,
+                    "messages": _messages(request),
+                    "stream": False,
+                    "options": {"temperature": request.temperature, "num_predict": request.max_tokens, "top_p": request.top_p},
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            prompt_tokens = int(payload.get("prompt_eval_count", 0))
+            completion_tokens = int(payload.get("eval_count", 0))
+            return LLMResponse(
+                True,
+                payload.get("message", {}).get("content", ""),
+                model=model_name,
+                provider="ollama",
+                tokens_used=prompt_tokens + completion_tokens,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=int((monotonic() - started) * 1000),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return LLMResponse(False, "", error=str(exc), model=model_name, provider="ollama", latency_ms=int((monotonic() - started) * 1000))
+
+    async def stream(self, request: LLMRequest) -> AsyncGenerator[str, None]:
+        model_name = self.config.get("model_name", "llama3.2")
+        async with self.client.stream("POST", "/api/chat", json={"model": model_name, "messages": _messages(request), "stream": True, "options": {"temperature": request.temperature, "num_predict": request.max_tokens, "top_p": request.top_p}}) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                try:
+                    payload = loads(line)
+                except JSONDecodeError:
+                    continue
+                content = payload.get("message", {}).get("content")
+                if content:
+                    yield str(content)
+
+    async def health_check(self) -> bool:
+        try:
+            response = await self.client.get("/api/tags")
+            return response.is_success
+        except Exception:
+            return False
+
+
+def _messages(request: LLMRequest) -> list[dict[str, str]]:
+    return ([{"role": "system", "content": request.system_prompt}] if request.system_prompt else []) + [{"role": "user", "content": request.prompt}]

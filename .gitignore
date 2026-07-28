@@ -77,3 +77,6 @@ redis-data/
 
 .idea/*
 /dist/
+
+# Ignore Sisyphus planning/tracking docs (local working artifacts, never committed)
+.sisyphus/

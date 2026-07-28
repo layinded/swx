@@ -2,6 +2,119 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.12.0] - 2026-07-28
+
+### Added — Tier 1 Feature Suite (5 enterprise features)
+
+Five production-grade features requested by AFCloud AI, each following the SwX Repository → Service → Controller → Route pattern with event emission, caching where appropriate, database-driven configuration, and full documentation.
+
+---
+
+#### 1. Consent Management
+
+GDPR/CCPA-compliant consent tracking with configurable consent types, versioning, and enforcement hooks.
+
+**New tables:** `swx_consent_type`, `swx_user_consent`, `swx_consent_version`
+
+**Events:** `consent.granted`, `consent.withdrawn`, `consent.expired`
+
+**Caching:** Consent enforcement checks cached with 30s TTL, invalidated on grant/withdraw.
+
+**Endpoints:** Admin (manage types, view all consents), User (grant, withdraw, view status).
+
+**Files:** 9 new, 3 modified. Migration: `cb96a87ddcc2`.
+
+---
+
+#### 2. Organization Model
+
+Multi-tenant organization support with roles (Owner/Admin/Member), invitations, and member management.
+
+**New tables:** `swx_organization`, `swx_organization_member`, `swx_organization_invitation`
+
+**Events:** `organization.created`, `organization.updated`, `organization.deleted`, `organization.invitation_sent`, `organization.member_joined`, `organization.member_removed`, `organization.member_role_changed`
+
+**Endpoints:** Admin (view all), User (create, update, delete, invite, accept, reject, members, roles).
+
+**Files:** 8 new, 3 modified. Migration: `f38a4c8d9b12`.
+
+---
+
+#### 3. Append-Only Ledger
+
+Immutable financial ledger with running balances, idempotency, refunds, transfers, and reconciliation.
+
+**New tables:** `swx_ledger_entry`, `swx_ledger_balance`, `swx_ledger_idempotency`
+
+**Events:** `ledger.credit`, `ledger.debit`, `ledger.refund`, `ledger.transfer`
+
+**Design:** All entries immutable (insert-only). Amounts in nano-units (int). `LedgerBalance` table serves as a cached balance. `metadata_` column name avoids SQLAlchemy reserved word collision while serializing as `metadata` in API responses.
+
+**Endpoints:** Admin (credit, debit, refund, transfer, balance, history, reconcile).
+
+**Files:** 6 new, 2 modified. Migration: `9b2f6c1d4a7e`.
+
+---
+
+#### 4. LLM Provider Service
+
+Multi-provider LLM abstraction with circuit breaker, retry with jitter, timeout enforcement, and provider fallback chains. Supports OpenAI, Azure, Anthropic, and Ollama.
+
+**New tables:** `swx_llm_provider_config`, `swx_llm_usage_log`
+
+**Events:** `llm.generate`, `llm.provider_failed`
+
+**Caching:** Provider instances cached indefinitely (keyed by config hash). Provider chain cached per phase with 60s TTL, invalidated on any provider config CRUD.
+
+**DB-driven configuration:** Per-provider resilience settings (timeout, retries, circuit breaker threshold/reset, rate limits, daily token limits) stored in database with global settings fallback.
+
+**Credential resolution:** `${ENV_VAR}` (required) and `${ENV_VAR:-default}` (optional) placeholder patterns resolved at runtime.
+
+**Files:** ~20 new, 3 modified. Migration: `c41b7a8e2f10`.
+
+---
+
+#### 5. Multi-Currency Billing
+
+Multi-currency wallet system with 3 African payment providers, exchange rate management, and jurisdiction-specific tax calculation.
+
+**New tables:** `swx_currency`, `swx_exchange_rate`, `swx_wallet`
+
+**Events:** `wallet.credit`, `wallet.debit`, `wallet.transfer`
+
+**Wallet ↔ Ledger integration:** Each wallet uses its `wallet.id` as the ledger `account_id`, ensuring per-currency balance isolation.
+
+**Payment providers:** Paystack (NG, GH), Flutterwave (NG, KE, ZA, GH), M-Pesa (KE). All use `${ENV_VAR}` credential resolution.
+
+**Exchange rate resolution:** Three-tier fallback (direct → inverse → pivot through base currency).
+
+**Tax engine:** NG 7.5%, KE 16%, ZA 15%, GH 15%, US 0%, GB 20%.
+
+**Default currencies:** USD (base), NGN, KES, ZAR, GHS.
+
+**Files:** 16 new, 3 modified. Migration: `b7e1c2d3f4a5`.
+
+---
+
+### Migration Chain
+
+```
+cb96a87ddcc2 (consent)
+  → f38a4c8d9b12 (organization)
+    → 9b2f6c1d4a7e (ledger)
+      → c41b7a8e2f10 (llm)
+        → b7e1c2d3f4a5 (multi-currency)
+```
+
+### Documentation
+
+New docs added under `docs/04-core-concepts/`:
+- `CONSENT_MANAGEMENT.md`
+- `ORGANIZATIONS.md`
+- `LEDGER.md`
+- `LLM_PROVIDER.md`
+- `MULTI_CURRENCY.md`
+
 ## [2.9.0] - 2026-07-22
 
 ### Added - Database Engine Configuration via Environment Variables
