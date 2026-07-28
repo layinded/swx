@@ -543,6 +543,39 @@ class Settings(BaseSettings):
         default=False, description="Enable AI/vector embeddings (pgai)"
     )
 
+    CONVERSATION_ENABLED: bool = Field(default=True, description="Enable conversation state tracking")
+    CONVERSATION_DEFAULT_PAGE_SIZE: int = Field(default=50, description="Default page size for conversation listing")
+    CONVERSATION_MAX_MESSAGE_LENGTH: int = Field(default=10000, description="Maximum message content length in characters")
+    CONVERSATION_CACHE_TTL: int = Field(default=30, description="Conversation config cache TTL in seconds")
+
+    # AI Safety & Content Filtering
+    SAFETY_ENABLED: bool = Field(default=True, description="Enable AI safety and content filtering")
+    SAFETY_DEFAULT_ACTION: str = Field(default="flag", description="Default action when content is flagged (allow, flag, block, replace)")
+    SAFETY_CACHE_TTL: int = Field(default=60, description="Safety filter config cache TTL in seconds")
+    SAFETY_MAX_CONTENT_LENGTH: int = Field(default=50000, description="Maximum content length for safety checks in characters")
+    SAFETY_LOG_ALL_CHECKS: bool = Field(default=True, description="Log all safety checks for audit trail")
+
+    # Enterprise SSO
+    SSO_ENABLED: bool = Field(default=True, description="Enable enterprise SSO (SAML/OIDC)")
+    SSO_CACHE_TTL: int = Field(default=60, description="SSO provider config cache TTL in seconds")
+    SSO_SESSION_TIMEOUT: int = Field(default=28800, description="SSO session timeout in seconds (default 8 hours)")
+    SSO_ALLOW_MULTIPLE_SESSIONS: bool = Field(default=True, description="Allow users to have multiple active SSO sessions")
+
+    # Status Page
+    STATUS_ENABLED: bool = Field(default=True, description="Enable status page and incident tracking")
+    STATUS_CACHE_TTL: int = Field(default=30, description="Status page cache TTL in seconds")
+    STATUS_DEFAULT_PAGE_SIZE: int = Field(default=50, description="Default page size for status listings")
+
+    # Data Export/Import
+    DATA_TRANSFER_ENABLED: bool = Field(default=True, description="Enable data export and import")
+    DATA_TRANSFER_CACHE_TTL: int = Field(default=60, description="Data transfer config cache TTL in seconds")
+    DATA_EXPORT_EXPIRY_DAYS: int = Field(default=7, description="Number of days before export files expire")
+    DATA_EXPORT_MAX_RECORDS: int = Field(default=100000, description="Maximum records per export")
+    DATA_IMPORT_MAX_FILE_SIZE: int = Field(default=52428800, description="Maximum import file size in bytes (50MB)")
+
+    # Feature Flags & A/B Testing
+    FEATURE_FLAG_ENABLED: bool = Field(default=True, description="Enable feature flags and A/B testing")
+
     @property
     def is_billing_available(self) -> bool:
         if not self.BILLING_ENABLED:
@@ -629,3 +662,37 @@ WEBHOOK_DEFAULT_RETRY_DELAY: int = settings.WEBHOOK_DEFAULT_RETRY_DELAY
 WEBHOOK_DEFAULT_TIMEOUT: int = settings.WEBHOOK_DEFAULT_TIMEOUT
 WEBHOOK_MAX_RETRIES: int = settings.WEBHOOK_MAX_RETRIES
 WEBHOOK_CIRCUIT_BREAKER_THRESHOLD: int = settings.WEBHOOK_CIRCUIT_BREAKER_THRESHOLD
+
+# Conversation State Settings
+CONVERSATION_ENABLED: bool = settings.CONVERSATION_ENABLED
+CONVERSATION_DEFAULT_PAGE_SIZE: int = settings.CONVERSATION_DEFAULT_PAGE_SIZE
+CONVERSATION_MAX_MESSAGE_LENGTH: int = settings.CONVERSATION_MAX_MESSAGE_LENGTH
+CONVERSATION_CACHE_TTL: int = settings.CONVERSATION_CACHE_TTL
+
+# AI Safety Settings
+SAFETY_ENABLED: bool = settings.SAFETY_ENABLED
+SAFETY_DEFAULT_ACTION: str = settings.SAFETY_DEFAULT_ACTION
+SAFETY_CACHE_TTL: int = settings.SAFETY_CACHE_TTL
+SAFETY_MAX_CONTENT_LENGTH: int = settings.SAFETY_MAX_CONTENT_LENGTH
+SAFETY_LOG_ALL_CHECKS: bool = settings.SAFETY_LOG_ALL_CHECKS
+
+# Enterprise SSO Settings
+SSO_ENABLED: bool = settings.SSO_ENABLED
+SSO_CACHE_TTL: int = settings.SSO_CACHE_TTL
+SSO_SESSION_TIMEOUT: int = settings.SSO_SESSION_TIMEOUT
+SSO_ALLOW_MULTIPLE_SESSIONS: bool = settings.SSO_ALLOW_MULTIPLE_SESSIONS
+
+# Status Page Settings
+STATUS_ENABLED: bool = settings.STATUS_ENABLED
+STATUS_CACHE_TTL: int = settings.STATUS_CACHE_TTL
+STATUS_DEFAULT_PAGE_SIZE: int = settings.STATUS_DEFAULT_PAGE_SIZE
+
+# Data Transfer Settings
+DATA_TRANSFER_ENABLED: bool = settings.DATA_TRANSFER_ENABLED
+DATA_TRANSFER_CACHE_TTL: int = settings.DATA_TRANSFER_CACHE_TTL
+DATA_EXPORT_EXPIRY_DAYS: int = settings.DATA_EXPORT_EXPIRY_DAYS
+DATA_EXPORT_MAX_RECORDS: int = settings.DATA_EXPORT_MAX_RECORDS
+DATA_IMPORT_MAX_FILE_SIZE: int = settings.DATA_IMPORT_MAX_FILE_SIZE
+
+# Feature Flag Settings
+FEATURE_FLAG_ENABLED: bool = settings.FEATURE_FLAG_ENABLED

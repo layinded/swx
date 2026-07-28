@@ -5,7 +5,7 @@ Defines the interface for cache drivers.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, List
+from typing import Any, Dict, Optional, List
 
 
 class CacheDriver(ABC):

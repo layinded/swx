@@ -111,6 +111,82 @@ from swx_core.models.system_config import (
     SettingValueType,
     SettingCategory,
 )
+from swx_core.models.conversation import (
+    Conversation,
+    ConversationCreate,
+    ConversationUpdate,
+    ConversationPublic,
+)
+from swx_core.models.conversation_message import (
+    ConversationMessage,
+    ConversationMessageCreate,
+    ConversationMessageUpdate,
+    ConversationMessagePublic,
+)
+from swx_core.models.content_filter import (
+    ContentFilter,
+    ContentFilterCreate,
+    ContentFilterUpdate,
+    ContentFilterPublic,
+)
+from swx_core.models.safety_check import (
+    SafetyCheck,
+    SafetyCheckCreate,
+    SafetyCheckUpdate,
+    SafetyCheckPublic,
+)
+from swx_core.models.sso_provider import (
+    SSOProvider,
+    SSOProviderCreate,
+    SSOProviderUpdate,
+    SSOProviderPublic,
+)
+from swx_core.models.sso_session import (
+    SSOSession,
+    SSOSessionCreate,
+    SSOSessionUpdate,
+    SSOSessionPublic,
+)
+from swx_core.models.service_component import (
+    ServiceComponent,
+    ServiceComponentCreate,
+    ServiceComponentUpdate,
+    ServiceComponentPublic,
+)
+from swx_core.models.status_incident import (
+    StatusIncident,
+    StatusIncidentCreate,
+    StatusIncidentUpdate,
+    StatusIncidentPublic,
+)
+from swx_core.models.incident_update import (
+    IncidentUpdate,
+    IncidentUpdateCreate,
+    IncidentUpdatePublic,
+)
+from swx_core.models.data_export import (
+    DataExport,
+    DataExportCreate,
+    DataExportUpdate,
+    DataExportPublic,
+)
+from swx_core.models.data_import import (
+    DataImport,
+    DataImportCreate,
+    DataImportUpdate,
+    DataImportPublic,
+)
+from swx_core.models.feature_flag import (
+    FeatureFlag,
+    FeatureFlagCreate,
+    FeatureFlagUpdate,
+    FeatureFlagPublic,
+)
+from swx_core.models.flag_evaluation import (
+    FlagEvaluation,
+    FlagEvaluationCreate,
+    FlagEvaluationPublic,
+)
 
 __all__ = [
     # Base
@@ -206,4 +282,67 @@ __all__ = [
     "SystemConfigHistory",
     "SettingValueType",
     "SettingCategory",
+    # Conversation
+    "Conversation",
+    "ConversationCreate",
+    "ConversationUpdate",
+    "ConversationPublic",
+    # Conversation Message
+    "ConversationMessage",
+    "ConversationMessageCreate",
+    "ConversationMessageUpdate",
+    "ConversationMessagePublic",
+    # Content Filter (AI Safety)
+    "ContentFilter",
+    "ContentFilterCreate",
+    "ContentFilterUpdate",
+    "ContentFilterPublic",
+    # Safety Check (AI Safety)
+    "SafetyCheck",
+    "SafetyCheckCreate",
+    "SafetyCheckUpdate",
+    "SafetyCheckPublic",
+    # SSO Provider
+    "SSOProvider",
+    "SSOProviderCreate",
+    "SSOProviderUpdate",
+    "SSOProviderPublic",
+    # SSO Session
+    "SSOSession",
+    "SSOSessionCreate",
+    "SSOSessionUpdate",
+    "SSOSessionPublic",
+    # Service Component (Status Page)
+    "ServiceComponent",
+    "ServiceComponentCreate",
+    "ServiceComponentUpdate",
+    "ServiceComponentPublic",
+    # Status Incident (Status Page)
+    "StatusIncident",
+    "StatusIncidentCreate",
+    "StatusIncidentUpdate",
+    "StatusIncidentPublic",
+    # Incident Update (Status Page)
+    "IncidentUpdate",
+    "IncidentUpdateCreate",
+    "IncidentUpdatePublic",
+    # Data Export
+    "DataExport",
+    "DataExportCreate",
+    "DataExportUpdate",
+    "DataExportPublic",
+    # Data Import
+    "DataImport",
+    "DataImportCreate",
+    "DataImportUpdate",
+    "DataImportPublic",
+    # Feature Flag
+    "FeatureFlag",
+    "FeatureFlagCreate",
+    "FeatureFlagUpdate",
+    "FeatureFlagPublic",
+    # Flag Evaluation
+    "FlagEvaluation",
+    "FlagEvaluationCreate",
+    "FlagEvaluationPublic",
 ]

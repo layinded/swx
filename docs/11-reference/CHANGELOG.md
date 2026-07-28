@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.13.0  
+**Version:** 2.14.0  
 **Last Updated:** 2026-07-28
 
 ---
@@ -29,6 +29,70 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.14.0 (2026-07-28)
+
+**Tier 3 Feature Suite: 6 Enterprise Features**
+
+Six production-grade features: Conversation State, AI Safety & Content Filtering, Enterprise SSO, Status Page, Data Export/Import, and Feature Flags & A/B Testing. All follow Repository → Service → Controller → Route pattern with event emission, caching, and database-driven configuration.
+
+#### New Features
+
+1. **Conversation State** — Persistent conversation tracking with message threading, soft-delete (archive/delete), metadata support, and user ownership scoping. Admin and user domain routes. Migration: `b2c1f3d5a7e9`.
+
+2. **AI Safety & Content Filtering** — Content moderation pipeline with configurable filter types (regex, keyword, AI classifier, custom), severity levels, action policies (allow/flag/block/replace), and per-request safety checks with result logging. Migration: `c3d2e4f6b8a0`.
+
+3. **Enterprise SSO** — SAML and OIDC identity provider configuration with provider management (CRUD), SSO session tracking, domain-based auto-detection, and session termination. Supports multiple active sessions per user. Migration: `d4e3f5a7c9b1`.
+
+4. **Status Page** — Service component monitoring with operational status tracking, incident management with severity levels, incident timeline updates, and public status summary endpoint. Component grouping and sorting supported. Migration: `e5f4a6b8d0c2`.
+
+5. **Data Export/Import** — GDPR-compliant user data export (JSON/CSV formats) and import with progress tracking, status management (pending/processing/completed/failed/expired), and per-user isolation. Migration: `f6a5b7c9e1d3`.
+
+6. **Feature Flags & A/B Testing** — Feature flag management with percentage rollouts, variant assignment with deterministic hashing, sticky variants, time-windowed activation, and per-user evaluation tracking. Supports rule-based targeting via JSONB rules. Migration: `f7b6d8e0a2c4`.
+
+#### New Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `CONVERSATION_ENABLED` | `True` | Enable conversation state tracking |
+| `CONVERSATION_DEFAULT_PAGE_SIZE` | `50` | Default page size for conversation listing |
+| `CONVERSATION_MAX_MESSAGE_LENGTH` | `10000` | Maximum message content length |
+| `CONVERSATION_CACHE_TTL` | `30` | Conversation config cache TTL |
+| `SAFETY_ENABLED` | `True` | Enable AI safety and content filtering |
+| `SAFETY_DEFAULT_ACTION` | `"flag"` | Default action when content flagged |
+| `SAFETY_CACHE_TTL` | `60` | Safety filter config cache TTL |
+| `SAFETY_MAX_CONTENT_LENGTH` | `50000` | Maximum content length for safety checks |
+| `SAFETY_LOG_ALL_CHECKS` | `True` | Log all safety checks for audit |
+| `SSO_ENABLED` | `True` | Enable enterprise SSO |
+| `SSO_CACHE_TTL` | `60` | SSO provider config cache TTL |
+| `SSO_SESSION_TIMEOUT` | `28800` | SSO session timeout (8 hours) |
+| `SSO_ALLOW_MULTIPLE_SESSIONS` | `True` | Allow multiple active SSO sessions |
+| `STATUS_ENABLED` | `True` | Enable status page |
+| `STATUS_CACHE_TTL` | `30` | Status page cache TTL |
+| `STATUS_DEFAULT_PAGE_SIZE` | `50` | Default page size for status listings |
+| `DATA_TRANSFER_ENABLED` | `True` | Enable data export/import |
+| `DATA_TRANSFER_CACHE_TTL` | `60` | Data transfer config cache TTL |
+| `DATA_EXPORT_EXPIRY_DAYS` | `7` | Days before export files expire |
+| `DATA_EXPORT_MAX_RECORDS` | `100000` | Maximum records per export |
+| `DATA_IMPORT_MAX_FILE_SIZE` | `52428800` | Maximum import file size (50MB) |
+| `FEATURE_FLAG_ENABLED` | `True` | Enable feature flags and A/B testing |
+| `FEATURE_FLAG_CACHE_TTL` | `300` | Feature flag cache TTL |
+| `FEATURE_FLAG_CACHE_L1_MAX_ENTRIES` | `200` | Maximum L1 cache entries |
+
+#### New Database Migrations
+
+| Migration | Feature |
+|---|---|
+| `b2c1f3d5a7e9` | Conversation State (swx_conversation, swx_conversation_message) |
+| `c3d2e4f6b8a0` | AI Safety (swx_content_filter, swx_safety_check) |
+| `d4e3f5a7c9b1` | Enterprise SSO (swx_sso_provider, swx_sso_session) |
+| `e5f4a6b8d0c2` | Status Page (swx_service_component, swx_status_incident, swx_incident_update) |
+| `f6a5b7c9e1d3` | Data Export/Import (swx_data_export, swx_data_import) |
+| `f7b6d8e0a2c4` | Feature Flags (swx_feature_flag, swx_flag_evaluation) |
+
+**Backward Compatibility:** Fully backward compatible. All new settings have safe defaults.
+
+---
 
 ### Version 2.13.0 (2026-07-28)
 
