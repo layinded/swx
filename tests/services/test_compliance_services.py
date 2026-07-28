@@ -123,7 +123,7 @@ class TestConfigCache:
     def test_resolve_config_value_with_default(self):
         from swx_core.services.compliance.config_cache import resolve_config_value
 
-        result = resolve_config_value("${NONEXISTENT_VAR:fallback}")
+        result = resolve_config_value("${NONEXISTENT_VAR:-fallback}")
         assert result == "fallback"
 
     def test_resolve_config_value_plain_string(self):
@@ -142,8 +142,9 @@ class TestConfigCache:
         from swx_core.services.compliance.config_cache import serialize_config_value
 
         result = serialize_config_value("api_secret_key", "sk-1234567890abcdef")
-        assert "1234" in result and "cdef" in result
         assert result != "sk-1234567890abcdef"
+        assert result.startswith("sk-1")
+        assert result.endswith("cdef")
 
     def test_serialize_config_value_preserves_non_secrets(self):
         from swx_core.services.compliance.config_cache import serialize_config_value

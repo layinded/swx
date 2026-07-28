@@ -15,6 +15,9 @@ import pytest
 
 from swx_core.events.dispatcher import EventBus, Event
 
+# Skip entire module if passlib is not installed (required by auth/user services)
+pytest.importorskip("passlib")
+
 
 class TestRoleServiceEvents:
     async def test_create_role_emits_event(self):

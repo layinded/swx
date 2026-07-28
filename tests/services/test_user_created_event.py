@@ -1,14 +1,12 @@
 """
 Tests for user.created event emission during registration.
-
-Tests verify that:
-1. user.created event is emitted during registration
-2. Event payload contains correct data
-3. Event context is passed through correctly
 """
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
+
+# Skip entire module if passlib is not installed (required by auth_service)
+pytest.importorskip("passlib")
 
 from swx_core.events.dispatcher import EventBus, Event
 from swx_core.models.user import User, UserCreate

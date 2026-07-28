@@ -6,6 +6,7 @@ when services perform state changes.
 """
 
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -77,12 +78,27 @@ class TestComplianceAuditEvents:
         from swx_core.services.compliance import compliance_audit_service
 
         session = AsyncMock()
+        config_id = uuid.uuid4()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         config_data = SimpleNamespace(
+            id=config_id,
             key="ip_masking_mode",
             value="partial",
             category="masking",
-            model_dump=lambda: {"key": "ip_masking_mode", "value": "partial", "category": "masking"},
+            is_active=True,
+            created_at=now,
+            updated_at=now,
         )
+
+        def _model_dump(self):
+            return {
+                "id": str(self.id), "key": self.key, "value": self.value,
+                "category": self.category, "is_active": self.is_active,
+                "created_at": self.created_at.isoformat() if self.created_at else None,
+                "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            }
+
+        config_data.model_dump = lambda: _model_dump(config_data)
         event_bus.clear_fired()
 
         with patch("swx_core.services.compliance.compliance_audit_service.compliance_audit_repository") as mock_repo:
@@ -107,8 +123,9 @@ class TestDataSubjectRequestEvents:
 
         session = AsyncMock()
         user_id = uuid.uuid4()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         request = SimpleNamespace(
-            id=uuid.uuid4(), user_id=user_id, request_type="access", verification_token="tok"
+            id=uuid.uuid4(), user_id=user_id, request_type="access", verification_token="tok", status="pending", created_at=now, updated_at=now,
         )
         event_bus.clear_fired()
 
@@ -128,10 +145,11 @@ class TestDataSubjectRequestEvents:
 
         session = AsyncMock()
         request_id = uuid.uuid4()
-        verified = SimpleNamespace(id=request_id, user_id=uuid.uuid4())
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        verified = SimpleNamespace(id=request_id, user_id=uuid.uuid4(), request_type="access", verification_token="tok", status="verified", created_at=now, updated_at=now)
 
         with patch("swx_core.services.compliance.data_subject_service.compliance_audit_repository") as mock_repo:
-            mock_repo.get_data_subject_request = AsyncMock(return_value=SimpleNamespace(verification_token="tok", user_id=verified.user_id))
+            mock_repo.get_data_subject_request = AsyncMock(return_value=SimpleNamespace(verification_token="tok", user_id=verified.user_id, request_type="access", status="pending"))
             mock_repo.update_data_subject_request = AsyncMock(return_value=verified)
             with patch.object(event_bus, "dispatch", new_callable=AsyncMock) as mock_dispatch:
                 await data_subject_service.verify_request(session, request_id, "tok", verified.user_id)
@@ -145,7 +163,8 @@ class TestDataSubjectRequestEvents:
         session = AsyncMock()
         request_id = uuid.uuid4()
         user_id = uuid.uuid4()
-        cancelled = SimpleNamespace(id=request_id, user_id=user_id)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        cancelled = SimpleNamespace(id=request_id, user_id=user_id, request_type="access", verification_token="tok", status="cancelled", created_at=now, updated_at=now)
 
         with patch("swx_core.services.compliance.data_subject_service.compliance_audit_repository") as mock_repo:
             mock_repo.get_data_subject_request = AsyncMock(return_value=SimpleNamespace(id=request_id, user_id=user_id, status="pending"))
@@ -164,7 +183,8 @@ class TestRetentionServiceEvents:
         from swx_core.services.compliance import retention_service
 
         session = AsyncMock()
-        policy = SimpleNamespace(resource_type="audit_log", retention_days=365, action_on_expiry="anonymize")
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        policy = SimpleNamespace(id=uuid.uuid4(), resource_type="audit_log", retention_days=365, action_on_expiry="anonymize", is_active=True, created_at=now, updated_at=now)
 
         with patch("swx_core.services.compliance.retention_service.compliance_audit_repository") as mock_repo:
             mock_repo.upsert_retention_policy = AsyncMock(return_value=policy)
