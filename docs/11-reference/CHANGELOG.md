@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.15.5  
+**Version:** 2.15.6  
 **Last Updated:** 2026-07-29
 
 ---
@@ -29,6 +29,16 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.15.6 (2026-07-29)
+
+**P0 Circular Import Fix**
+
+`import swx_core` crashed with `ImportError: cannot import name 'get_container'`. The v2.15.0 timezone refactor exposed a latent circular dependency: `utils/__init__.py` → `utils.dependencies` → `container.container.get_container` (already being initialized).
+
+Fix: Made `get_container` import lazy in `dependencies.py` via `_get_container()` helper.
+
+---
 
 ### Version 2.15.5 (2026-07-29)
 

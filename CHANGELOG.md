@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.6] - 2026-07-29
+
+### Fixed — P0 Circular Import
+
+**`import swx_core` crashed with `ImportError: cannot import name 'get_container'`** — the package was completely unusable.
+
+The v2.15.0 timezone refactor added `from swx_core.utils.time import utc_now` to `repositories/base.py`, which triggered `swx_core/utils/__init__.py` for the first time in the container init chain. `utils/__init__.py` eagerly imports `utils.dependencies` which imports `get_container` from `container.container` at module level — creating a circular dependency since `container.container` was still being initialized.
+
+**Fix:** Made `get_container` import lazy in `dependencies.py` — moved from module-level import to a `_get_container()` helper that imports inside the function body. All call sites updated to use `_get_container()`.
+
+---
+
 ## [2.15.5] - 2026-07-29
 
 ### Fixed — Round 3 Feedback
