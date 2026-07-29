@@ -34,18 +34,26 @@ HIGH_RISK_SETTINGS = {
     "rate_limit.free.write.burst",
 }
 
-def validate_setting_value(value: str, value_type: SettingValueType) -> bool:
+def validate_setting_value(value: Any, value_type: SettingValueType) -> bool:
     """Validate setting value matches its type."""
     try:
         if value_type == SettingValueType.INT:
-            int(value)
+            if isinstance(value, int) and not isinstance(value, bool):
+                pass
+            else:
+                int(value)
         elif value_type == SettingValueType.BOOL:
-            str(value).lower() in ("true", "false", "1", "0", "yes", "no", "on", "off")
+            if isinstance(value, bool):
+                pass
+            else:
+                return str(value).lower() in ("true", "false", "1", "0", "yes", "no", "on", "off")
         elif value_type == SettingValueType.JSON:
-            json.loads(value)
-        # STRING always valid
+            if isinstance(value, (dict, list)):
+                pass
+            else:
+                json.loads(value)
         return True
-    except (ValueError, json.JSONDecodeError):
+    except (ValueError, TypeError, json.JSONDecodeError):
         return False
 
 async def _invalidate_runtime_setting_caches(key: str) -> None:
@@ -61,7 +69,7 @@ async def _invalidate_runtime_setting_caches(key: str) -> None:
 
         await invalidate_cached_setting(key)
 
-def validate_security_guards(key: str, value: str, value_type: SettingValueType) -> tuple[bool, Optional[str]]:
+def validate_security_guards(key: str, value: Any, value_type: SettingValueType) -> tuple[bool, Optional[str]]:
     """
     Validate security guards for setting updates.
     
@@ -76,7 +84,7 @@ def validate_security_guards(key: str, value: str, value_type: SettingValueType)
     # Prevent invalid token expiration
     if "token_expire" in key.lower() or "expire_minutes" in key.lower():
         try:
-            expire_value = int(value)
+            expire_value = value if isinstance(value, int) else int(value)
             if expire_value <= 0:
                 return False, f"Token expiration must be positive, got {expire_value}"
             if expire_value > 60 * 24 * 365:  # 1 year max
@@ -87,7 +95,7 @@ def validate_security_guards(key: str, value: str, value_type: SettingValueType)
     # Prevent invalid rate limits
     if "rate_limit" in key.lower():
         try:
-            limit_value = int(value)
+            limit_value = value if isinstance(value, int) else int(value)
             if limit_value < 0:
                 return False, f"Rate limit must be non-negative, got {limit_value}"
         except (ValueError, TypeError):

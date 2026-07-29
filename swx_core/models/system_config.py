@@ -18,8 +18,8 @@ import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
-from sqlalchemy import Column, ForeignKey, JSON, String, Text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy import Column, ForeignKey, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
 from swx_core.utils.time import utc_now
@@ -63,7 +63,7 @@ class SystemConfigBase(Base):
     """
     
     key: str = Field(unique=True, index=True, max_length=255)
-    value: str = Field(max_length=5000)  # Store as string, parse by value_type
+    value: Any = Field(sa_column=Column(JSONB, nullable=False, server_default=text("'null'::jsonb")))
     value_type: SettingValueType = Field(default=SettingValueType.STRING, index=True)
     category: SettingCategory = Field(default=SettingCategory.GENERAL, index=True)
     description: Optional[str] = Field(default=None, max_length=1000)
@@ -73,7 +73,7 @@ class SystemConfigBase(Base):
     updated_at: datetime = Field(default_factory=utc_now)
     metadata_: dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column("metadata", JSON, nullable=False),
+        sa_column=Column("metadata", JSONB, nullable=False),
         alias="metadata",
     )
 
@@ -94,7 +94,7 @@ class SystemConfig(SystemConfigBase, table=True):
 class SystemConfigCreate(SQLModel):
     """Schema for creating a system setting."""
     key: str = Field(max_length=255)
-    value: str = Field(max_length=5000)
+    value: Any
     value_type: SettingValueType = SettingValueType.STRING
     category: SettingCategory = SettingCategory.GENERAL
     description: Optional[str] = Field(default=None, max_length=1000)
@@ -103,7 +103,7 @@ class SystemConfigCreate(SQLModel):
 
 class SystemConfigUpdate(SQLModel):
     """Schema for updating a system setting."""
-    value: Optional[str] = Field(default=None, max_length=5000)
+    value: Optional[Any] = None
     description: Optional[str] = Field(default=None, max_length=1000)
     is_active: Optional[bool] = None
     metadata: Optional[dict[str, Any]] = None  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -113,7 +113,7 @@ class SystemConfigPublic(SQLModel):
     """Public schema for system settings (excludes sensitive fields)."""
     id: uuid.UUID
     key: str
-    value: str
+    value: Any
     value_type: SettingValueType
     category: SettingCategory
     description: Optional[str]
@@ -142,13 +142,13 @@ class SystemConfigHistory(Base, table=True):
         )
     )
     key: str = Field(index=True, max_length=255)
-    old_value: Optional[str] = Field(default=None, max_length=5000)
-    new_value: str = Field(max_length=5000)
+    old_value: Optional[Any] = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    new_value: Any = Field(sa_column=Column(JSONB, nullable=False))
     updated_by: Optional[str] = Field(default=None, max_length=255)
     updated_at: datetime = Field(default_factory=utc_now)
     change_reason: Optional[str] = Field(default=None, max_length=500)
     metadata_: dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column("metadata", JSON, nullable=False),
+        sa_column=Column("metadata", JSONB, nullable=False),
         alias="metadata",
     )

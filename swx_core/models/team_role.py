@@ -11,8 +11,9 @@ permissions (admin, member, superadmin).
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlmodel import Field, SQLModel, Relationship
-from sqlalchemy import Column, String, Boolean, Integer, JSON
+from sqlmodel import Field, SQLModel
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSONB
 from swx_core.models.base import Base
 from swx_core.utils.time import utc_now
 
@@ -32,7 +33,7 @@ class TeamRoleBase(Base):
     key: str = Field(unique=True, index=True, max_length=50)
     name: str = Field(max_length=100)
     description: Optional[str] = Field(default=None, max_length=500)
-    permissions: dict[str, bool] = Field(default_factory=dict, sa_column=Column(JSON))
+    permissions: dict[str, bool] = Field(default_factory=dict, sa_column=Column(JSONB))
     priority: int = Field(default=0)
     is_system: bool = Field(default=False)
 

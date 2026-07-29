@@ -25,11 +25,9 @@ from swx_core.utils.time import utc_now
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from swx_core.config.settings import settings as env_settings
 from swx_core.models.system_config import (
     SystemConfig,
     SettingValueType,
-    SettingCategory,
 )
 from swx_core.middleware.logging_middleware import logger
 
@@ -121,7 +119,11 @@ class SettingsService:
         value = await self.get(key, default, SettingValueType.STRING)
         return str(value) if value is not None else default
     
-    async def get_json(self, key: str, default: Optional[dict] = None) -> dict:
+    async def get_json(
+        self,
+        key: str,
+        default: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Get JSON setting."""
         value = await self.get(key, default, SettingValueType.JSON)
         if isinstance(value, dict):
@@ -131,7 +133,7 @@ class SettingsService:
                 return json.loads(value)
             except json.JSONDecodeError:
                 logger.warning(f"Invalid JSON for {key}: {value}")
-        return default or {}
+        return default if default is not None else {}
     
     async def _get_from_db(
         self,
@@ -159,9 +161,11 @@ class SettingsService:
             logger.error(f"Error reading setting {key} from DB: {e}")
             return None
     
-    def _convert_value(self, value: str, value_type: Optional[SettingValueType]) -> Any:
-        """Convert string value to appropriate type."""
+    def _convert_value(self, value: Any, value_type: Optional[SettingValueType]) -> Any:
+        """Convert value to appropriate type."""
         if value_type == SettingValueType.INT:
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
             try:
                 return int(value)
             except (ValueError, TypeError):
@@ -171,12 +175,16 @@ class SettingsService:
                 return value
             return str(value).lower() in ("true", "1", "yes", "on")
         elif value_type == SettingValueType.JSON:
-            try:
-                return json.loads(value)
-            except (ValueError, TypeError, json.JSONDecodeError):
-                return {}
-        else:  # STRING or None
-            return str(value)
+            if isinstance(value, (dict, list)):
+                return value
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    return {}
+            return {}
+        else:
+            return str(value) if value is not None else None
     
     def _get_safe_default(self, key: str) -> Any:
         """Get safe default for critical settings."""

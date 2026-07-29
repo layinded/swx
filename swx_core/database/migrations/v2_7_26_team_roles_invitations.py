@@ -14,7 +14,7 @@ Run with: alembic upgrade head
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 
 
 revision = "v2_7_26_team_roles_invitations"
@@ -31,7 +31,7 @@ def upgrade() -> None:
         sa.Column("key", sa.String(50), unique=True, nullable=False),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("description", sa.String(500)),
-        sa.Column("permissions", sa.JSON, default={}),
+        sa.Column("permissions", JSONB, default={}),
         sa.Column("priority", sa.Integer, default=0),
         sa.Column("is_system", sa.Boolean, default=False),
         sa.Column("created_at", sa.DateTime, nullable=False),
