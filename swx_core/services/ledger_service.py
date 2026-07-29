@@ -15,9 +15,9 @@ from swx_core.models.ledger import (
     LedgerEntryPublic,
     ReferenceType,
     TransferRequest,
-    utc_now_naive,
 )
 from swx_core.repositories import ledger_repository
+from swx_core.utils.time import utc_now
 
 
 def _entry_public(entry: LedgerEntry) -> LedgerEntryPublic:
@@ -160,7 +160,7 @@ async def get_balance(session: AsyncSession, account_id: UUID) -> LedgerBalanceP
         cached = await ledger_repository.upsert_balance(session, account_id, latest.balance_after, latest.id, latest.currency)
         await session.commit()
         return _balance_public(cached.id, cached.account_id, cached.currency, cached.balance, cached.last_entry_id, cached.updated_at)
-    return LedgerBalancePublic(id=UUID(int=0), account_id=account_id, currency="USD", balance=0, last_entry_id=None, updated_at=utc_now_naive())
+    return LedgerBalancePublic(id=UUID(int=0), account_id=account_id, currency="USD", balance=0, last_entry_id=None, updated_at=utc_now())
 
 
 async def get_entry_history(session: AsyncSession, account_id: UUID, skip: int, limit: int) -> list[LedgerEntryPublic]:

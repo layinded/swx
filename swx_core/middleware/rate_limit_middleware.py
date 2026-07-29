@@ -60,11 +60,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         "/",  # Root endpoint should not be rate limited
     ]
 
-    def __init__(self, app: ASGIApp, skip_paths: Optional[list[str]] = None):
+    def __init__(
+        self,
+        app: ASGIApp,
+        skip_paths: Optional[list[str]] = None,
+        exempt_namespaces: Optional[list[str]] = None,
+    ):
         """Initialize rate limit middleware.
 
         When *skip_paths* is ``None`` the built-in defaults are merged
         with ``RATE_LIMIT_SKIP_PATHS`` from settings.
+
+        When *exempt_namespaces* is provided, the middleware skips rate
+        limiting for paths matching any of the glob patterns. This is
+        used with ``enforce_limit()`` to avoid double counting — the
+        per-route call handles rate limiting exclusively.
+
+        Example::
+
+            RateLimitMiddleware(
+                app,
+                exempt_namespaces=["/api/detection/*", "/api/chat/*"],
+            )
         """
         super().__init__(app)
         if skip_paths is not None:
@@ -74,6 +91,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
             extra = list(getattr(settings, "RATE_LIMIT_SKIP_PATHS", []) or [])
             self.skip_paths = list(self._DEFAULT_SKIP_PATHS) + extra
+
+        self.exempt_namespaces = exempt_namespaces or []
 
     async def dispatch(self, request: Request, call_next):
         """Process request with rate limiting."""
@@ -85,6 +104,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Skip rate limiting for certain paths
         if any(request.url.path.startswith(path) for path in self.skip_paths):
             return await call_next(request)
+
+        if self.exempt_namespaces:
+            import fnmatch
+            if any(fnmatch.fnmatch(request.url.path, pattern) for pattern in self.exempt_namespaces):
+                request.state.rate_limit_handled = True
+                return await call_next(request)
 
         # Get actor information
         actor_type, actor_id, billing_plan = await self._get_actor_info(request)
@@ -204,7 +229,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if aud == TokenAudience.ADMIN.value:
                 return ("admin", sub, None)
             if aud == TokenAudience.USER.value:
-                billing_plan = payload.get("billing_plan", "free")
+                billing_plan = payload.get("billing_plan", settings.DEFAULT_PLAN_KEY)
                 return ("user", sub, billing_plan)
             return None
         except Exception:
@@ -264,7 +289,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 algorithms=[settings.PASSWORD_SECURITY_ALGORITHM],
                 options={"verify_aud": False},
             )
-            return payload.get("billing_plan", "free")
+            return payload.get("billing_plan", settings.DEFAULT_PLAN_KEY)
         except Exception as e:
             logger.warning(f"Error decoding billing plan for user {user_id}: {e}")
             return None

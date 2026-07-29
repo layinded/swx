@@ -9,6 +9,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from swx_core.config.settings import settings
 from swx_core.middleware.logging_middleware import logger
 from swx_core.repositories.billing_repository import (  # pyright: ignore[reportMissingImports]
     get_user_billing_account,
@@ -23,19 +24,19 @@ async def get_user_plan_key(session: AsyncSession, user_id: UUID) -> str:
 
     Queries ``BillingAccount -> Subscription -> Plan`` via the repository
     layer and returns the plan ``key`` (e.g. ``"free"``, ``"pro"``).
-    Falls back to ``"free"`` when no active subscription or on any error.
+    Falls back to ``settings.DEFAULT_PLAN_KEY`` when no active subscription or on any error.
     """
     try:
         account = await get_user_billing_account(session, user_id)
         if not account:
-            return "free"
+            return settings.DEFAULT_PLAN_KEY
 
         subscription = await get_active_subscription(session, account.id)
         if not subscription or is_subscription_expired(subscription):
-            return "free"
+            return settings.DEFAULT_PLAN_KEY
 
         plan = await get_plan_by_id(session, subscription.plan_id)
-        return plan.key if plan else "free"
+        return plan.key if plan else settings.DEFAULT_PLAN_KEY
     except Exception as e:
         logger.warning(f"Failed to resolve billing plan for {user_id}: {e}")
-        return "free"
+        return settings.DEFAULT_PLAN_KEY

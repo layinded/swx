@@ -490,6 +490,19 @@ async def detect_team(request: Request, user=Depends(get_current_user)):
 
 Remaining requests in the window (int). Raises `HTTPException(429)` if exceeded.
 
+### Preventing Double Counting (v2.15.5+)
+
+When using `enforce_limit()` on a route, the middleware will also rate limit the same request — causing double counting. To prevent this, pass `exempt_namespaces` to the middleware so it skips those routes:
+
+```python
+RateLimitMiddleware(
+    app,
+    exempt_namespaces=["/api/detection/*", "/api/chat/*"],
+)
+```
+
+Routes matching these glob patterns skip middleware rate limiting entirely. `enforce_limit()` handles them exclusively. The middleware sets `request.state.rate_limit_handled = True` on exempt routes.
+
 ---
 
 ## Usage Examples

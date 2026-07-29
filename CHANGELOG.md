@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.5] - 2026-07-29
+
+### Fixed — Round 3 Feedback
+
+5 issues from the FastPII Platform round 3 audit. Includes a P1 runtime crash fix, DEFAULT_PLAN_KEY consistency, rate limit dual-path prevention, and a centralized JSON utility.
+
+---
+
+#### P1 — Runtime Crash
+
+- **`ledger_service.py` ImportError** — Dead import of `utc_now_naive` from `swx_core.models.ledger` (removed in v2.15.0 timezone refactor). Any code importing `ledger_service` would crash at import time. Replaced with `from swx_core.utils.time import utc_now`.
+
+#### P1 — Incomplete Fixes
+
+- **`plan_helper.py` hardcoded "free"** — 4 places returned `"free"` instead of `settings.DEFAULT_PLAN_KEY`. Rate limiting and entitlement checks for users without subscriptions ignored the configured default plan. All 4 replaced with `settings.DEFAULT_PLAN_KEY`.
+
+- **Rate limit dual-path double counting** — `RateLimitMiddleware` now accepts `exempt_namespaces: list[str]` parameter. Routes matching these glob patterns skip middleware rate limiting, letting `enforce_limit()` handle them exclusively. Prevents double counting when both paths are used. Sets `request.state.rate_limit_handled = True` on exempt routes.
+
+#### P3 — Minor
+
+- **JWT billing_plan fallback** — Both `payload.get("billing_plan", "free")` calls in `rate_limit_middleware.py` replaced with `settings.DEFAULT_PLAN_KEY` for consistency.
+
+#### P2 — Quality of Life
+
+- **Centralized JSON utility** — New `swx_core/utils/json.py` with `SwxJSONEncoder` (UUID + datetime support), `dumps()`, and `loads()`. Available for incremental adoption across the codebase.
+
+---
+
+### Changed Files
+
+| File | Change |
+|---|---|
+| `swx_core/services/ledger_service.py` | Replace dead `utc_now_naive` import with `utc_now` |
+| `swx_core/services/billing/plan_helper.py` | Replace 4x `"free"` with `settings.DEFAULT_PLAN_KEY` |
+| `swx_core/middleware/rate_limit_middleware.py` | Add `exempt_namespaces` param + 2x `"free"` → `settings.DEFAULT_PLAN_KEY` |
+| `swx_core/utils/json.py` | **New** — centralized JSON encoder + dumps/loads |
+
+---
+
 ## [2.15.4] - 2026-07-29
 
 ### Added — Dual-Format API Key Scopes + Code-Clarity Cleanup

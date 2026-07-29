@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.15.4  
+**Version:** 2.15.5  
 **Last Updated:** 2026-07-29
 
 ---
@@ -29,6 +29,26 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.15.5 (2026-07-29)
+
+**Round 3 Feedback — 5 fixes**
+
+#### P1 Critical
+
+1. **`ledger_service.py` ImportError** — dead `utc_now_naive` import removed, replaced with `utc_now` from `swx_core.utils.time`.
+2. **`plan_helper.py` hardcoded "free"** — 4 places replaced with `settings.DEFAULT_PLAN_KEY`.
+3. **Rate limit dual-path** — `RateLimitMiddleware` now accepts `exempt_namespaces: list[str]` to skip middleware rate limiting on routes using `enforce_limit()` exclusively.
+
+#### P3 Minor
+
+4. **JWT billing_plan fallback** — 2x `"free"` in `rate_limit_middleware.py` replaced with `settings.DEFAULT_PLAN_KEY`.
+
+#### P2 Quality of Life
+
+5. **Centralized JSON utility** — new `swx_core/utils/json.py` with `SwxJSONEncoder`, `dumps()`, `loads()`.
+
+---
 
 ### Version 2.15.4 (2026-07-29)
 
