@@ -241,22 +241,32 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def _get_user_billing_plan(
         self, request: Request, user_id: str
     ) -> Optional[str]:
-        """Get user's billing plan from subscription."""
-        try:
-            # Import here to avoid circular dependencies
-            from swx_core.services.billing.entitlement_resolver import (
-                EntitlementResolver,
-            )
-            from swx_core.database.db import AsyncSessionLocal
+        """Get user's billing plan from the JWT claim.
 
-            async with AsyncSessionLocal() as session:
-                _resolver = EntitlementResolver(session)
-                # Get user's active plan
-                # This is a simplified version - in production, fetch from subscription
-                # For now, default to "free"
-                return "free"
+        The ``billing_plan`` claim is set at token issuance from a full DB
+        lookup (``get_user_plan_key`` → BillingAccount → Subscription → Plan)
+        and re-read on token refresh.  It is the same authoritative source
+        used by ``_actor_from_bearer``.
+        """
+        auth = request.headers.get("Authorization")
+        if not auth or not auth.lower().startswith("bearer "):
+            return None
+        token = auth[7:].strip()
+        if not token:
+            return None
+        try:
+            import jwt
+            from swx_core.config.settings import settings
+
+            payload = jwt.decode(
+                token,
+                settings.SECRET_KEY,
+                algorithms=[settings.PASSWORD_SECURITY_ALGORITHM],
+                options={"verify_aud": False},
+            )
+            return payload.get("billing_plan", "free")
         except Exception as e:
-            logger.warning(f"Error getting billing plan for user {user_id}: {e}")
+            logger.warning(f"Error decoding billing plan for user {user_id}: {e}")
             return None
 
     async def _rate_limit_exceeded_response(

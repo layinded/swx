@@ -427,6 +427,12 @@ The rate-limit middleware resolves each user's billing plan via the JWT `billing
 2. **In JWT** — The plan key (e.g., `"pro"`, `"enterprise"`) is embedded as a `billing_plan` claim in the access token
 3. **At request time** — The middleware decodes the JWT and reads the `billing_plan` claim to select the correct rate limit tier
 
+Both code paths in the middleware now resolve the plan from the JWT claim:
+- `_actor_from_bearer()` — used when route dependencies have not yet set `request.state` (middleware runs first)
+- `_get_user_billing_plan()` — used when `request.state.current_user` is already set by a prior dependency
+
+> **v2.14.4 fix:** `_get_user_billing_plan()` was previously a stub that hardcoded `return "free"`, causing Pro/Enterprise users to be rate-limited as `free` when their user object was resolved before the middleware ran. It now decodes the JWT claim, consistent with `_actor_from_bearer()`.
+
 ### Plan Resolution Chain
 
 ```
