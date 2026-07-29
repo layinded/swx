@@ -43,18 +43,23 @@ async def get_by_id(session: AsyncSession, config_id: UUID) -> LLMProviderConfig
     stmt = select(LLMProviderConfig).where(LLMProviderConfig.id == config_id)  # pyright: ignore[reportArgumentType]
     return (await session.execute(stmt)).scalar_one_or_none()
 
-async def get_all(session: AsyncSession, active_only: bool = False) -> list[LLMProviderConfig]:
+async def get_all(session: AsyncSession, active_only: bool = False, team_id: UUID | None = None) -> list[LLMProviderConfig]:
     stmt = select(LLMProviderConfig)
     if active_only:
         stmt = stmt.where(LLMProviderConfig.is_active == True)  # pyright: ignore[reportArgumentType]
+    if team_id is not None:
+        stmt = stmt.where(LLMProviderConfig.team_id == team_id)
     priority_column = getattr(LLMProviderConfig, "priority")
     name_column = getattr(LLMProviderConfig, "name")
     stmt = stmt.order_by(priority_column, name_column)
     return list((await session.execute(stmt)).scalars().all())
 
-async def get_by_provider(session: AsyncSession, provider_type: str) -> list[LLMProviderConfig]:
+async def get_by_provider(session: AsyncSession, provider_type: str, team_id: UUID | None = None) -> list[LLMProviderConfig]:
     priority_column = getattr(LLMProviderConfig, "priority")
-    stmt = select(LLMProviderConfig).where(LLMProviderConfig.provider == provider_type).order_by(priority_column)  # pyright: ignore[reportArgumentType]
+    stmt = select(LLMProviderConfig).where(LLMProviderConfig.provider == provider_type)  # pyright: ignore[reportArgumentType]
+    if team_id is not None:
+        stmt = stmt.where(LLMProviderConfig.team_id == team_id)
+    stmt = stmt.order_by(priority_column)
     return list((await session.execute(stmt)).scalars().all())
 
 async def get_primary_for_phase(session: AsyncSession, phase: str) -> LLMProviderConfig | None:

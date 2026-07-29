@@ -24,6 +24,10 @@ def _prefix(raw_key: str) -> str:
 
 
 class ApiKeyBase(Base):
+    team_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_team.id", ondelete="CASCADE"), index=True, nullable=True),
+    )
     name: str = Field(max_length=100)
     key_prefix: str = Field(max_length=8, index=True)
     hashed_key: str = Field(max_length=64, unique=True, index=True)
@@ -58,6 +62,7 @@ class ApiKeyScope(ApiKeyScopeBase, table=True):
 
 
 class ApiKeyCreate(SQLModel):
+    team_id: uuid.UUID | None = None
     name: str = Field(max_length=100)
     scopes: list[dict[str, str]] = Field(default_factory=list)
     expires_at: Optional[datetime] = None
@@ -71,6 +76,7 @@ class ApiKeyScopeCreate(SQLModel):
 
 class ApiKeyPublic(SQLModel):
     id: uuid.UUID
+    team_id: uuid.UUID | None = None
     name: str
     key_prefix: str
     user_id: uuid.UUID

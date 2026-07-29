@@ -30,6 +30,7 @@ async def get_api_key_by_id(session: AsyncSession, key_id: UUID) -> ApiKey | Non
 async def list_api_keys(
     session: AsyncSession,
     user_id: UUID | None = None,
+    team_id: UUID | None = None,
     is_active: bool | None = None,
     skip: int = 0,
     limit: int = 100,
@@ -37,15 +38,19 @@ async def list_api_keys(
     stmt = select(ApiKey)
     if user_id:
         stmt = stmt.where(ApiKey.user_id == user_id)
+    if team_id is not None:
+        stmt = stmt.where(ApiKey.team_id == team_id)
     if is_active is not None:
         stmt = stmt.where(ApiKey.is_active == is_active)
     stmt = stmt.order_by(desc(ApiKey.created_at)).offset(skip).limit(limit)
     return list((await session.execute(stmt)).scalars().all())
 
-async def count_api_keys(session: AsyncSession, user_id: UUID | None = None, is_active: bool | None = None) -> int:
+async def count_api_keys(session: AsyncSession, user_id: UUID | None = None, team_id: UUID | None = None, is_active: bool | None = None) -> int:
     stmt = select(func.count()).select_from(ApiKey)
     if user_id:
         stmt = stmt.where(ApiKey.user_id == user_id)
+    if team_id is not None:
+        stmt = stmt.where(ApiKey.team_id == team_id)
     if is_active is not None:
         stmt = stmt.where(ApiKey.is_active == is_active)
     return int((await session.execute(stmt)).scalar() or 0)

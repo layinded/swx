@@ -13,6 +13,10 @@ from swx_core.models.base import Base
 from swx_core.utils.time import utc_now
 
 class NotificationBase(Base):
+    team_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_team.id", ondelete="CASCADE"), index=True, nullable=True),
+    )
     user_id: uuid.UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_users.id"), nullable=False, index=True))
     channel: str = Field(index=True, max_length=20)
     notification_type: str = Field(index=True, max_length=50)
@@ -36,6 +40,7 @@ class Notification(NotificationBase, table=True):
     updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()))
 
 class NotificationCreate(SQLModel):
+    team_id: uuid.UUID | None = None
     user_id: uuid.UUID
     channel: str = Field(max_length=20)
     notification_type: str = Field(max_length=50)
@@ -52,6 +57,7 @@ class NotificationCreate(SQLModel):
 
 class NotificationPublic(NotificationBase):
     id: uuid.UUID
+    team_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

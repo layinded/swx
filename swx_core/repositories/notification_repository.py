@@ -36,12 +36,13 @@ async def _list(session: AsyncSession, model: type[Any], order_by: tuple[str, ..
 
 def _notification_filters(
     *,
+    team_id: UUID | None = None,
     user_id: UUID | None = None,
     status: str | None = None,
     channel: str | None = None,
     notification_type: str | None = None,
 ) -> dict[str, Any]:
-    return {"user_id": user_id, "status": status, "channel": channel, "notification_type": notification_type}
+    return {"team_id": team_id, "user_id": user_id, "status": status, "channel": channel, "notification_type": notification_type}
 
 async def _upsert_by(session: AsyncSession, model: type[Any], field: str, value: Any, data: dict[str, Any]) -> Any:
     stmt = select(model).where(getattr(model, field) == value)
@@ -96,9 +97,9 @@ async def create_notification(session: AsyncSession, data: dict[str, Any]) -> No
 async def get_notification_by_id(session: AsyncSession, notification_id: UUID) -> Notification | None:
     return await _get_by_id(session, Notification, notification_id)
 
-async def list_notifications(session: AsyncSession, *, user_id: UUID | None = None, status: str | None = None, channel: str | None = None, notification_type: str | None = None, start_date: datetime | None = None, end_date: datetime | None = None, skip: int = 0, limit: int = 100) -> list[Notification]:
+async def list_notifications(session: AsyncSession, *, team_id: UUID | None = None, user_id: UUID | None = None, status: str | None = None, channel: str | None = None, notification_type: str | None = None, start_date: datetime | None = None, end_date: datetime | None = None, skip: int = 0, limit: int = 100) -> list[Notification]:
     stmt = select(Notification)
-    stmt = _apply_filters(stmt, Notification, _notification_filters(user_id=user_id, status=status, channel=channel, notification_type=notification_type))
+    stmt = _apply_filters(stmt, Notification, _notification_filters(team_id=team_id, user_id=user_id, status=status, channel=channel, notification_type=notification_type))
     if start_date is not None:
         stmt = stmt.where(Notification.created_at >= start_date)
     if end_date is not None:
@@ -107,9 +108,9 @@ async def list_notifications(session: AsyncSession, *, user_id: UUID | None = No
     stmt = stmt.order_by(created_at_column.desc()).offset(skip).limit(limit)
     return list((await session.execute(stmt)).scalars().all())
 
-async def count_notifications(session: AsyncSession, *, user_id: UUID | None = None, status: str | None = None, channel: str | None = None, notification_type: str | None = None, start_date: datetime | None = None, end_date: datetime | None = None) -> int:
+async def count_notifications(session: AsyncSession, *, team_id: UUID | None = None, user_id: UUID | None = None, status: str | None = None, channel: str | None = None, notification_type: str | None = None, start_date: datetime | None = None, end_date: datetime | None = None) -> int:
     stmt = select(func.count()).select_from(Notification)
-    stmt = _apply_filters(stmt, Notification, _notification_filters(user_id=user_id, status=status, channel=channel, notification_type=notification_type))
+    stmt = _apply_filters(stmt, Notification, _notification_filters(team_id=team_id, user_id=user_id, status=status, channel=channel, notification_type=notification_type))
     if start_date is not None:
         stmt = stmt.where(Notification.created_at >= start_date)
     if end_date is not None:

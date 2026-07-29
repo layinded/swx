@@ -6,7 +6,8 @@ from enum import Enum
 from typing import Any
 
 from sqlalchemy import Column, DateTime, Float, Index, Integer, String, func, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.schema import ForeignKey
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
@@ -58,6 +59,10 @@ class LLMProviderConfig(LLMProviderConfigBase, Base, table=True):
         {"extend_existing": True},
     )
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    team_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_team.id", ondelete="CASCADE"), index=True, nullable=True),
+    )
     provider: str = Field(sa_column=Column(String(50), nullable=False, index=True))
     credentials: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")))
     default_params: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")))
@@ -74,7 +79,7 @@ class LLMProviderConfig(LLMProviderConfigBase, Base, table=True):
     updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()))
 
 class LLMProviderConfigCreate(LLMProviderConfigBase):
-    pass
+    team_id: uuid.UUID | None = None
 
 class LLMProviderConfigUpdate(SQLModel):
     provider: str | None = Field(default=None, max_length=50)
@@ -99,6 +104,7 @@ class LLMProviderConfigUpdate(SQLModel):
 
 class LLMProviderConfigPublic(LLMProviderConfigBase):
     id: uuid.UUID
+    team_id: uuid.UUID | None = None
     credentials: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
