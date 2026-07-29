@@ -2,6 +2,55 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.3] - 2026-07-29
+
+### Added — Per-Route Rate Limit API + Pluggable Config Resolver
+
+Two new features that unblock projects with fine-grained rate limit namespaces and custom config tables.
+
+---
+
+#### #9 — Per-Route Rate Limit Enforcement API
+
+New `enforce_limit()` function in `swx_core/services/rate_limit/enforce.py` allows route handlers to enforce rate limits with custom namespaces that cannot be inferred from the URL path alone.
+
+```python
+from swx_core.services.rate_limit.enforce import enforce_limit
+
+@router.post("/detect/public")
+async def detect_public(request: Request):
+    await enforce_limit(request, namespace="detection:detect:public")
+    ...
+```
+
+Resolves the actor from JWT/request.state, looks up the limit from the registry, checks Redis, and raises `HTTPException(429)` with standard rate limit headers if exceeded. Supports `custom_limit` parameter to bypass the registry entirely.
+
+#### #7 — Pluggable SettingsService
+
+`SettingsService.__init__()` now accepts an optional `model` parameter. Projects with their own config table can pass their custom SQLModel class instead of using the default `SystemConfig`:
+
+```python
+from swx_core.services.settings_service import SettingsService
+from my_app.models import MyConfig
+
+service = SettingsService(session, model=MyConfig)
+```
+
+The custom model must have `key` (str, unique), `value` (JSONB), `value_type` (SettingValueType), and `is_active` (bool) fields. This enables projects with existing config tables to use the framework's type-safe getters, TTL caching, and env fallback without a data migration.
+
+---
+
+### Changed Files
+
+| File | Change |
+|---|---|
+| `swx_core/services/rate_limit/enforce.py` | **New** — `enforce_limit()` per-route API |
+| `swx_core/services/settings_service.py` | Add `model` parameter to `__init__`, use `self.model` in `_get_from_db` |
+| `docs/04-core-concepts/RATE_LIMITING.md` | Document `enforce_limit()` API with parameters table |
+| `docs/04-core-concepts/SETTINGS.md` | Document custom config table usage |
+
+---
+
 ## [2.15.2] - 2026-07-29
 
 ### Changed — SystemConfig JSONB + Metadata/Permissions JSONB

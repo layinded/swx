@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.15.2  
+**Version:** 2.15.3  
 **Last Updated:** 2026-07-29
 
 ---
@@ -29,6 +29,18 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.15.3 (2026-07-29)
+
+**Per-Route Rate Limit API + Pluggable Config Resolver**
+
+#### Added
+
+1. **`enforce_limit()`** — New per-route rate limit enforcement API in `swx_core/services/rate_limit/enforce.py`. Route handlers can enforce rate limits with custom namespaces (e.g., `detection:detect:public` vs `detection:detect:team`). Resolves actor from JWT/request.state, checks Redis, raises `HTTPException(429)` if exceeded.
+
+2. **Pluggable `SettingsService`** — `SettingsService.__init__()` accepts optional `model` parameter for custom config tables. Projects with existing config tables can use the framework's type-safe getters, TTL caching, and env fallback without a data migration.
+
+---
 
 ### Version 2.15.2 (2026-07-29)
 

@@ -101,6 +101,18 @@ from swx_core.services.settings_service import get_settings_service
 service = get_settings_service(session)
 ```
 
+**Custom Config Table (v2.15.3+):**
+
+`SettingsService` accepts an optional `model` parameter for projects with their own config table. The model must have `key` (str, unique), `value` (JSONB), `value_type` (SettingValueType), and `is_active` (bool) fields:
+
+```python
+from swx_core.services.settings_service import SettingsService
+from my_app.models import MyConfig  # custom config table
+
+service = SettingsService(session, model=MyConfig)
+minutes = await service.get_int("my.setting.key", default=60)
+```
+
 **Type-Safe Getters:**
 ```python
 # Get integer setting

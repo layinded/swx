@@ -451,6 +451,47 @@ User → BillingAccount (owner_id, type=USER)
 
 ---
 
+## Per-Route Rate Limit Enforcement (v2.15.3+)
+
+For routes where the rate limit namespace cannot be inferred from the URL path alone (e.g., business context like `detection:detect:public` vs `detection:detect:team`), use the `enforce_limit()` API:
+
+```python
+from swx_core.services.rate_limit.enforce import enforce_limit
+
+@router.post("/detect/public")
+async def detect_public(request: Request):
+    await enforce_limit(request, namespace="detection:detect:public")
+    ...
+
+@router.post("/detect/team")
+async def detect_team(request: Request, user=Depends(get_current_user)):
+    await enforce_limit(request, namespace="detection:detect:team")
+    ...
+```
+
+`enforce_limit()` resolves the actor from the request (JWT claim or `request.state`), looks up the limit from the registry, checks Redis, and raises `HTTPException(429)` with standard rate limit headers if exceeded.
+
+### Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `request` | required | FastAPI request object |
+| `namespace` | required | Application-specific namespace (e.g., `"detection:detect:public"`) |
+| `feature` | `"api_requests"` | Feature bucket for limit lookup |
+| `endpoint_class` | `"read"` | Endpoint class for limit lookup |
+| `limit_type` | `"burst"` | Which limit to check (`"burst"`, `"sustained"`, `"daily"`) |
+| `window` | `LimitWindow.MINUTE` | Time window for the counter |
+| `actor_id` | auto | Override actor ID (defaults to JWT sub or IP) |
+| `actor_type` | auto | Override actor type (defaults to JWT-derived type) |
+| `billing_plan` | auto | Override billing plan (defaults to JWT claim) |
+| `custom_limit` | `None` | Override the limit value entirely (bypasses registry lookup) |
+
+### Returns
+
+Remaining requests in the window (int). Raises `HTTPException(429)` if exceeded.
+
+---
+
 ## Usage Examples
 
 ### Rate Limit Headers
