@@ -2,6 +2,74 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.0] - 2026-07-29
+
+### Changed — Timezone-Aware Timestamps (Breaking)
+
+All timestamps are now timezone-aware. This is a **breaking change** requiring a database migration (`TIMESTAMP WITHOUT TIME ZONE` → `TIMESTAMP WITH TIME ZONE`).
+
+---
+
+#### What Changed
+
+- **New shared utility:** `swx_core/utils/time.py` exports `utc_now()` which returns `datetime.now(timezone.utc)` (timezone-aware). All framework code now imports and uses this instead of stripping timezone info.
+
+- **Eliminated anti-patterns (103 files, 216 occurrences):**
+  - Removed all 44 `def utc_now_naive()` helper definitions across model, repository, and service files
+  - Replaced all 140 `datetime.now(timezone.utc).replace(tzinfo=None)` calls with `utc_now()`
+  - Replaced all 7 production `datetime.utcnow()` calls (Python 3.12 deprecated) with `utc_now()`
+  - Removed all inline `lambda: datetime.now(timezone.utc).replace(tzinfo=None)` default factories
+
+- **Database columns:** Changed all `Column(DateTime, ...)` to `Column(DateTime(timezone=True), ...)` across 49 model files, `swx_core/utils/mixins.py`, 15 template migrations, and 2 framework migrations. This creates `TIMESTAMPTZ` columns in PostgreSQL.
+
+- **Data migration:** Added `swx_core/database/migrations/v2_15_0_convert_timestamptz.py` — a dynamic PL/pgSQL migration that converts all existing `TIMESTAMP WITHOUT TIME ZONE` columns in `swx_*` tables to `TIMESTAMPTZ` using `AT TIME ZONE 'UTC'`. Copy to your project's migrations directory, set `down_revision`, and run `alembic upgrade head`.
+
+---
+
+#### Why
+
+Naive timestamps cannot distinguish UTC from local time. If the server timezone changes (container migration, daylight saving, cloud region change), existing timestamps become ambiguous. This affects:
+
+- **Data integrity:** Compliance/audit trails (GDPR, CCPA, SOC 2) require unambiguous timestamps
+- **Rate limiting:** Sliding window comparisons assume UTC but nothing enforced it
+- **Cache invalidation:** TTL comparisons between cache write and read could shift on timezone mismatch
+- **Token expiration:** Token revocation/expiration timestamps could be valid longer than intended
+
+---
+
+#### Migration Guide
+
+1. **Update code:** Install `swx-core>=2.15.0` — all Python code now returns aware datetimes
+2. **Run data migration:** Copy `v2_15_0_convert_timestamptz.py` to your project's `migrations/versions/`, set `down_revision` to your current head, run `alembic upgrade head`
+3. **Test comparisons:** If your application code compares datetimes from the DB with `datetime.now()`, ensure you use `utc_now()` (or `datetime.now(timezone.utc)`) — comparing aware with naive datetimes raises `TypeError`
+4. **Check custom models:** If you have custom models with `Column(DateTime, ...)`, change them to `Column(DateTime(timezone=True), ...)`
+
+---
+
+### Changed Files
+
+| Area | Files | Change |
+|---|---|---|
+| `swx_core/utils/time.py` | 1 (new) | Shared `utc_now()` utility |
+| `swx_core/models/*.py` | 44 | Remove `utc_now_naive`/inline lambdas, import `utc_now`, `Column(DateTime(timezone=True))` |
+| `swx_core/utils/mixins.py` | 1 | `FullModelMixin`/`SoftDeleteMixin` use `utc_now`, `DateTime(timezone=True)` |
+| `swx_core/repositories/*.py` | 8 | Replace naive timestamp calls with `utc_now()` |
+| `swx_core/services/**/*.py` | ~25 | Replace naive timestamp calls with `utc_now()` |
+| `swx_core/security/*.py` | 2 | `token_blacklist.py`, `refresh_token_service.py` use `utc_now()` |
+| `swx_core/utils/*.py` | 3 | `health.py`, `response.py`, `mixins.py` use `utc_now()` |
+| `swx_core/events/*.py` | 2 | `dispatcher.py`, `typed_event.py` use `utc_now()` |
+| `swx_core/contracts/*.py` | 1 | `events.py` uses `utc_now()` |
+| `swx_core/guards/*.py` | 1 | `api_key_guard.py` uses `utc_now()` |
+| `swx_core/cli/commands/resource_templates.py` | 1 | Template string uses `utc_now` |
+| `swx_core/services/channels/models.py` | 1 | Uses `utc_now()` |
+| Template migrations | 15 | `sa.DateTime()` → `sa.DateTime(timezone=True)` |
+| Framework migrations | 2 | `sa.DateTime()` → `sa.DateTime(timezone=True)` |
+| `swx_core/database/migrations/v2_15_0_convert_timestamptz.py` | 1 (new) | Data migration: TIMESTAMP → TIMESTAMPTZ |
+| `swx_core/version.py` | 1 | Version bump |
+| `pyproject.toml` | 1 | Version bump |
+
+---
+
 ## [2.14.4] - 2026-07-29
 
 ### Fixed — Bug Fixes from FastPII Migration Feedback

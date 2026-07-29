@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.14.4  
+**Version:** 2.15.0  
 **Last Updated:** 2026-07-29
 
 ---
@@ -29,6 +29,31 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.15.0 (2026-07-29)
+
+**Timezone-Aware Timestamps — Breaking Change**
+
+All timestamps are now timezone-aware. Requires database migration (`TIMESTAMP` → `TIMESTAMPTZ`).
+
+#### Breaking Changes
+
+1. **All timestamps now timezone-aware** — New `swx_core/utils/time.py` exports `utc_now()` returning `datetime.now(timezone.utc)`. Replaced 216 occurrences of naive-timestamp anti-patterns across 103 files: `def utc_now_naive()` (44 defs removed), `datetime.now(timezone.utc).replace(tzinfo=None)` (140 calls), `datetime.utcnow()` (7 production calls, Python 3.12 deprecated), and inline lambda default factories.
+
+2. **Database columns changed** — All `Column(DateTime, ...)` changed to `Column(DateTime(timezone=True), ...)` across 49 model files, `mixins.py`, 15 template migrations, and 2 framework migrations. PostgreSQL creates `TIMESTAMPTZ` columns.
+
+3. **Data migration required** — `swx_core/database/migrations/v2_15_0_convert_timestamptz.py` converts existing `TIMESTAMP WITHOUT TIME ZONE` columns to `TIMESTAMPTZ` using `AT TIME ZONE 'UTC'`. Copy to project migrations, set `down_revision`, run `alembic upgrade head`.
+
+#### Migration Guide
+
+1. Install `swx-core>=2.15.0`
+2. Copy `v2_15_0_convert_timestamptz.py` to project's `migrations/versions/`
+3. Set `down_revision` to current head
+4. Run `alembic upgrade head`
+5. Use `utc_now()` from `swx_core.utils.time` in custom code instead of `datetime.now(timezone.utc).replace(tzinfo=None)` or `datetime.utcnow()`
+6. Change custom model `Column(DateTime, ...)` to `Column(DateTime(timezone=True), ...)`
+
+---
 
 ### Version 2.14.4 (2026-07-29)
 
