@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Column, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 
@@ -30,8 +30,14 @@ class Organization(OrganizationBase, table=True):
     __tablename__ = "swx_organization"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now, sa_column_kwargs={"onupdate": utc_now})
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
 
 class OrganizationMemberBase(Base):
     organization_id: uuid.UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_organization.id", ondelete="CASCADE"), index=True, nullable=False))
@@ -39,14 +45,23 @@ class OrganizationMemberBase(Base):
     role: str = Field(default=OrganizationRole.MEMBER.value, max_length=20)
     is_active: bool = True
     invited_by: uuid.UUID | None = Field(default=None, sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_users.id"), nullable=True))
-    joined_at: datetime = Field(default_factory=utc_now)
+    joined_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
 
 class OrganizationMember(OrganizationMemberBase, table=True):
     __tablename__ = "swx_organization_member"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (UniqueConstraint("organization_id", "user_id", name="uq_org_member_user_org"), {"extend_existing": True})
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now, sa_column_kwargs={"onupdate": utc_now})
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
 
 class OrganizationCreate(SQLModel):
     name: str = Field(max_length=255)

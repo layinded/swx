@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional
-from sqlalchemy import Column, ForeignKey, String, DateTime
+from sqlalchemy import Column, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
@@ -65,7 +65,8 @@ class TeamInvitationBase(Base):
     )
     message: Optional[str] = Field(default=None, max_length=500)
     expires_at: datetime = Field(
-        default_factory=lambda: utc_now() + timedelta(days=7)
+        default_factory=lambda: utc_now() + timedelta(days=7),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
     )
 
 
@@ -91,12 +92,21 @@ class TeamInvitation(TeamInvitationBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     status: InvitationStatus = Field(default=InvitationStatus.PENDING)
     token: str = Field(unique=True, index=True, max_length=64)
-    accepted_at: Optional[datetime] = Field(default=None)
-    rejected_at: Optional[datetime] = Field(default=None)
-    created_at: datetime = Field(default_factory=utc_now)
+    accepted_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    rejected_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
     updated_at: datetime = Field(
         default_factory=utc_now,
-        sa_column_kwargs={"onupdate": utc_now}
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
     )
 
 

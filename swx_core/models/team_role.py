@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlmodel import Field, SQLModel
-from sqlalchemy import Column
+from sqlalchemy import Column, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
 from swx_core.models.base import Base
 from swx_core.utils.time import utc_now
@@ -56,10 +56,13 @@ class TeamRole(TeamRoleBase, table=True):
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
     updated_at: datetime = Field(
         default_factory=utc_now,
-        sa_column_kwargs={"onupdate": utc_now}
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
     )
 
 

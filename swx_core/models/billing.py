@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
-from sqlalchemy import Column, ForeignKey, Integer, String, text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship
@@ -57,8 +57,14 @@ class BillingAccount(Base, table=True):
     stripe_customer_id: Optional[str] = Field(default=None, unique=True, index=True)
     billing_email: Optional[str] = Field(default=None)
     
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
 
     subscriptions: List["Subscription"] = Relationship(back_populates="account")
 
@@ -75,7 +81,10 @@ class Feature(Base, table=True):
     feature_type: FeatureType = Field(default=FeatureType.BOOLEAN)
     unit: Optional[str] = None # e.g., "tokens", "requests"
     
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
 
 class Plan(Base, table=True):
     """
@@ -107,8 +116,14 @@ class Plan(Base, table=True):
         sa_column=Column(String(3), nullable=True),
     )
     
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
 
 class PlanEntitlement(Base, table=True):
     """
@@ -137,7 +152,10 @@ class PlanEntitlement(Base, table=True):
     # Value can be a boolean string ("true"), a number ("1000"), or a config JSON
     value: str 
     
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
 
 class Subscription(Base, table=True):
     """
@@ -165,12 +183,24 @@ class Subscription(Base, table=True):
     
     status: SubscriptionStatus = Field(default=SubscriptionStatus.ACTIVE, index=True)
     
-    current_period_start: datetime = Field(default_factory=utc_now)
-    current_period_end: Optional[datetime] = None
+    current_period_start: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    current_period_end: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     
     cancel_at_period_end: bool = Field(default=False)
-    canceled_at: Optional[datetime] = None
-    ended_at: Optional[datetime] = None
+    canceled_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    ended_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     
     stripe_subscription_id: Optional[str] = Field(default=None, unique=True, index=True)
     
@@ -179,8 +209,14 @@ class Subscription(Base, table=True):
         sa_column=Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
     )
     
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
 
     account: BillingAccount = Relationship(back_populates="subscriptions")
 
@@ -217,8 +253,18 @@ class UsageRecord(Base, table=True):
     )
     
     quantity: int = Field(default=0)
-    period_start: datetime = Field(index=True)
-    period_end: datetime = Field(index=True)
+    period_start: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+    )
+    period_end: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+    )
     
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )

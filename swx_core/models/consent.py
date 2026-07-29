@@ -37,9 +37,9 @@ class UserConsentBase(Base):
     consent_type_id: uuid.UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_consent_type.id"), nullable=False, index=True))
     status: str = Field(default=ConsentStatus.PENDING.value, max_length=20)
     version: str = Field(max_length=20)
-    granted_at: datetime | None = Field(default=None)
-    withdrawn_at: datetime | None = Field(default=None)
-    expires_at: datetime | None = Field(default=None)
+    granted_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    withdrawn_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    expires_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
     ip_address: str | None = Field(default=None, max_length=50)
     user_agent: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     source: str | None = Field(default=None, max_length=50)
@@ -62,7 +62,10 @@ class ConsentVersionBase(Base):
     document_url: str | None = Field(default=None, max_length=500)
     document_text: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     is_active: bool = Field(default=True)
-    effective_date: datetime = Field(default_factory=utc_now)
+    effective_date: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 class ConsentVersion(ConsentVersionBase, table=True):
     __tablename__ = "swx_consent_version"  # pyright: ignore[reportAssignmentType]

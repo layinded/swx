@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any, Optional, cast
 
 from pydantic import EmailStr
+from sqlalchemy import Column, DateTime, func
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
@@ -55,7 +56,10 @@ class AdminUser(AdminUserBase, table=True):
     hashed_password: Optional[str] = Field(default=None, max_length=255)
     auth_provider: str = Field(default="local", max_length=50)
     provider_id: Optional[str] = Field(default=None, unique=True, max_length=255)
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
 
 class AdminUserCreate(SQLModel):
     """

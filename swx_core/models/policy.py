@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from enum import Enum
-from sqlalchemy import Column
+from sqlalchemy import Column, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
@@ -85,8 +85,14 @@ class Policy(Base, table=True):
         sa_column=Column(JSONB, nullable=False)
     )
     
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
 
 
 class PolicyDecision(str, Enum):

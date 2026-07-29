@@ -27,9 +27,9 @@ class NotificationBase(Base):
     provider_name: str | None = Field(default=None, max_length=50)
     provider_response: dict[str, Any] = Field(default_factory=dict)
     retry_count: int = 0
-    scheduled_at: datetime | None = None
-    sent_at: datetime | None = None
-    delivered_at: datetime | None = None
+    scheduled_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    sent_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    delivered_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
 
 class Notification(NotificationBase, table=True):
     __tablename__ = "swx_notification"  # pyright: ignore[reportAssignmentType]

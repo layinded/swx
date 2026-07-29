@@ -19,6 +19,7 @@ import uuid
 from datetime import datetime
 from typing import Any, cast
 
+from sqlalchemy import Column, DateTime, func
 from sqlmodel import Field
 
 from swx_core.models.base import Base
@@ -35,8 +36,13 @@ class RefreshTokenBase(Base):
     """
 
     token: str = Field(..., nullable=False)  # Required refresh token
-    expires_at: datetime = Field(nullable=False)  # Expiry timestamp
-    created_at: datetime = Field(default_factory=utc_now)
+    expires_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )  # Expiry timestamp
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
 
 class RefreshToken(RefreshTokenBase, table=True):
     """

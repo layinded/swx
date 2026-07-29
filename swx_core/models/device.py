@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, Column, DateTime, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
@@ -12,6 +12,9 @@ from sqlmodel import Field, SQLModel, Relationship
 
 from swx_core.models.base import Base
 from swx_core.utils.time import utc_now
+
+if TYPE_CHECKING:
+    from swx_core.models.user import User
 
 
 class DevicePlatform(str, Enum):
@@ -35,11 +38,14 @@ class DeviceBase(Base):
     app_version: str | None = Field(default=None, max_length=20)
     status: DeviceStatus = Field(default=DeviceStatus.ACTIVE)
     is_primary: bool = Field(default=False)
-    last_used_at: datetime | None = None
+    last_used_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
 
 
 class Device(DeviceBase, table=True):
-    __tablename__ = "swx_device"
+    __tablename__ = "swx_device"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -52,13 +58,16 @@ class Device(DeviceBase, table=True):
         )
     )
     platform: DevicePlatform = Field(
+        default=DevicePlatform.IOS,
         sa_column=Column(String(20), nullable=False, server_default="ios", index=True)
     )
     fcm_token: str = Field(sa_column=Column(String(500), nullable=False, index=True))
     status: DeviceStatus = Field(
+        default=DeviceStatus.ACTIVE,
         sa_column=Column(String(20), nullable=False, server_default="active", index=True)
     )
     is_primary: bool = Field(
+        default=False,
         sa_column=Column(Boolean, nullable=False, server_default="false")
     )
     extra_data: dict[str, Any] = Field(

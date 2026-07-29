@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import Column, ForeignKey
+from sqlalchemy import Column, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 
@@ -15,7 +15,10 @@ class OrganizationInvitationBase(Base):
     invitee_email: str = Field(max_length=255, index=True)
     role: str = Field(default="member", max_length=20)
     message: str | None = Field(default=None, max_length=500)
-    expires_at: datetime = Field(default_factory=lambda: utc_now() + timedelta(days=7))
+    expires_at: datetime = Field(
+        default_factory=lambda: utc_now() + timedelta(days=7),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 class OrganizationInvitation(OrganizationInvitationBase, table=True):
     __tablename__ = "swx_organization_invitation"  # pyright: ignore[reportAssignmentType]
@@ -23,10 +26,22 @@ class OrganizationInvitation(OrganizationInvitationBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     status: str = Field(default=InvitationStatus.PENDING.value, max_length=20)
     token: str = Field(unique=True, index=True, max_length=64)
-    accepted_at: datetime | None = Field(default=None)
-    rejected_at: datetime | None = Field(default=None)
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now, sa_column_kwargs={"onupdate": utc_now})
+    accepted_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    rejected_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
 
 class OrganizationInvitationCreate(SQLModel):
     organization_id: uuid.UUID

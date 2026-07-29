@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
-from sqlalchemy import Column, ForeignKey, text
+from sqlalchemy import Column, DateTime, ForeignKey, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
@@ -70,7 +70,10 @@ class SystemConfigBase(Base):
     is_sensitive: bool = Field(default=False)  # Always False - validation enforces
     is_active: bool = Field(default=True, index=True)
     updated_by: Optional[str] = Field(default=None, max_length=255)
-    updated_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
     metadata_: dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column("metadata", JSONB, nullable=False),
@@ -145,7 +148,10 @@ class SystemConfigHistory(Base, table=True):
     old_value: Optional[Any] = Field(default=None, sa_column=Column(JSONB, nullable=True))
     new_value: Any = Field(sa_column=Column(JSONB, nullable=False))
     updated_by: Optional[str] = Field(default=None, max_length=255)
-    updated_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
     change_reason: Optional[str] = Field(default=None, max_length=500)
     metadata_: dict[str, Any] = Field(
         default_factory=dict,

@@ -10,7 +10,7 @@ It uses team-scoped roles (TeamRole) instead of system RBAC roles.
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import Column, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlmodel import Field, SQLModel, Relationship
 from swx_core.models.base import Base
@@ -78,10 +78,13 @@ class TeamMember(TeamMemberBase, table=True):
             nullable=False,
         )
     )
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
     updated_at: datetime = Field(
         default_factory=utc_now,
-        sa_column_kwargs={"onupdate": utc_now}
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
     )
     
     user: "User" = Relationship()  # type: ignore

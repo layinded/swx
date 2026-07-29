@@ -7,13 +7,14 @@ Jobs are idempotent, retryable, and auditable.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, Any, Dict
 from enum import Enum
-from sqlalchemy import Column, DateTime, text, Index
+from sqlalchemy import Column, DateTime, Index, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 class JobStatus(str, Enum):
     """Job execution status - lowercase members to match PostgreSQL enum."""
@@ -97,7 +98,7 @@ class Job(JobBase, table=True):
     Jobs are idempotent and retryable. They track execution state,
     attempts, and errors for observability.
     """
-    __tablename__ = "swx_job"
+    __tablename__ = "swx_job"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (
         Index("idx_job_status_scheduled", "status", "scheduled_at"),
         Index("idx_job_type_status", "job_type", "status"),
@@ -106,19 +107,19 @@ class Job(JobBase, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=utc_now,
         sa_column=Column(
             DateTime(timezone=True),
-            server_default=text("CURRENT_TIMESTAMP"),
+            server_default=func.now(),
             nullable=False
         )
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=utc_now,
         sa_column=Column(
             DateTime(timezone=True),
-            server_default=text("CURRENT_TIMESTAMP"),
-            onupdate=text("CURRENT_TIMESTAMP"),
+            server_default=func.now(),
+            onupdate=func.now(),
             nullable=False
         )
     )
