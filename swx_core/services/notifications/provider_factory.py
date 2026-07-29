@@ -42,9 +42,17 @@ async def _send_with_provider(
 
 
 async def get_email_provider(session: AsyncSession) -> tuple[EmailProviderConfig, dict[str, Any]] | None:
+    return await get_email_provider_for_country(session)
+
+
+async def get_email_provider_for_country(session: AsyncSession, country: str | None = None) -> tuple[EmailProviderConfig, dict[str, Any]] | None:
     providers = await provider_cache.get_cached_email_providers(session)
     if not providers:
         return None
+    if country:
+        country_providers = [provider for provider in providers if not provider.supported_countries or country in provider.supported_countries]
+        if country_providers:
+            return country_providers[0], _resolved_config(country_providers[0])
     return providers[0], _resolved_config(providers[0])
 
 
@@ -55,9 +63,20 @@ async def get_sms_provider(session: AsyncSession) -> tuple[SMSProviderConfig, di
     return providers[0], _resolved_config(providers[0])
 
 
-async def send_via_email(session: AsyncSession, notification: dict[str, Any]) -> tuple[EmailProviderConfig, dict[str, Any]]:
+async def send_via_email(session: AsyncSession, notification: dict[str, Any], preferred_provider: str | None = None) -> tuple[EmailProviderConfig, dict[str, Any]]:
     errors: list[str] = []
-    for provider_config in await provider_cache.get_cached_email_providers(session):
+    providers = await provider_cache.get_cached_email_providers(session)
+    if preferred_provider:
+        preferred_name = preferred_provider.casefold()
+        matched_providers = [provider for provider in providers if provider.name.casefold() == preferred_name or provider.provider_type.casefold() == preferred_name]
+        if matched_providers:
+            providers = matched_providers
+    country = notification.get("country")
+    if isinstance(country, str) and country:
+        country_providers = [provider for provider in providers if not provider.supported_countries or country in provider.supported_countries]
+        if country_providers:
+            providers = country_providers
+    for provider_config in providers:
         sender = _EMAIL_SENDERS.get(provider_config.provider_type)
         if sender is None:
             errors.append(f"{provider_config.name}: unsupported provider")

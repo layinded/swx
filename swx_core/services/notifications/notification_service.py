@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import importlib
 from typing import Any
 from uuid import UUID
 from swx_core.utils.time import utc_now
@@ -7,8 +8,10 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.config.settings import NOTIFICATION_ENABLED, NOTIFICATION_RATE_LIMIT_DAILY, NOTIFICATION_RATE_LIMIT_HOURLY
+from swx_core.config.settings import settings
 from swx_core.events.dispatcher import event_bus
-from swx_core.models.notification import NotificationPublic
+from swx_core.middleware.logging_middleware import logger
+from swx_core.models.notification import Notification, NotificationPublic
 from swx_core.models.notification_preference import NotificationPreferencePublic
 from swx_core.models.user import User
 from swx_core.repositories import notification_repository, user_repository
@@ -56,7 +59,44 @@ async def _deliver(session: AsyncSession, notification_id: UUID, channel: str, p
     sent = await delivery_tracker.update_notification_status(session, notification_id, "sent", provider_config_id=getattr(provider, "id", None), provider_name=getattr(provider, "name", channel), sent_at=utc_now())
     return await delivery_tracker.update_notification_status(session, sent.id, "delivered", delivered_at=utc_now())
 
-async def send_notification(session: AsyncSession, *, user_id: UUID, channel: str, notification_type: str, template_key: str | None = None, context: dict[str, Any] | None = None, subject: str | None = None, body: str | None = None, recipient: str | None = None, scheduled_at: datetime | None = None) -> NotificationPublic:
+
+async def _deliver_existing_notification(session: AsyncSession, tracked: Notification | NotificationPublic) -> NotificationPublic:
+    preferences = await _preferences(session, tracked.user_id)
+    if not _allowed(preferences, tracked.channel):
+        raise HTTPException(status_code=403, detail=f"{tracked.channel} notifications disabled")
+    if _in_quiet_hours(preferences):
+        raise HTTPException(status_code=429, detail="Notification blocked by quiet hours")
+    await _check_rate_limit(session, tracked.user_id)
+    user = await _require_user(session, tracked.user_id)
+    queued_payload = tracked.provider_response.get("queued_payload")
+    payload = {
+        "to": queued_payload.get("to") if isinstance(queued_payload, dict) and queued_payload.get("to") else user.email,
+        "subject": tracked.subject,
+        "body": tracked.body,
+    }
+    if isinstance(queued_payload, dict):
+        for key in ("country", "preferred_provider"):
+            value = queued_payload.get(key)
+            if isinstance(value, str) and value:
+                payload[key] = value
+    delivered = await _deliver(session, tracked.id, tracked.channel, payload)
+    await event_bus.dispatch("notification.sent", payload={"notification_id": str(delivered.id), "provider_name": delivered.provider_name, "channel": delivered.channel})
+    return delivered
+
+
+async def deliver_notification_by_id(session: AsyncSession, notification_id: UUID) -> NotificationPublic:
+    tracked = await notification_repository.get_notification_by_id(session, notification_id)
+    if tracked is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    try:
+        return await _deliver_existing_notification(session, tracked)
+    except Exception as exc:  # noqa: BLE001
+        await delivery_tracker.record_provider_response(session, tracked.id, {"error": str(exc)})
+        failed = await delivery_tracker.update_notification_status(session, tracked.id, "failed")
+        await event_bus.dispatch("notification.failed", payload={"notification_id": str(failed.id), "error": str(exc), "channel": failed.channel})
+        raise
+
+async def send_notification(session: AsyncSession, *, user_id: UUID, channel: str, notification_type: str, template_key: str | None = None, context: dict[str, Any] | None = None, subject: str | None = None, body: str | None = None, recipient: str | None = None, scheduled_at: datetime | None = None, queue: bool = False) -> NotificationPublic:
     if not NOTIFICATION_ENABLED:
         raise HTTPException(status_code=503, detail="Notifications are disabled")
     user = await _require_user(session, user_id)
@@ -68,16 +108,19 @@ async def send_notification(session: AsyncSession, *, user_id: UUID, channel: st
         {"user_id": user_id, "channel": resolved_channel, "notification_type": notification_type, "subject": payload["subject"], "body": payload["body"], "status": "queued", "scheduled_at": scheduled_at},
     )
     await event_bus.dispatch("notification.send_requested", payload={"notification_id": str(tracked.id), "user_id": str(user_id), "channel": resolved_channel})
-    preferences = await _preferences(session, user_id)
     try:
-        if not _allowed(preferences, resolved_channel):
-            raise HTTPException(status_code=403, detail=f"{resolved_channel} notifications disabled")
-        if _in_quiet_hours(preferences):
-            raise HTTPException(status_code=429, detail="Notification blocked by quiet hours")
-        await _check_rate_limit(session, user_id)
-        delivered = await _deliver(session, tracked.id, resolved_channel, payload)
-        await event_bus.dispatch("notification.sent", payload={"notification_id": str(delivered.id), "provider_name": delivered.provider_name, "channel": delivered.channel})
-        return delivered
+        if queue:
+            await delivery_tracker.record_provider_response(session, tracked.id, {"queued_payload": payload})
+            try:
+                celery_module = importlib.import_module("celery")
+                current_app = getattr(celery_module, "current_app")
+                send_task = getattr(current_app, "send_task")
+                send_task(settings.NOTIFICATION_CELERY_TASK_PATH, args=[str(tracked.id)], kwargs={})
+                refreshed = await notification_repository.get_notification_by_id(session, tracked.id)
+                return NotificationPublic.model_validate(refreshed or tracked)
+            except ImportError:
+                logger.warning("Celery not installed, falling back to synchronous send")
+        return await _deliver_existing_notification(session, tracked)
     except Exception as exc:  # noqa: BLE001
         await delivery_tracker.record_provider_response(session, tracked.id, {"error": str(exc)})
         failed = await delivery_tracker.update_notification_status(session, tracked.id, "failed")

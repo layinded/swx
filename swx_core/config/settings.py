@@ -261,6 +261,11 @@ class Settings(BaseSettings):
     EMAILS_FROM_EMAIL: str | None = None
     EMAILS_FROM_NAME: str | None = None
     EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 48
+    OTP_LENGTH: int = Field(default=6, description="Email OTP code length")
+    OTP_EXPIRY_MINUTES: int = Field(default=10, description="Email OTP expiry in minutes")
+    OTP_MAX_ATTEMPTS: int = Field(default=3, description="Maximum OTP verification attempts")
+    OTP_RESEND_COOLDOWN_SECONDS: int = Field(default=60, description="OTP resend cooldown in seconds")
+    OTP_BYPASS_FOR_TESTING: bool = Field(default=False, description="Return a fixed OTP in local testing mode")
 
     @property
     def emails_enabled(self) -> bool:
@@ -539,6 +544,10 @@ class Settings(BaseSettings):
     JOBS_ENABLED: bool = Field(
         default=False, description="Enable Celery background jobs"
     )
+    NOTIFICATION_TEMPLATE_DIR: str = Field(default="templates", description="Directory containing file-based notification templates")
+    NOTIFICATION_CELERY_TASK_PATH: str = Field(default="swx_core.services.notifications.tasks.send_notification_task", description="Celery task path for queued notification delivery")
+    NOTIFICATION_BRAND_COLOR: str = Field(default="#3c42b6", description="Default brand color for notification templates")
+    NOTIFICATION_SUPPORT_EMAIL: str = Field(default="support@example.com", description="Support email injected into notification templates")
     AI_ENABLED: bool = Field(
         default=False, description="Enable AI/vector embeddings (pgai)"
     )
@@ -647,6 +656,8 @@ NOTIFICATION_PROVIDER_CACHE_TTL: int = 30
 NOTIFICATION_TEMPLATE_CACHE_TTL: int = 30
 NOTIFICATION_RATE_LIMIT_DAILY: int = 100
 NOTIFICATION_RATE_LIMIT_HOURLY: int = 20
+NOTIFICATION_TEMPLATE_DIR: str = settings.NOTIFICATION_TEMPLATE_DIR
+NOTIFICATION_CELERY_TASK_PATH: str = settings.NOTIFICATION_CELERY_TASK_PATH
 
 # API Key Scoping Settings
 API_KEY_ENABLED: bool = True

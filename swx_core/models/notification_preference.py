@@ -19,8 +19,11 @@ class NotificationPreferenceBase(Base):
     in_app_enabled: bool = True
     quiet_hours_start: str | None = Field(default=None, max_length=5)
     quiet_hours_end: str | None = Field(default=None, max_length=5)
+    reminder_time: str | None = Field(default=None, max_length=5)
     digest_enabled: bool = False
     digest_frequency: str | None = Field(default=None, max_length=20)
+    escalation_enabled: bool = False
+    escalation_hours: int | None = None
 
 class NotificationPreference(NotificationPreferenceBase, table=True):
     __tablename__ = "swx_notification_preference"  # pyright: ignore[reportAssignmentType]
@@ -37,8 +40,11 @@ class NotificationPreferenceCreate(SQLModel):
     in_app_enabled: bool = True
     quiet_hours_start: str | None = Field(default=None, max_length=5)
     quiet_hours_end: str | None = Field(default=None, max_length=5)
+    reminder_time: str | None = Field(default=None, max_length=5)
     digest_enabled: bool = False
     digest_frequency: str | None = Field(default=None, max_length=20)
+    escalation_enabled: bool = False
+    escalation_hours: int | None = None
 
 class NotificationPreferenceUpdate(SQLModel):
     email_enabled: bool | None = None
@@ -47,8 +53,11 @@ class NotificationPreferenceUpdate(SQLModel):
     in_app_enabled: bool | None = None
     quiet_hours_start: str | None = Field(default=None, max_length=5)
     quiet_hours_end: str | None = Field(default=None, max_length=5)
+    reminder_time: str | None = Field(default=None, max_length=5)
     digest_enabled: bool | None = None
     digest_frequency: str | None = Field(default=None, max_length=20)
+    escalation_enabled: bool | None = None
+    escalation_hours: int | None = None
 
 class NotificationPreferencePublic(NotificationPreferenceBase):
     id: uuid.UUID

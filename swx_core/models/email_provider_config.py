@@ -26,6 +26,15 @@ class EmailProviderConfigBase(Base):
     priority: int = 0
     max_retries: int = 3
     timeout_seconds: int = 30
+    cost_per_email: float | None = None
+    daily_limit: int | None = None
+    monthly_limit: int | None = None
+    rate_limit_per_hour: int | None = None
+    supported_countries: list[str] = Field(default_factory=list)
+    tracking_enabled: bool = True
+    open_tracking: bool = True
+    click_tracking: bool = True
+    reply_to: str | None = Field(default=None, max_length=255)
     extra_config: dict[str, Any] = Field(default_factory=dict)
 
 class EmailProviderConfig(EmailProviderConfigBase, table=True):
@@ -35,6 +44,7 @@ class EmailProviderConfig(EmailProviderConfigBase, table=True):
     priority: int = Field(default=0, sa_column=Column(Integer, nullable=False, server_default="0"))
     max_retries: int = Field(default=3, sa_column=Column(Integer, nullable=False, server_default="3"))
     timeout_seconds: int = Field(default=30, sa_column=Column(Integer, nullable=False, server_default="30"))
+    supported_countries: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")))
     extra_config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")))
     created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
     updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()))
@@ -54,6 +64,15 @@ class EmailProviderConfigCreate(SQLModel):
     priority: int = 0
     max_retries: int = 3
     timeout_seconds: int = 30
+    cost_per_email: float | None = None
+    daily_limit: int | None = None
+    monthly_limit: int | None = None
+    rate_limit_per_hour: int | None = None
+    supported_countries: list[str] = Field(default_factory=list)
+    tracking_enabled: bool = True
+    open_tracking: bool = True
+    click_tracking: bool = True
+    reply_to: str | None = Field(default=None, max_length=255)
     extra_config: dict[str, Any] = Field(default_factory=dict)
 
 class EmailProviderConfigPublic(EmailProviderConfigBase):
