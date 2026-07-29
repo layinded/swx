@@ -2,6 +2,93 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.16.0] - 2026-07-29
+
+### Added — Notification System Enhancements (Round 5 Feedback)
+
+7 enhancements to the notification and email system, informed by NeuronaHealth's production deployment patterns. All changes are backward compatible.
+
+---
+
+#### #2 (P1) — Email Provider Cost/Limits/Country Routing
+
+`EmailProviderConfig` now supports financial and operational control fields:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `cost_per_email` | `float \| None` | Cost tracking per send |
+| `daily_limit` | `int \| None` | Max emails per day per provider |
+| `monthly_limit` | `int \| None` | Max emails per month |
+| `rate_limit_per_hour` | `int \| None` | Burst protection |
+| `supported_countries` | `list[str]` | Country codes for regional routing (GDPR, data residency) |
+| `tracking_enabled` | `bool` | Per-provider analytics control |
+| `open_tracking` | `bool` | Track email opens |
+| `click_tracking` | `bool` | Track link clicks |
+| `reply_to` | `str \| None` | Reply-to address |
+
+`provider_factory.py` adds:
+- `get_email_provider_for_country(session, country)` — filters by `supported_countries`
+- `send_via_email(session, notification, preferred_provider=...)` — force a specific provider
+
+#### #1 (P2) — Hybrid Template Approach
+
+`template_service.py` supports optional file-based base templates via `base_template_path` parameter. When provided, DB body content is rendered inside a file-based Jinja2 base layout using `{% extends %}` + `{% block content %}`. Uses `FileSystemLoader` from a configurable `NOTIFICATION_TEMPLATE_DIR` directory. Backward compatible — without `base_template_path`, the existing simple `Template(body).render(context)` path is used.
+
+#### #3 (P2) — Email OTP Authentication Service
+
+New `swx_core/services/auth/email_otp_service.py` with:
+- `generate_otp(email)` — 6-digit OTP via `secrets.randbelow`, bcrypt-hashed
+- `verify_otp(email, code)` — verifies against stored hash, tracks attempts
+- `resend_otp(email)` — new OTP with cooldown enforcement
+- Custom exception hierarchy: `OtpError` → `OtpInvalidError`, `OtpResendCooldownError`, `OtpRateLimitError`, `OtpDeliveryError`
+- Configurable: `OTP_LENGTH`, `OTP_EXPIRY_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_BYPASS_FOR_TESTING`
+- Bypass mode for testing environments
+
+#### #4 (P2) — Notification Preference Escalation/Reminder Fields
+
+`NotificationPreference` adds:
+- `reminder_time: str | None` — preferred notification time (HH:MM)
+- `escalation_enabled: bool` — retry undelivered critical notifications via alternate channel
+- `escalation_hours: int | None` — hours before escalating
+
+#### #5 (P2) — Celery Queue Integration
+
+`send_notification()` accepts optional `queue: bool = False`. When `queue=True`, dispatches to a Celery task via `send_task()` instead of sending synchronously. Falls back to synchronous if Celery is not installed. Configurable task path via `NOTIFICATION_CELERY_TASK_PATH` setting.
+
+#### #6 (P3) — Template Variable Enrichment
+
+`render_template()` auto-injects brand defaults into every template context:
+- `{{ brand_name }}` — from `NOTIFICATION_DEFAULT_FROM_NAME` or `PROJECT_NAME`
+- `{{ brand_color }}` — from `NOTIFICATION_BRAND_COLOR`
+- `{{ support_email }}` — from `NOTIFICATION_SUPPORT_EMAIL`
+- `{{ frontend_url }}` — from `FRONTEND_HOST`
+
+User context overrides defaults.
+
+#### #7 (P3) — Provider Health Check and Statistics
+
+`management_service.py` adds:
+- `test_email_provider(session, provider_name)` — sends a test email, returns status
+- `get_provider_statistics(session, days=30)` — aggregates delivery stats per provider
+
+---
+
+### Changed Files
+
+| File | Change |
+|---|---|
+| `swx_core/models/email_provider_config.py` | 9 new fields + schema updates |
+| `swx_core/models/notification_preference.py` | 3 new fields + schema updates |
+| `swx_core/services/notifications/provider_factory.py` | Country routing + preferred provider |
+| `swx_core/services/notifications/template_service.py` | Hybrid templates + brand enrichment |
+| `swx_core/services/notifications/notification_service.py` | Queue parameter + Celery dispatch |
+| `swx_core/services/notifications/management_service.py` | Health check + statistics |
+| `swx_core/services/auth/email_otp_service.py` | **New** — Email OTP service |
+| `swx_core/services/notifications/tasks.py` | **New** — Celery task fallback |
+| `swx_core/config/settings.py` | New notification/OTP settings |
+
+---
+
 ## [2.15.6] - 2026-07-29
 
 ### Fixed — P0 Circular Import

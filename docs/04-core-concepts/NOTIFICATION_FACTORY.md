@@ -51,6 +51,17 @@ NOTIFICATION_PROVIDER_CACHE_TTL: int = 30
 NOTIFICATION_TEMPLATE_CACHE_TTL: int = 30
 NOTIFICATION_RATE_LIMIT_DAILY: int = 100
 NOTIFICATION_RATE_LIMIT_HOURLY: int = 20
+
+# v2.16.0 additions
+NOTIFICATION_TEMPLATE_DIR: str = "templates"
+NOTIFICATION_BRAND_COLOR: str = "#3c42b6"
+NOTIFICATION_SUPPORT_EMAIL: str = "support@example.com"
+NOTIFICATION_CELERY_TASK_PATH: str = "swx_core.services.notifications.tasks.send_notification_task"
+OTP_LENGTH: int = 6
+OTP_EXPIRY_MINUTES: int = 10
+OTP_MAX_ATTEMPTS: int = 3
+OTP_RESEND_COOLDOWN_SECONDS: int = 60
+OTP_BYPASS_FOR_TESTING: bool = False
 ```
 
 DB-driven provider config uses `${ENV_VAR}` credential resolution:
@@ -82,6 +93,15 @@ DB-driven provider config uses `${ENV_VAR}` credential resolution:
 | `max_retries` | Integer | Max retry attempts |
 | `timeout_seconds` | Integer | Request timeout |
 | `extra_config` | JSONB | Provider-specific settings |
+| `cost_per_email` | Float | Cost per send (v2.16.0) |
+| `daily_limit` | Integer | Max emails per day (v2.16.0) |
+| `monthly_limit` | Integer | Max emails per month (v2.16.0) |
+| `rate_limit_per_hour` | Integer | Max emails per hour (v2.16.0) |
+| `supported_countries` | JSONB | Country codes for regional routing (v2.16.0) |
+| `tracking_enabled` | Boolean | Email tracking toggle (v2.16.0) |
+| `open_tracking` | Boolean | Track opens (v2.16.0) |
+| `click_tracking` | Boolean | Track clicks (v2.16.0) |
+| `reply_to` | String(255) | Reply-to address (v2.16.0) |
 
 ### `swx_sms_provider_config`
 
@@ -133,6 +153,9 @@ DB-driven provider config uses `${ENV_VAR}` credential resolution:
 | `quiet_hours_end` | String(5) | e.g., "08:00" |
 | `digest_enabled` | Boolean | Digest mode |
 | `digest_frequency` | String(20) | daily, weekly |
+| `reminder_time` | String(5) | Preferred notification time HH:MM (v2.16.0) |
+| `escalation_enabled` | Boolean | Retry undelivered via alternate channel (v2.16.0) |
+| `escalation_hours` | Integer | Hours before escalating (v2.16.0) |
 
 ### `swx_notification_template`
 
@@ -169,9 +192,115 @@ Provider selection logic:
 5. Fallback to next provider on failure
 6. Track delivery status in `swx_notification`
 
+### Country-Specific Routing (v2.16.0)
+
+Filter providers by `supported_countries` for GDPR compliance and data residency:
+
+```python
+from swx_core.services.notifications.provider_factory import get_email_provider_for_country
+
+# Get a provider that supports EU users
+provider, config = await get_email_provider_for_country(session, country="EU")
+
+# Automatic country routing in send_via_email — pass country in notification dict
+result = await send_via_email(session, {"to": "...", "country": "EU", ...})
+```
+
+### Preferred Provider Override (v2.16.0)
+
+Force a specific provider regardless of priority:
+
+```python
+result = await send_via_email(session, notification, preferred_provider="brevo")
+```
+
+### Provider Health Check and Statistics (v2.16.0)
+
+```python
+from swx_core.services.notifications.management_service import test_email_provider, get_provider_statistics
+
+# Test provider connectivity
+status = await test_email_provider(session, "sendgrid")
+
+# Get delivery stats per provider
+stats = await get_provider_statistics(session, days=30)
+```
+
 ---
 
 ## Templates
+
+Jinja2 templates are stored in the database with variable interpolation:
+
+```python
+from swx_core.services.notifications.template_service import render_template
+
+subject, body = await render_template(session, "email.verification", {"code": "123456"})
+```
+
+### Hybrid Templates (v2.16.0)
+
+Use file-based base layouts with DB-stored body content:
+
+```python
+# Render DB body inside a file-based base.html from templates/ directory
+result = await render_template(
+    session, "email.verification", {"code": "123456"},
+    base_template_path="base.html"
+)
+```
+
+The file-based base uses Jinja2 `{% block content %}` — the DB body is injected into the block. Requires `NOTIFICATION_TEMPLATE_DIR` setting (default: `templates/`).
+
+### Brand Variable Enrichment (v2.16.0)
+
+Every template automatically receives brand defaults:
+
+| Variable | Source Setting | Default |
+|---|---|---|
+| `{{ brand_name }}` | `NOTIFICATION_DEFAULT_FROM_NAME` / `PROJECT_NAME` | "App" |
+| `{{ brand_color }}` | `NOTIFICATION_BRAND_COLOR` | "#3c42b6" |
+| `{{ support_email }}` | `NOTIFICATION_SUPPORT_EMAIL` | "support@example.com" |
+| `{{ frontend_url }}` | `FRONTEND_HOST` | "http://localhost:3000" |
+
+User-provided context variables override the defaults.
+
+---
+
+## Email OTP Authentication (v2.16.0)
+
+Passwordless email authentication via one-time codes:
+
+```python
+from swx_core.services.auth.email_otp_service import generate_otp, verify_otp, resend_otp
+
+# Generate and send OTP
+code = await generate_otp("user@example.com")
+
+# Verify OTP
+valid = await verify_otp("user@example.com", "123456")
+
+# Resend with cooldown
+new_code = await resend_otp("user@example.com")
+```
+
+Configuration via settings: `OTP_LENGTH`, `OTP_EXPIRY_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_BYPASS_FOR_TESTING`.
+
+---
+
+## Async Queue Delivery (v2.16.0)
+
+Dispatch notifications to Celery workers for bulk sends:
+
+```python
+# Synchronous (default)
+notification = await send_notification(session, user_id=..., channel="email", ...)
+
+# Queued via Celery
+notification = await send_notification(session, user_id=..., channel="email", ..., queue=True)
+```
+
+Requires Celery installed (`pip install swx-core[jobs]`). Falls back to synchronous if Celery is not available.
 
 Jinja2 templates stored in DB for dynamic content:
 

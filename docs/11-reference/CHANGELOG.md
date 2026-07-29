@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.15.6  
+**Version:** 2.16.0  
 **Last Updated:** 2026-07-29
 
 ---
@@ -29,6 +29,28 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.16.0 (2026-07-29)
+
+**Notification System Enhancements — 7 features**
+
+#### Added
+
+1. **Email provider cost/limits/country routing** — 9 new fields on `EmailProviderConfig` (cost_per_email, daily/monthly/hourly limits, supported_countries, tracking controls, reply_to). Country-aware routing and preferred provider override in `provider_factory.py`.
+
+2. **Hybrid template approach** — `render_template()` supports optional `base_template_path` for file-based Jinja2 base layout with `{% extends %}` + `{% block content %}`. Backward compatible.
+
+3. **Email OTP service** — New `email_otp_service.py` with generate/verify/resend, bcrypt hashing, configurable rate limits/cooldown/max attempts, testing bypass, custom exception hierarchy.
+
+4. **Notification preference escalation** — `reminder_time`, `escalation_enabled`, `escalation_hours` fields.
+
+5. **Celery queue integration** — `send_notification(queue=True)` dispatches to Celery via `send_task()`. Falls back to synchronous if Celery not installed.
+
+6. **Template variable enrichment** — Auto-injects `brand_name`, `brand_color`, `support_email`, `frontend_url` into every template context.
+
+7. **Provider health check + statistics** — `test_email_provider()` and `get_provider_statistics()` in `management_service.py`.
+
+---
 
 ### Version 2.15.6 (2026-07-29)
 
