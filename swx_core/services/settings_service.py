@@ -41,9 +41,20 @@ class SettingsService:
     
     Provides type-safe access to settings with DB + .env fallback.
     """
-    
-    def __init__(self, session: AsyncSession):
+
+    def __init__(self, session: AsyncSession, model: type = SystemConfig):
+        """
+        Args:
+            session: Async database session.
+            model: SQLModel table class for config storage. Must have
+                ``key`` (str, unique), ``value`` (Any/JSONB), ``value_type``
+                (SettingValueType), and ``is_active`` (bool) fields.
+                Defaults to ``SystemConfig``. Pass a custom model to use
+                a different config table (e.g., a project-specific
+                ``fastpii_system_configs`` table).
+        """
         self.session = session
+        self.model = model
     
     async def get(
         self,
@@ -142,9 +153,9 @@ class SettingsService:
     ) -> Optional[Any]:
         """Get setting from database."""
         try:
-            stmt = select(SystemConfig).where(
-                SystemConfig.key == key,
-                SystemConfig.is_active == True,
+            stmt = select(self.model).where(
+                self.model.key == key,
+                self.model.is_active == True,
             )
             result = await self.session.execute(stmt)
             config = result.scalar_one_or_none()
