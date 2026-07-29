@@ -86,6 +86,7 @@ from sqlmodel import SQLModel, Field
 from uuid import UUID, uuid4
 from typing import Optional
 from datetime import datetime
+from swx_core.utils.time import utc_now
 
 class UserProfileBase(SQLModel):
     """Fields visible in API responses and creation."""
@@ -107,8 +108,8 @@ class UserProfile(UserProfileBase, table=True):
         unique=True,
         index=True,
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 class UserProfileCreate(UserProfileBase):
     pass
@@ -325,7 +326,7 @@ class AdminProfile(SQLModel, table=True):
     )
     department: Optional[str] = None
     office_location: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ### Composition Pattern (Combining User + Profile)

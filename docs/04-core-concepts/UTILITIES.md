@@ -446,6 +446,7 @@ from swx_core.utils.mixins import (
 ```python
 from sqlmodel import SQLModel, Field
 from swx_core.utils.mixins import TimestampMixin, SoftDeleteMixin, UUIDPrimaryKeyMixin
+from swx_core.utils.time import utc_now
 from uuid import UUID
 
 # Basic model with timestamps
@@ -482,8 +483,8 @@ class Order(AuditedModelMixin, SQLModel, table=True):
 
 ```python
 # TimestampMixin adds:
-created_at: datetime = Field(default_factory=datetime.utcnow)
-updated_at: datetime = Field(default_factory=datetime.utcnow)
+created_at: datetime = Field(default_factory=utc_now)
+updated_at: datetime = Field(default_factory=utc_now)
 
 # SoftDeleteMixin adds:
 is_deleted: bool = Field(default=False)

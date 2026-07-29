@@ -313,6 +313,7 @@ from sqlmodel import SQLModel, Field
 from swx_core.models.base import Base
 from uuid import UUID, uuid4
 from datetime import datetime
+from swx_core.utils.time import utc_now
 
 class ProductBase(SQLModel):
     name: str = Field(max_length=255)
@@ -323,8 +324,8 @@ class ProductBase(SQLModel):
 class Product(ProductBase, Base, table=True):
     __tablename__ = "product"
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 class ProductCreate(ProductBase):
     pass

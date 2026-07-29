@@ -160,6 +160,7 @@ All admin consent routes require `get_current_admin_user`.
 from uuid import UUID
 
 from swx_core.services import consent_service
+from swx_core.utils.time import utc_now
 
 user_id = UUID("11111111-1111-1111-1111-111111111111")
 
@@ -229,7 +230,7 @@ version = await consent_service.create_consent_version(
         document_url="https://example.com/legal/privacy-policy-2026-07",
         document_text="Privacy Policy version 2026.07",
         is_active=True,
-        effective_date=consent_service.utc_now_naive(),
+        effective_date=utc_now(),
     ),
 )
 ```

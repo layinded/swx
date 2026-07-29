@@ -268,7 +268,7 @@ cat migrations/versions/<migration_file>.py | grep NullType
 This is a known issue with SQLModel + Alembic autogenerate. The `DateTime` field type gets incorrectly mapped as `NullType` when combined with `server_default`.
 
 **Solution (v2.3.4+):**
-This issue is fixed in swx-core v2.3.4. The migration template now properly renders NullType as DateTime(). Upgrade:
+This issue is fixed in swx-core v2.3.4. The migration template now properly renders NullType as DateTime(timezone=True). Upgrade:
 ```bash
 pip install --upgrade swx-core
 ```
@@ -278,7 +278,7 @@ If on older version, manually fix the migration:
 # In migration file, replace:
 sa.Column('created_at', sa.NullType(), ...)
 # With:
-sa.Column('created_at', sa.DateTime(), ...)
+ sa.Column('created_at', sa.DateTime(timezone=True), ...)
 ```
 
 ### Issue: Slow Queries

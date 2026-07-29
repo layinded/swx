@@ -464,11 +464,12 @@ logs = await get_audit_logs(
 ```python
 # Get logs from last 24 hours
 from datetime import datetime, timedelta
+from swx_core.utils.time import utc_now
 
 logs = await get_audit_logs(
     session,
-    start_time=datetime.utcnow() - timedelta(days=1),
-    end_time=datetime.utcnow(),
+    start_time=utc_now() - timedelta(days=1),
+    end_time=utc_now(),
     skip=0,
     limit=100
 )

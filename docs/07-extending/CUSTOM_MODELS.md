@@ -42,6 +42,7 @@ from sqlmodel import SQLModel, Field
 from swx_core.models.base import Base
 from uuid import UUID, uuid4
 from datetime import datetime
+from swx_core.utils.time import utc_now
 from typing import Optional
 
 # Base fields (shared between create/update/public)
@@ -56,8 +57,8 @@ class Product(ProductBase, Base, table=True):
     __tablename__ = "product"
     
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     
     # Relationships (if any)
     # user_id: UUID = Field(foreign_key="user.id")
@@ -131,7 +132,7 @@ class Product(ProductBase, Base, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str
     price: float
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ### Pattern 2: User-Owned Model
@@ -144,7 +145,7 @@ class Product(ProductBase, Base, table=True):
     user_id: UUID = Field(foreign_key="user.id", index=True)
     name: str
     price: float
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ### Pattern 3: Team-Scoped Model
@@ -158,7 +159,7 @@ class Product(ProductBase, Base, table=True):
     user_id: UUID = Field(foreign_key="user.id", index=True)  # Creator
     name: str
     price: float
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ### Pattern 4: Soft Delete
@@ -172,7 +173,7 @@ class Product(ProductBase, Base, table=True):
     price: float
     is_active: bool = Field(default=True)
     deleted_at: Optional[datetime] = None  # Soft delete
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ---
@@ -280,11 +281,11 @@ alembic current
 ### ✅ DO
 
 1. **Use type hints**
-   ```python
-   # ✅ Good - Type hints
-   name: str = Field(max_length=255)
-   price: float = Field(ge=0)
-   created_at: datetime = Field(default_factory=datetime.utcnow)
+```python
+# ✅ Good - Type hints
+name: str = Field(max_length=255)
+price: float = Field(ge=0)
+created_at: datetime = Field(default_factory=utc_now)
    ```
 
 2. **Use Field constraints**
@@ -303,10 +304,10 @@ alembic current
    ```
 
 4. **Add indexes for queries**
-   ```python
-   # ✅ Good - Indexed fields
-   user_id: UUID = Field(foreign_key="user.id", index=True)
-   created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+```python
+# ✅ Good - Indexed fields
+user_id: UUID = Field(foreign_key="user.id", index=True)
+created_at: datetime = Field(default_factory=utc_now, index=True)
    ```
 
 5. **Use relationships properly**
@@ -392,7 +393,7 @@ class UserProfile(SQLModel, table=True):
     avatar_url: Optional[str] = None
     phone: Optional[str] = None
     preferences: dict = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ### Pattern 2: Model Inheritance

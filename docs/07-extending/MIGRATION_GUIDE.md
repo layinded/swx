@@ -221,7 +221,7 @@ async_engine = create_async_engine(
 
 | Bug | Description |
 |-----|-------------|
-| Bug #5 | All `datetime.utcnow()` replaced with `datetime.now(timezone.utc)` (51 occurrences across 37 files) |
+| Bug #5 | All `datetime.utcnow()` replaced with `utc_now()` from `swx_core.utils.time` (51 occurrences across 37 files) |
 | Bug #22 | All foreign key columns now include `ondelete` clauses (CASCADE, SET NULL, or RESTRICT) |
 | Bug #20 | Subscription SELECT uses `with_for_update()` to prevent race conditions |
 | Bug #28 | Subscription service returns `HTTPException(404)` instead of `ValueError` |
@@ -290,11 +290,12 @@ Most models remain unchanged. If you used mixins:
 ```python
 # v1.x
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 class Product(Base, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 # v2.0 - Use model mixins
 from swx_core.utils.mixins import FullModelMixin
