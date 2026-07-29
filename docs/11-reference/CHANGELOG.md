@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.15.1  
+**Version:** 2.15.2  
 **Last Updated:** 2026-07-29
 
 ---
@@ -29,6 +29,31 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.15.2 (2026-07-29)
+
+**SystemConfig JSONB + Metadata/Permissions JSONB**
+
+Converted `SystemConfig.value` from VARCHAR(5000) to JSONB and metadata/permissions columns from JSON to JSONB.
+
+#### Changes
+
+1. **SystemConfig.value** — VARCHAR(5000) → JSONB. Values stored as native JSON types, returned as native Python types. No `json.loads()` on DB reads.
+2. **SystemConfig.metadata** — JSON → JSONB (both SystemConfig and SystemConfigHistory tables)
+3. **SystemConfigHistory.old_value / new_value** — VARCHAR(5000) → JSONB
+4. **TeamRole.permissions** — JSON → JSONB
+5. **settings_service.py** — `_convert_value()` handles native JSONB types from DB + strings from env vars
+6. **settings_crud_service.py** — validation handles native types alongside strings
+7. **Data migration** — `v2_15_2_convert_system_config_jsonb.py` for existing databases
+
+#### Migration Guide
+
+1. Install `swx-core>=2.15.2`
+2. Copy `v2_15_2_convert_system_config_jsonb.py` to project's `migrations/versions/`
+3. Set `down_revision` to current head
+4. Run `alembic upgrade head`
+
+---
 
 ### Version 2.15.1 (2026-07-29)
 

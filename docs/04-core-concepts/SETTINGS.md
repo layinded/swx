@@ -60,15 +60,18 @@ SwX-API includes a **runtime settings system** that allows configuration changes
 class SystemConfig(SQLModel, table=True):
     id: UUID
     key: str  # "auth.access_token_expire_minutes"
-    value: str  # "10080" (stored as string)
-    value_type: SettingValueType  # INT, BOOL, STRING, JSON
+    value: Any  # Stored as JSONB — native Python type (int, bool, str, dict)
+    value_type: SettingValueType  # INT, BOOL, STRING, JSON (for env fallback + validation)
     category: SettingCategory  # SECURITY, RATE_LIMIT, etc.
     description: str
     is_sensitive: bool  # Always False (secrets never in DB)
     is_active: bool
     updated_by: str  # Admin email or "system"
     updated_at: datetime
-    metadata: Dict[str, Any]
+    metadata: Dict[str, Any]  # JSONB column
+```
+
+> **v2.15.2:** `value` and `metadata` columns changed from VARCHAR/JSON to PostgreSQL `JSONB`. Values are stored as native JSON types (strings, ints, bools, objects) and returned as native Python types — no `json.loads()` needed on DB reads. `value_type` is still used for env var fallback (where values are always strings) and validation.
 ```
 
 **SystemConfigHistory:**

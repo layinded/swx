@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.2] - 2026-07-29
+
+### Changed — SystemConfig JSONB + Metadata/Permissions JSONB
+
+`SystemConfig.value` converted from `VARCHAR(5000)` to PostgreSQL `JSONB`. Metadata and permissions columns converted from generic `JSON` to `JSONB`. This enables GIN indexing, PostgreSQL JSON operators (`->`, `->>`, `@>`), and eliminates `json.loads()` on every DB read.
+
+---
+
+#### What Changed
+
+- **`SystemConfig.value`** — changed from `VARCHAR(5000)` to `JSONB`. Values are now stored as native JSON types (strings, ints, bools, objects) and returned as native Python types via SQLAlchemy. No more `json.loads()` on DB reads. The `value_type` field is retained for env var fallback (where values are always strings) and validation.
+
+- **`SystemConfig.metadata`** — changed from `JSON` to `JSONB` (both `SystemConfig` and `SystemConfigHistory` tables).
+
+- **`SystemConfigHistory.old_value` / `new_value`** — changed from `VARCHAR(5000)` to `JSONB`.
+
+- **`TeamRole.permissions`** — changed from `JSON` to `JSONB`.
+
+- **`settings_service.py`** — `_convert_value()` updated to handle native JSONB types from DB (returns directly) AND string values from env vars (parses). `get_json()` simplified — DB values are already dicts from JSONB.
+
+- **`settings_crud_service.py`** — `validate_setting_value()` and `validate_security_guards()` updated to handle native types (int, bool, dict) alongside string inputs.
+
+- **Data migration** — `swx_core/database/migrations/v2_15_2_convert_system_config_jsonb.py` converts existing VARCHAR/JSON columns to JSONB using `USING ...::jsonb`.
+
+---
+
+#### Backward Compatibility
+
+- Existing string values are automatically valid JSONB (a string is valid JSON)
+- The data migration uses `USING column::jsonb` which handles existing VARCHAR data
+- `value_type` field retained — env var fallback still needs type conversion
+- API responses now return native types instead of strings (e.g., `10080` instead of `"10080"`)
+
+---
+
 ## [2.15.1] - 2026-07-29
 
 ### Added — Multi-Tenancy for Platform-Level Models
