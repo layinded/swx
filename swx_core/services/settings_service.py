@@ -35,6 +35,18 @@ from swx_core.middleware.logging_middleware import logger
 _settings_cache: dict[str, tuple[Any, datetime]] = {}
 _cache_ttl = timedelta(seconds=60)  # 1 minute TTL
 
+
+def _get_redis_client():
+    try:
+        from swx_core.container.container import get_container
+        container = get_container()
+        if container.bound("redis.client"):
+            return container.make("redis.client")
+    except Exception:
+        pass
+    return None
+
+
 class SettingsService:
     """
     Central service for system settings access.
@@ -75,16 +87,40 @@ class SettingsService:
         Returns:
             Setting value (typed)
         """
-        # Check cache first
+        # Check in-process cache first
         if key in _settings_cache:
             value, cached_at = _settings_cache[key]
             if utc_now() - cached_at < _cache_ttl:
                 return value
-        
+
+        # Check Redis cache (cross-worker)
+        try:
+            redis = _get_redis_client()
+            if redis is not None:
+                import json
+                cached = await redis.get(f"swx:settings:{key}")
+                if cached is not None:
+                    value = json.loads(cached)
+                    _settings_cache[key] = (value, utc_now())
+                    return value
+        except Exception:
+            pass
+
         # Try database
         db_value = await self._get_from_db(key, value_type)
         if db_value is not None:
             _settings_cache[key] = (db_value, utc_now())
+            try:
+                redis = _get_redis_client()
+                if redis is not None:
+                    import json
+                    await redis.setex(
+                        f"swx:settings:{key}",
+                        int(_cache_ttl.total_seconds()),
+                        json.dumps(db_value, default=str),
+                    )
+            except Exception:
+                pass
             return db_value
         
         # Try environment
@@ -207,13 +243,27 @@ class SettingsService:
         return defaults.get(key, None)
     
     @staticmethod
-    def invalidate_cache(key: Optional[str] = None):
-        """Invalidate cache for a key or all keys."""
+    async def invalidate_cache(key: Optional[str] = None) -> None:
+        """Invalidate in-process and Redis cache for a key or all keys.
+
+        When Redis is available, publishes invalidation to other workers
+        so they clear their in-process caches too.
+        """
         global _settings_cache
         if key:
             _settings_cache.pop(key, None)
         else:
             _settings_cache.clear()
+        try:
+            redis = _get_redis_client()
+            if redis is not None:
+                if key:
+                    await redis.delete(f"swx:settings:{key}")
+                else:
+                    async for k in redis.scan_iter("swx:settings:*"):
+                        await redis.delete(k)
+        except Exception:
+            pass
         logger.info(f"Settings cache invalidated for: {key or 'all'}")
 
 # Global settings service instance (session-dependent)

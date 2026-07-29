@@ -24,22 +24,59 @@ class OtpResendCooldownError(Exception):
     pass
 
 
+class OtpInvalidError(Exception):
+    pass
+
+
+class OtpRateLimitError(Exception):
+    pass
+
+
+class OtpDeliveryError(Exception):
+    pass
+
+
 _OTP_CACHE: dict[str, OtpEntry] = {}
+
+
+def _get_bypass_emails() -> set[str]:
+    raw = settings.OTP_BYPASS_EMAILS
+    if not raw:
+        return set()
+    return {e.strip().casefold() for e in raw.split(",") if e.strip()}
+
+
+def is_email_bypassed(email: str) -> bool:
+    """Check if an email is whitelisted for OTP bypass (testing/staging).
+
+    Uses OTP_BYPASS_FOR_TESTING (env var, all-or-nothing) AND
+    OTP_BYPASS_EMAILS (comma-separated whitelist, per-email).
+    """
+    if not settings.OTP_BYPASS_FOR_TESTING:
+        return False
+    if settings.ENVIRONMENT not in {"local", "development", "staging"}:
+        return False
+    bypass_emails = _get_bypass_emails()
+    if not bypass_emails:
+        return True
+    return email.casefold() in bypass_emails
 
 
 def _is_bypass_enabled() -> bool:
     return settings.OTP_BYPASS_FOR_TESTING and settings.ENVIRONMENT in {"local", "development"}
 
 
-def _generate_code() -> str:
-    if _is_bypass_enabled():
+def _generate_code(email: str = "") -> str:
+    if email and is_email_bypassed(email):
+        return "1".zfill(settings.OTP_LENGTH)
+    if not email and _is_bypass_enabled():
         return "1".zfill(settings.OTP_LENGTH)
     maximum: int = 10**settings.OTP_LENGTH
     return str(secrets.randbelow(maximum)).zfill(settings.OTP_LENGTH)
 
 
 async def generate_otp(email: str) -> str:
-    code = _generate_code()
+    code = _generate_code(email)
     now = utc_now()
     hashed_code = await to_thread.run_sync(pwd_context.hash, code)
     _OTP_CACHE[email.casefold()] = OtpEntry(

@@ -266,6 +266,8 @@ class Settings(BaseSettings):
     OTP_MAX_ATTEMPTS: int = Field(default=3, description="Maximum OTP verification attempts")
     OTP_RESEND_COOLDOWN_SECONDS: int = Field(default=60, description="OTP resend cooldown in seconds")
     OTP_BYPASS_FOR_TESTING: bool = Field(default=False, description="Return a fixed OTP in local testing mode")
+    OTP_BYPASS_EMAILS: str = Field(default="", description="Comma-separated email whitelist for OTP bypass (empty = all emails bypass when OTP_BYPASS_FOR_TESTING is True)")
+    TRUSTED_PROXIES: str = Field(default="", description="Comma-separated list of trusted proxy IPs for X-Forwarded-For parsing")
 
     @property
     def emails_enabled(self) -> bool:
