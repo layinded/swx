@@ -53,8 +53,8 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # --- New columns on swx_team ---
     op.add_column("swx_team", sa.Column("owner_id", sa.Uuid(), nullable=True))
-    op.add_column("swx_team", sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False))
-    op.add_column("swx_team", sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False))
+    op.add_column("swx_team", sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
+    op.add_column("swx_team", sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False))
     op.create_index("ix_swx_team_owner_id", "swx_team", ["owner_id"])
     op.create_foreign_key(
         "fk_swx_team_owner_id",
@@ -156,7 +156,7 @@ def downgrade() -> None:
     op.drop_column("swx_team", "owner_id")
 
 
-def _replace_fk(table: str, fk_name: str, target_table: str, columns: list, target_columns: list, ondelete: str) -> None:
+def _replace_fk(table: str, fk_name: str, target_table: str, columns: list[str], target_columns: list[str], ondelete: str) -> None:
     op.drop_constraint(fk_name, table, type_="foreignkey")
     op.create_foreign_key(fk_name, table, target_table, columns, target_columns, ondelete=ondelete)
 

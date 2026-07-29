@@ -41,8 +41,8 @@ def upgrade() -> None:
         sa.Column("rate_limit_per_minute", sa.Integer(), nullable=True),
         sa.Column("daily_token_limit", sa.Integer(), nullable=True),
         sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_swx_llm_provider_config_provider"), "swx_llm_provider_config", ["provider"], unique=False)
@@ -62,7 +62,7 @@ def upgrade() -> None:
         sa.Column("latency_ms", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("success", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("error_message", sa.String(length=500), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("account_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.ForeignKeyConstraint(["provider_config_id"], ["swx_llm_provider_config.id"]),
         sa.PrimaryKeyConstraint("id"),

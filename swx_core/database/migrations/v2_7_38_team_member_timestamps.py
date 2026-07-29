@@ -33,11 +33,11 @@ def upgrade() -> None:
     """Add created_at and updated_at columns to swx_team_member."""
     op.add_column(
         "swx_team_member",
-        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.add_column(
         "swx_team_member",
-        sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
 
 

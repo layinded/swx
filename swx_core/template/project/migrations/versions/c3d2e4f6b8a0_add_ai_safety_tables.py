@@ -30,8 +30,8 @@ def upgrade() -> None:
         sa.Column("action", sa.String(length=20), nullable=False, server_default=sa.text("'flag'")),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("category", sa.String(length=100), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_swx_content_filter_category"), "swx_content_filter", ["category"], unique=False)
@@ -49,7 +49,7 @@ def upgrade() -> None:
         sa.Column("overall_verdict", sa.String(length=20), nullable=False, server_default=sa.text("'safe'")),
         sa.Column("action_taken", sa.String(length=20), nullable=False, server_default=sa.text("'none'")),
         sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.ForeignKeyConstraint(["user_id"], ["swx_users.id"]),
         sa.ForeignKeyConstraint(["conversation_id"], ["swx_conversation.id"]),
         sa.PrimaryKeyConstraint("id"),
