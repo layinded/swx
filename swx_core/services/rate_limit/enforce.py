@@ -135,7 +135,7 @@ def _resolve_actor(request: Request) -> tuple[str, str, Optional[str]]:
                     if aud == TokenAudience.ADMIN.value:
                         return ("admin", sub, None)
                     if aud == TokenAudience.USER.value:
-                        return ("user", sub, payload.get("billing_plan", "free"))
+                        return ("user", sub, payload.get("billing_plan", settings.DEFAULT_PLAN_KEY))
             except Exception:
                 pass
 
