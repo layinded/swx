@@ -393,6 +393,18 @@ CSRF_COOKIE_MAX_AGE: int = 86400        # 24 hours
 4. Backend validates token matches
 5. State-changing requests (POST, PUT, PATCH, DELETE) are protected
 
+**CSRF Helper Functions (v2.14.4+):**
+
+The standalone helpers `get_csrf_token()` and `set_csrf_cookie()` accept an optional `cookie_name` parameter that defaults to `CSRF_COOKIE_NAME`. Pass the same `cookie_name` you configured on the middleware to avoid cookie name mismatches:
+
+```python
+from swx_core.middleware.csrf_middleware import get_csrf_token, set_csrf_cookie
+
+# With a custom cookie name
+token = await get_csrf_token(request, cookie_name="my_csrf_token")
+await set_csrf_cookie(response, token, cookie_name="my_csrf_token")
+```
+
 **SameSite Cookie Attribute (Default Protection):**
 
 swx-core sets `SameSite=Lax` by default (via `COOKIE_SAMESITE` setting):

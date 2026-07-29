@@ -161,7 +161,7 @@ def generate_csrf_token() -> str:
     return secrets.token_urlsafe(CSRF_TOKEN_LENGTH)
 
 
-async def get_csrf_token(request: Request) -> str:
+async def get_csrf_token(request: Request, cookie_name: str = CSRF_COOKIE_NAME) -> str:
     """
     Get or create CSRF token for the current session.
 
@@ -170,12 +170,13 @@ async def get_csrf_token(request: Request) -> str:
 
     Args:
         request: FastAPI request object
+        cookie_name: Name of the CSRF cookie to read (defaults to module constant).
 
     Returns:
         CSRF token
     """
     # Check if token exists in cookie
-    existing_token = request.cookies.get(CSRF_COOKIE_NAME)
+    existing_token = request.cookies.get(cookie_name)
 
     if existing_token:
         return existing_token
@@ -184,18 +185,21 @@ async def get_csrf_token(request: Request) -> str:
     return generate_csrf_token()
 
 
-async def set_csrf_cookie(response, token: str) -> None:
+async def set_csrf_cookie(
+    response, token: str, cookie_name: str = CSRF_COOKIE_NAME
+) -> None:
     """
     Set CSRF token in response cookie.
 
     Args:
         response: Response object
         token: CSRF token to set
+        cookie_name: Name of the CSRF cookie to write (defaults to module constant).
     """
     from swx_core.config.settings import settings
 
     response.set_cookie(
-        key=CSRF_COOKIE_NAME,
+        key=cookie_name,
         value=token,
         httponly=False,  # Must be readable by JavaScript
         secure=settings.COOKIE_SECURE and settings.ENVIRONMENT != "local",
