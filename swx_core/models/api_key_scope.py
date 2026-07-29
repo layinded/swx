@@ -64,7 +64,7 @@ class ApiKeyScope(ApiKeyScopeBase, table=True):
 class ApiKeyCreate(SQLModel):
     team_id: uuid.UUID | None = None
     name: str = Field(max_length=100)
-    scopes: list[dict[str, str]] = Field(default_factory=list)
+    scopes: list[str] | list[dict[str, str]] = Field(default_factory=list)
     expires_at: Optional[datetime] = None
     rate_limit_override: Optional[int] = None
 

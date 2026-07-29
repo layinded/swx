@@ -1,6 +1,6 @@
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Optional
 from uuid import UUID
 from swx_core.utils.time import utc_now
@@ -14,9 +14,19 @@ from swx_core.models.api_key_scope import (
     ApiKeyCreate, ApiKeyPublic, ApiKeyPublicWithScopes, ApiKeyScopePublic, ApiKeyCreatedResponse,
 )
 from swx_core.repositories import api_key_scope_repository as repo
+from swx_core.services.auth.api_key_scope_service import parse_scope_string
 
-def _utc_now() -> datetime:
-    return utc_now()
+def _normalize_scopes(scopes: list[str] | list[dict[str, str]]) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    for scope in scopes:
+        if isinstance(scope, str):
+            resource, action = parse_scope_string(scope)
+            result.append({"resource": resource, "action": action})
+        elif isinstance(scope, dict):
+            result.append({"resource": scope["resource"], "action": scope["action"]})
+        else:
+            raise ValueError(f"Invalid scope type: {type(scope)}. Expected str or dict")
+    return result
 
 async def create_api_key(
     session: AsyncSession, user_id: UUID, data: ApiKeyCreate
@@ -26,7 +36,7 @@ async def create_api_key(
     hashed_key = hashlib.sha256(raw_key.encode()).hexdigest()
     expires_at = data.expires_at
     if expires_at is None:
-        expires_at = _utc_now() + timedelta(days=API_KEY_DEFAULT_EXPIRY_DAYS)
+        expires_at = utc_now() + timedelta(days=API_KEY_DEFAULT_EXPIRY_DAYS)
 
     key = await repo.create_api_key(session, {
         "name": data.name,
@@ -41,7 +51,8 @@ async def create_api_key(
 
     scopes: list[ApiKeyScopePublic] = []
     if data.scopes:
-        created = await repo.add_scopes(session, key.id, data.scopes)
+        normalized = _normalize_scopes(data.scopes)
+        created = await repo.add_scopes(session, key.id, normalized)
         scopes = [ApiKeyScopePublic.model_validate(s) for s in created]
 
     await event_bus.dispatch("api_key.created", payload={
@@ -59,7 +70,7 @@ async def rotate_api_key(session: AsyncSession, key_id: UUID, user_id: UUID) -> 
         raise HTTPException(status_code=404, detail="API key not found")
 
     old_key.is_active = False
-    old_key.expires_at = _utc_now() + timedelta(hours=API_KEY_ROTATION_GRACE_HOURS)
+    old_key.expires_at = utc_now() + timedelta(hours=API_KEY_ROTATION_GRACE_HOURS)
     session.add(old_key)
     await session.commit()
 
@@ -91,7 +102,7 @@ async def validate_api_key(session: AsyncSession, raw_key: str) -> Optional[ApiK
     key = await repo.get_api_key_by_hash(session, hashed)
     if key is None or not key.is_active:
         return None
-    if key.expires_at and key.expires_at < _utc_now():
+    if key.expires_at and key.expires_at < utc_now():
         return None
     await repo.update_last_used(session, key.id)
     return ApiKeyPublic.model_validate(key)

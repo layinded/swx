@@ -1,7 +1,7 @@
 # pyright: reportAny=false, reportExplicitAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportAttributeAccessIssue=false
 
 from datetime import datetime
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 from swx_core.utils.time import utc_now
 
@@ -33,7 +33,7 @@ async def list_webhook_endpoints(session: AsyncSession, *, user_id: UUID | None 
     if user_id is not None:
         stmt = stmt.where(WebhookEndpoint.user_id == user_id)
     if is_active is not None:
-        stmt = stmt.where(WebhookEndpoint.is_active == is_active)  # pyright: ignore[reportArgumentType]
+        stmt = stmt.where(WebhookEndpoint.is_active == is_active)
     stmt = stmt.order_by(WebhookEndpoint.created_at.desc()).offset(skip).limit(limit)
     return list((await session.execute(stmt)).scalars().all())
 
@@ -48,7 +48,7 @@ async def update_webhook_endpoint(session: AsyncSession, endpoint_id: UUID, data
     return endpoint
 
 async def upsert_webhook_subscriptions(session: AsyncSession, endpoint_id: UUID, event_types: list[str], is_active: bool) -> list[WebhookEventSubscription]:
-    stmt = select(WebhookEventSubscription).where(WebhookEventSubscription.endpoint_id == endpoint_id, WebhookEventSubscription.event_type.in_(event_types))  # pyright: ignore[reportArgumentType]
+    stmt = select(WebhookEventSubscription).where(WebhookEventSubscription.endpoint_id == endpoint_id, WebhookEventSubscription.event_type.in_(event_types))
     existing = {item.event_type: item for item in (await session.execute(stmt)).scalars().all()}
     saved: list[WebhookEventSubscription] = []
     for event_type in event_types:
@@ -64,7 +64,7 @@ async def upsert_webhook_subscriptions(session: AsyncSession, endpoint_id: UUID,
 async def list_webhook_subscriptions(session: AsyncSession, endpoint_id: UUID, *, is_active: bool | None = None) -> list[WebhookEventSubscription]:
     stmt = select(WebhookEventSubscription).where(WebhookEventSubscription.endpoint_id == endpoint_id)
     if is_active is not None:
-        stmt = stmt.where(WebhookEventSubscription.is_active == is_active)  # pyright: ignore[reportArgumentType]
+        stmt = stmt.where(WebhookEventSubscription.is_active == is_active)
     stmt = stmt.order_by(WebhookEventSubscription.event_type)
     return list((await session.execute(stmt)).scalars().all())
 
@@ -103,7 +103,7 @@ async def list_webhook_deliveries(session: AsyncSession, *, user_id: UUID | None
     return list((await session.execute(stmt)).scalars().all())
 
 async def get_pending_deliveries_for_retry(session: AsyncSession, now: datetime, limit: int = 100) -> list[WebhookDelivery]:
-    next_retry_at = cast(Any, WebhookDelivery.next_retry_at)
+    next_retry_at = getattr(WebhookDelivery, "next_retry_at")
     stmt = select(WebhookDelivery).where(WebhookDelivery.status == "retrying", next_retry_at.is_not(None), next_retry_at <= now).order_by(next_retry_at).limit(limit)
     return list((await session.execute(stmt)).scalars().all())
 

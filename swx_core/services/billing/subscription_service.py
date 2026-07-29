@@ -32,10 +32,6 @@ class SubscriptionService:
         self.session = session
 
     @staticmethod
-    def _utc_now_naive() -> datetime:
-        return utc_now()
-
-    @staticmethod
     def _from_stripe_timestamp(timestamp: int | float) -> datetime:
         return datetime.fromtimestamp(timestamp, tz=timezone.utc)
 
@@ -126,13 +122,13 @@ class SubscriptionService:
         stmt = select(Subscription).where(and_(Subscription.account_id == account_id, Subscription.status == SubscriptionStatus.ACTIVE)).with_for_update()
         result = await self.session.execute(stmt)
         active_subs = result.scalars().all()
-        ended_at = self._utc_now_naive()
+        ended_at = utc_now()
         for active_subscription in active_subs:
             active_subscription.status = SubscriptionStatus.CANCELED
             active_subscription.ended_at = ended_at
             self.session.add(active_subscription)
 
-        current_period_start = self._utc_now_naive()
+        current_period_start = utc_now()
         subscription = Subscription(
             account_id=account_id,
             plan_id=plan.id,
@@ -163,10 +159,10 @@ class SubscriptionService:
 
         if immediate:
             subscription.status = SubscriptionStatus.CANCELED
-            subscription.ended_at = self._utc_now_naive()
+            subscription.ended_at = utc_now()
         else:
             subscription.cancel_at_period_end = True
-            subscription.canceled_at = self._utc_now_naive()
+            subscription.canceled_at = utc_now()
 
         try:
             self.session.add(subscription)

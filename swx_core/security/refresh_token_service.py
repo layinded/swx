@@ -21,7 +21,7 @@ import jwt
 from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, delete
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 from typing import Any, Optional, cast
 
 from swx_core.config.settings import settings

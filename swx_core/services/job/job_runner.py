@@ -15,7 +15,7 @@ Rules:
 import asyncio
 import uuid
 import socket
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 from typing import Optional, Dict, Any, Callable, Awaitable
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update, text
@@ -47,10 +47,6 @@ def get_worker_id() -> str:
     """Generate a unique worker identifier."""
     hostname = socket.gethostname()
     return f"{hostname}-{uuid.uuid4().hex[:8]}"
-
-def _utc_now() -> datetime:
-    """Get current UTC timezone-aware datetime."""
-    return utc_now()
 
 class JobRunner:
     """
@@ -148,7 +144,7 @@ class JobRunner:
         """Release locks that have timed out."""
         async with AsyncSessionLocal() as session:
             try:
-                now = _utc_now()
+                now = utc_now()
                 cutoff = now - timedelta(seconds=self.lock_timeout)
                 
                 stmt = (
@@ -223,7 +219,7 @@ class JobRunner:
         """
         async with AsyncSessionLocal() as session:
             try:
-                now_naive = _utc_now()
+                now_naive = utc_now()
 
                 # Find next job: pending/queued, scheduled_at <= now, ordered by priority.
                 # Use raw SQL for status filter so we send 'pending'/'queued' literals;
@@ -304,7 +300,7 @@ class JobRunner:
                 
                 # Mark as completed
                 job.status = JobStatus.completed
-                job.completed_at = _utc_now()
+                job.completed_at = utc_now()
                 job.result = result if result else {}
                 job.locked_at = None
                 job.locked_by = None
@@ -364,7 +360,7 @@ class JobRunner:
                     if job.attempts < job.max_attempts:
                         # Retry with exponential backoff
                         backoff_seconds = 2 ** job.attempts  # 2, 4, 8, 16...
-                        scheduled_at = _utc_now() + timedelta(seconds=backoff_seconds)
+                        scheduled_at = utc_now() + timedelta(seconds=backoff_seconds)
                         
                         job.status = JobStatus.queued
                         job.scheduled_at = scheduled_at
@@ -397,7 +393,7 @@ class JobRunner:
                 # Check if should retry
                 if job.attempts < job.max_attempts:
                     backoff_seconds = 2 ** job.attempts
-                    scheduled_at = _utc_now() + timedelta(seconds=backoff_seconds)
+                    scheduled_at = utc_now() + timedelta(seconds=backoff_seconds)
                     
                     job.status = JobStatus.queued
                     job.scheduled_at = scheduled_at
@@ -419,7 +415,7 @@ class JobRunner:
         """Mark a job as failed (dead letter)."""
         try:
             job.status = JobStatus.dead_letter
-            job.completed_at = _utc_now()
+            job.completed_at = utc_now()
             job.last_error = {"error": error_msg, "attempt": job.attempts, "final": True}
             job.locked_at = None
             job.locked_by = None

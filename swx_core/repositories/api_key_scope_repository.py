@@ -1,6 +1,6 @@
 # pyright: reportExplicitAny=false, reportAny=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingTypeArgument=false, reportAttributeAccessIssue=false, reportArgumentType=false, reportUnnecessaryTypeIgnoreComment=false
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 from swx_core.utils.time import utc_now
 
