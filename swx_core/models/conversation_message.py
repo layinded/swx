@@ -1,7 +1,7 @@
 # pyright: reportUnannotatedClassAttribute=false
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Column, DateTime, Integer, Text, func
@@ -10,11 +10,7 @@ from sqlalchemy.schema import ForeignKey
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+from swx_core.utils.time import utc_now
 
 class ConversationMessageBase(Base):
     conversation_id: uuid.UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_conversation.id"), nullable=False, index=True))
@@ -25,13 +21,11 @@ class ConversationMessageBase(Base):
     metadata_: dict[str, Any] | None = Field(default=None, sa_column=Column("metadata", JSONB, nullable=True))
     parent_message_id: uuid.UUID | None = Field(default=None, sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_conversation_message.id"), nullable=True))
 
-
 class ConversationMessage(ConversationMessageBase, table=True):
     __tablename__ = "swx_conversation_message"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
 
 class ConversationMessageCreate(SQLModel):
     role: str = Field(max_length=20)
@@ -41,11 +35,9 @@ class ConversationMessageCreate(SQLModel):
     metadata_: dict[str, Any] | None = None
     parent_message_id: uuid.UUID | None = None
 
-
 class ConversationMessageUpdate(SQLModel):
     content: str | None = None
     metadata_: dict[str, Any] | None = None
-
 
 class ConversationMessagePublic(SQLModel):
     id: uuid.UUID

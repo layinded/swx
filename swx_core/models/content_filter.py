@@ -1,7 +1,7 @@
 # pyright: reportUnannotatedClassAttribute=false, reportExplicitAny=false
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Boolean, Column, DateTime, String, Text, func
@@ -9,11 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+from swx_core.utils.time import utc_now
 
 class ContentFilterBase(Base):
     name: str = Field(max_length=200)
@@ -25,14 +21,12 @@ class ContentFilterBase(Base):
     enabled: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default="true"))
     category: str | None = Field(default=None, sa_column=Column(String(100), nullable=True))
 
-
 class ContentFilter(ContentFilterBase, table=True):
     __tablename__ = "swx_content_filter"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-    updated_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now()))
-
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()))
 
 class ContentFilterCreate(SQLModel):
     name: str = Field(max_length=200)
@@ -44,7 +38,6 @@ class ContentFilterCreate(SQLModel):
     enabled: bool = True
     category: str | None = None
 
-
 class ContentFilterUpdate(SQLModel):
     name: str | None = None
     description: str | None = None
@@ -54,7 +47,6 @@ class ContentFilterUpdate(SQLModel):
     action: str | None = None
     enabled: bool | None = None
     category: str | None = None
-
 
 class ContentFilterPublic(SQLModel):
     id: uuid.UUID

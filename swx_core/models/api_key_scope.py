@@ -3,7 +3,7 @@
 import hashlib
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, Text, func
@@ -12,10 +12,7 @@ from sqlalchemy.schema import ForeignKey
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+from swx_core.utils.time import utc_now
 
 
 def _hash_key(raw_key: str) -> str:
@@ -42,8 +39,8 @@ class ApiKey(ApiKeyBase, table=True):
     __tablename__ = "swx_api_key"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=_utc_now, sa_column=Column(DateTime, server_default=func.now(), nullable=False))
-    updated_at: datetime = Field(default_factory=_utc_now, sa_column=Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False))
 
 
 class ApiKeyScopeBase(Base):
@@ -57,7 +54,7 @@ class ApiKeyScope(ApiKeyScopeBase, table=True):
     __tablename__ = "swx_api_key_scope"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=_utc_now, sa_column=Column(DateTime, server_default=func.now(), nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False))
 
 
 class ApiKeyCreate(SQLModel):

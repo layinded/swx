@@ -1,7 +1,7 @@
 # pyright: reportUnannotatedClassAttribute=false
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Column, DateTime, Integer, String, func, text
@@ -9,11 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+from swx_core.utils.time import utc_now
 
 class EmailProviderConfigBase(Base):
     name: str = Field(index=True, unique=True, max_length=50)
@@ -32,7 +28,6 @@ class EmailProviderConfigBase(Base):
     timeout_seconds: int = 30
     extra_config: dict[str, Any] = Field(default_factory=dict)
 
-
 class EmailProviderConfig(EmailProviderConfigBase, table=True):
     __tablename__ = "swx_email_provider_config"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
@@ -41,9 +36,8 @@ class EmailProviderConfig(EmailProviderConfigBase, table=True):
     max_retries: int = Field(default=3, sa_column=Column(Integer, nullable=False, server_default="3"))
     timeout_seconds: int = Field(default=30, sa_column=Column(Integer, nullable=False, server_default="30"))
     extra_config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")))
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-    updated_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now()))
-
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()))
 
 class EmailProviderConfigCreate(SQLModel):
     name: str = Field(max_length=50)
@@ -61,7 +55,6 @@ class EmailProviderConfigCreate(SQLModel):
     max_retries: int = 3
     timeout_seconds: int = 30
     extra_config: dict[str, Any] = Field(default_factory=dict)
-
 
 class EmailProviderConfigPublic(EmailProviderConfigBase):
     id: uuid.UUID

@@ -28,6 +28,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 
 class UserBase(Base):
@@ -72,12 +73,12 @@ class User(UserBase, table=True):
     provider_id: Optional[str] = Field(default=None, unique=True, max_length=255)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        sa_column=Column(DateTime, server_default=func.now(), nullable=False)
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        sa_column=Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     )
 
 

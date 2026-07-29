@@ -5,11 +5,12 @@ Reusable mixins for SQLAlchemy models.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, Boolean, DateTime, func, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Field
+from swx_core.utils.time import utc_now
 
 
 class TimestampMixin:
@@ -22,12 +23,12 @@ class TimestampMixin:
             name: str
     """
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        sa_column=Column(DateTime, server_default=func.now(), nullable=False)
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        sa_column=Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     )
 
 
@@ -52,12 +53,12 @@ class SoftDeleteMixin:
     )
     deleted_at: Optional[datetime] = Field(
         default=None,
-        sa_column=Column(DateTime, nullable=True)
+        sa_column=Column(DateTime(timezone=True), nullable=True)
     )
     
     def soft_delete(self) -> None:
         self.is_deleted = True
-        self.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        self.deleted_at = utc_now()
     
     def restore(self) -> None:
         self.is_deleted = False
@@ -191,7 +192,7 @@ class MetadataMixin:
             id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
             name: str
     """
-    metadata: dict = Field(default_factory=dict, sa_column=Column("metadata"))
+    metadata: dict[str, object] = Field(default_factory=dict, sa_column=Column("metadata"))
 
 
 class FullModelMixin(TimestampMixin, UUIDPrimaryKeyMixin, ActiveMixin):

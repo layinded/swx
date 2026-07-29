@@ -1,7 +1,7 @@
 # pyright: reportUnannotatedClassAttribute=false
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Index, String, Text, func, text
@@ -10,11 +10,7 @@ from sqlalchemy.schema import ForeignKey
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+from swx_core.utils.time import utc_now
 
 class EntryType(str, Enum):
     CREDIT = "credit"
@@ -22,14 +18,12 @@ class EntryType(str, Enum):
     REFUND = "refund"
     ADJUSTMENT = "adjustment"
 
-
 class ReferenceType(str, Enum):
     TOPUP = "topup"
     USAGE = "usage"
     REFUND = "refund"
     ADJUSTMENT = "adjustment"
     EXPIRY = "expiry"
-
 
 class LedgerEntry(Base, table=True):
     __tablename__ = "swx_ledger_entry"  # pyright: ignore[reportAssignmentType]
@@ -51,9 +45,8 @@ class LedgerEntry(Base, table=True):
         sa_column=Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
     balance_after: int = Field(nullable=False)
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, server_default=func.now(), nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False))
     created_by: uuid.UUID | None = Field(default=None, sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_users.id"), nullable=True))
-
 
 class LedgerBalance(Base, table=True):
     __tablename__ = "swx_ledger_balance"  # pyright: ignore[reportAssignmentType]
@@ -63,8 +56,7 @@ class LedgerBalance(Base, table=True):
     currency: str = Field(default="USD", sa_column=Column(String(3), nullable=False, server_default=text("'USD'")))
     balance: int = Field(nullable=False)
     last_entry_id: uuid.UUID | None = Field(default=None, sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_ledger_entry.id"), nullable=True))
-    updated_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False))
-
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False))
 
 class IdempotencyRecord(Base, table=True):
     __tablename__ = "swx_idempotency_record"  # pyright: ignore[reportAssignmentType]
@@ -74,8 +66,7 @@ class IdempotencyRecord(Base, table=True):
     account_id: uuid.UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), nullable=False, index=True))
     entry_id: uuid.UUID | None = Field(default=None, sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_ledger_entry.id"), nullable=True))
     status: str = Field(default="completed", sa_column=Column(String(20), nullable=False, server_default=text("'completed'")))
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, server_default=func.now(), nullable=False))
-
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False))
 
 class LedgerEntryBase(SQLModel):
     account_id: uuid.UUID
@@ -90,11 +81,9 @@ class LedgerEntryBase(SQLModel):
     balance_after: int
     created_by: uuid.UUID | None = None
 
-
 class LedgerEntryPublic(LedgerEntryBase):
     id: uuid.UUID
     created_at: datetime
-
 
 class LedgerBalanceBase(SQLModel):
     account_id: uuid.UUID
@@ -102,11 +91,9 @@ class LedgerBalanceBase(SQLModel):
     balance: int
     last_entry_id: uuid.UUID | None = None
 
-
 class LedgerBalancePublic(LedgerBalanceBase):
     id: uuid.UUID
     updated_at: datetime
-
 
 class CreditRequest(SQLModel):
     account_id: uuid.UUID
@@ -117,10 +104,8 @@ class CreditRequest(SQLModel):
     idempotency_key: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=500)
 
-
 class DebitRequest(CreditRequest):
     pass
-
 
 class TransferRequest(SQLModel):
     from_account_id: uuid.UUID
@@ -129,7 +114,6 @@ class TransferRequest(SQLModel):
     currency: str = Field(default="USD", max_length=3)
     idempotency_key: str = Field(max_length=255)
     description: str | None = Field(default=None, max_length=500)
-
 
 class LedgerSummary(SQLModel):
     account_id: uuid.UUID

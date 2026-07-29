@@ -1,7 +1,7 @@
 # pyright: reportUnannotatedClassAttribute=false
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Float, Index, String, func, text
@@ -9,16 +9,11 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+from swx_core.utils.time import utc_now
 
 class CurrencyStatus(str, Enum):
     ACTIVE = "active"
     DISABLED = "disabled"
-
 
 class CurrencyBase(SQLModel):
     code: str = Field(max_length=3)
@@ -31,7 +26,6 @@ class CurrencyBase(SQLModel):
     supported_providers: list[str] = Field(default_factory=list)
     extra_data: dict[str, object] = Field(default_factory=dict, serialization_alias="metadata")
 
-
 class Currency(CurrencyBase, Base, table=True):
     __tablename__ = "swx_currency"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (Index("idx_swx_currency_status_base", "status", "is_base"), {"extend_existing": True})
@@ -39,13 +33,11 @@ class Currency(CurrencyBase, Base, table=True):
     code: str = Field(sa_column=Column(String(3), nullable=False, unique=True, index=True))
     supported_providers: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")))
     extra_data: dict[str, object] = Field(default_factory=dict, sa_column=Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")))
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-    updated_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now()))
-
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()))
 
 class CurrencyCreate(CurrencyBase):
     pass
-
 
 class CurrencyUpdate(SQLModel):
     name: str | None = Field(default=None, max_length=100)
@@ -57,7 +49,6 @@ class CurrencyUpdate(SQLModel):
     supported_providers: list[str] | None = None
     extra_data: dict[str, object] | None = Field(default=None, serialization_alias="metadata")
 
-
 class CurrencyPublic(CurrencyBase):
     id: uuid.UUID
     created_at: datetime
@@ -66,13 +57,11 @@ class CurrencyPublic(CurrencyBase):
     class Config:
         from_attributes: bool = True
 
-
 class ExchangeRateBase(SQLModel):
     base_currency: str = Field(max_length=3)
     quote_currency: str = Field(max_length=3)
     rate: float
     source: str | None = Field(default=None, max_length=50)
-
 
 class ExchangeRate(ExchangeRateBase, Base, table=True):
     __tablename__ = "swx_exchange_rate"  # pyright: ignore[reportAssignmentType]
@@ -81,9 +70,8 @@ class ExchangeRate(ExchangeRateBase, Base, table=True):
     base_currency: str = Field(sa_column=Column(String(3), nullable=False, index=True))
     quote_currency: str = Field(sa_column=Column(String(3), nullable=False, index=True))
     rate: float = Field(sa_column=Column(Float, nullable=False))
-    fetched_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-
+    fetched_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
 
 class ExchangeRatePublic(ExchangeRateBase):
     id: uuid.UUID
@@ -93,14 +81,12 @@ class ExchangeRatePublic(ExchangeRateBase):
     class Config:
         from_attributes: bool = True
 
-
 class WalletBase(SQLModel):
     account_id: uuid.UUID
     currency: str = Field(max_length=3)
     balance: int = 0
     is_active: bool = True
     extra_data: dict[str, object] = Field(default_factory=dict, serialization_alias="metadata")
-
 
 class Wallet(WalletBase, Base, table=True):
     __tablename__ = "swx_wallet"  # pyright: ignore[reportAssignmentType]
@@ -109,9 +95,8 @@ class Wallet(WalletBase, Base, table=True):
     account_id: uuid.UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), nullable=False, index=True))
     currency: str = Field(sa_column=Column(String(3), nullable=False))
     extra_data: dict[str, object] = Field(default_factory=dict, sa_column=Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")))
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-    updated_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now()))
-
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()))
 
 class WalletPublic(WalletBase):
     id: uuid.UUID
@@ -121,12 +106,10 @@ class WalletPublic(WalletBase):
     class Config:
         from_attributes: bool = True
 
-
 class WalletTransactionRequest(SQLModel):
     amount_nano: int = Field(gt=0)
     reference: str = Field(max_length=255)
     idempotency_key: str = Field(max_length=255)
-
 
 class ConvertRequest(SQLModel):
     from_currency: str = Field(max_length=3)
@@ -134,13 +117,11 @@ class ConvertRequest(SQLModel):
     amount_nano: int = Field(gt=0)
     idempotency_key: str = Field(max_length=255)
 
-
 class ConvertResponse(SQLModel):
     from_wallet: WalletPublic
     to_wallet: WalletPublic
     converted_amount_nano: int
     rate: float
-
 
 CURRENCY_DEFAULTS: list[dict[str, object]] = [
     {"code": "USD", "name": "US Dollar", "symbol": "$", "decimals": 2, "is_base": True, "supported_providers": ["paystack", "flutterwave"]},

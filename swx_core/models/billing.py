@@ -5,7 +5,7 @@ This module defines the database models for the billing and entitlement system.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
 from sqlalchemy import Column, ForeignKey, Integer, String, text
@@ -13,10 +13,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship
 from swx_core.models.base import Base
-
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+from swx_core.utils.time import utc_now
 
 class BillingAccountType(str, Enum):
     USER = "user"
@@ -60,8 +57,8 @@ class BillingAccount(Base, table=True):
     stripe_customer_id: Optional[str] = Field(default=None, unique=True, index=True)
     billing_email: Optional[str] = Field(default=None)
     
-    created_at: datetime = Field(default_factory=_utc_now_naive)
-    updated_at: datetime = Field(default_factory=_utc_now_naive)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     subscriptions: List["Subscription"] = Relationship(back_populates="account")
 
@@ -78,7 +75,7 @@ class Feature(Base, table=True):
     feature_type: FeatureType = Field(default=FeatureType.BOOLEAN)
     unit: Optional[str] = None # e.g., "tokens", "requests"
     
-    created_at: datetime = Field(default_factory=_utc_now_naive)
+    created_at: datetime = Field(default_factory=utc_now)
 
 class Plan(Base, table=True):
     """
@@ -110,8 +107,8 @@ class Plan(Base, table=True):
         sa_column=Column(String(3), nullable=True),
     )
     
-    created_at: datetime = Field(default_factory=_utc_now_naive)
-    updated_at: datetime = Field(default_factory=_utc_now_naive)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 class PlanEntitlement(Base, table=True):
     """
@@ -140,7 +137,7 @@ class PlanEntitlement(Base, table=True):
     # Value can be a boolean string ("true"), a number ("1000"), or a config JSON
     value: str 
     
-    created_at: datetime = Field(default_factory=_utc_now_naive)
+    created_at: datetime = Field(default_factory=utc_now)
 
 class Subscription(Base, table=True):
     """
@@ -168,7 +165,7 @@ class Subscription(Base, table=True):
     
     status: SubscriptionStatus = Field(default=SubscriptionStatus.ACTIVE, index=True)
     
-    current_period_start: datetime = Field(default_factory=_utc_now_naive)
+    current_period_start: datetime = Field(default_factory=utc_now)
     current_period_end: Optional[datetime] = None
     
     cancel_at_period_end: bool = Field(default=False)
@@ -182,8 +179,8 @@ class Subscription(Base, table=True):
         sa_column=Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
     )
     
-    created_at: datetime = Field(default_factory=_utc_now_naive)
-    updated_at: datetime = Field(default_factory=_utc_now_naive)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
     account: BillingAccount = Relationship(back_populates="subscriptions")
 
@@ -223,5 +220,5 @@ class UsageRecord(Base, table=True):
     period_start: datetime = Field(index=True)
     period_end: datetime = Field(index=True)
     
-    created_at: datetime = Field(default_factory=_utc_now_naive)
-    updated_at: datetime = Field(default_factory=_utc_now_naive)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)

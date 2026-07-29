@@ -8,11 +8,17 @@ It uses team-scoped roles (TeamRole) instead of system RBAC roles.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import TYPE_CHECKING
 from sqlalchemy import Column, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlmodel import Field, SQLModel, Relationship
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
+
+if TYPE_CHECKING:
+    from swx_core.models.team_role import TeamRole
+    from swx_core.models.user import User
 
 
 class TeamMemberBase(Base):
@@ -49,7 +55,7 @@ class TeamMember(TeamMemberBase, table=True):
         updated_at (datetime): When the membership was last updated.
     """
 
-    __tablename__ = "swx_team_member"  # type: ignore
+    __tablename__ = "swx_team_member"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (
         UniqueConstraint("team_id", "user_id", name="uq_team_member_user_team"),
         {"extend_existing": True},
@@ -72,10 +78,10 @@ class TeamMember(TeamMemberBase, table=True):
             nullable=False,
         )
     )
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc).replace(tzinfo=None)}
+        default_factory=utc_now,
+        sa_column_kwargs={"onupdate": utc_now}
     )
     
     user: "User" = Relationship()  # type: ignore

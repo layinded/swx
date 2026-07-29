@@ -1,7 +1,7 @@
 # pyright: reportUnannotatedClassAttribute=false, reportExplicitAny=false
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Column, DateTime, String, func
@@ -11,11 +11,7 @@ from sqlmodel import Field, SQLModel
 
 from swx_core.config.settings import SAFETY_MAX_CONTENT_LENGTH
 from swx_core.models.base import Base
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+from swx_core.utils.time import utc_now
 
 class SafetyCheckBase(Base):
     content_type: str = Field(max_length=50)
@@ -29,13 +25,11 @@ class SafetyCheckBase(Base):
     action_taken: str = Field(default="none", max_length=20)
     metadata_: dict[str, Any] | None = Field(default=None, sa_column=Column("metadata", JSONB, nullable=True))
 
-
 class SafetyCheck(SafetyCheckBase, table=True):
     __tablename__ = "swx_safety_check"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
 
 class SafetyCheckCreate(SQLModel):
     content_type: str = Field(max_length=50)
@@ -49,13 +43,11 @@ class SafetyCheckCreate(SQLModel):
     action_taken: str = "none"
     metadata_: dict[str, Any] | None = None
 
-
 class SafetyCheckUpdate(SQLModel):
     filter_results: dict[str, Any] | None = None
     overall_verdict: str | None = None
     action_taken: str | None = None
     metadata_: dict[str, Any] | None = None
-
 
 class SafetyCheckPublic(SQLModel):
     id: uuid.UUID
@@ -72,7 +64,6 @@ class SafetyCheckPublic(SQLModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
 
 class SafetyCheckRequest(SQLModel):
     content: str = Field(max_length=SAFETY_MAX_CONTENT_LENGTH)

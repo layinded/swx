@@ -1,7 +1,7 @@
 # pyright: reportUnannotatedClassAttribute=false
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -9,11 +9,7 @@ from sqlalchemy.schema import ForeignKey
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+from swx_core.utils.time import utc_now
 
 class LLMUsageLog(Base, table=True):
     __tablename__ = "swx_llm_usage_log"  # pyright: ignore[reportAssignmentType]
@@ -33,9 +29,8 @@ class LLMUsageLog(Base, table=True):
     latency_ms: int = Field(default=0, sa_column=Column(Integer, nullable=False, server_default="0"))
     success: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default="true"))
     error_message: str | None = Field(default=None, max_length=500)
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
     account_id: uuid.UUID | None = Field(default=None, sa_column=Column(PG_UUID(as_uuid=True), nullable=True, index=True))
-
 
 class LLMUsageLogPublic(SQLModel):
     id: uuid.UUID

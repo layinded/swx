@@ -15,12 +15,14 @@ Schemas:
 - `RefreshTokenPublic`: Public representation of the refresh token.
 """
 
-from typing import Optional
 import uuid
-from datetime import datetime, timezone
-from sqlmodel import SQLModel, Field
-from swx_core.models.base import Base
+from datetime import datetime
+from typing import Any, cast
 
+from sqlmodel import Field
+
+from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 class RefreshTokenBase(Base):
     """
@@ -34,8 +36,7 @@ class RefreshTokenBase(Base):
 
     token: str = Field(..., nullable=False)  # Required refresh token
     expires_at: datetime = Field(nullable=False)  # Expiry timestamp
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-
+    created_at: datetime = Field(default_factory=utc_now)
 
 class RefreshToken(RefreshTokenBase, table=True):
     """
@@ -46,12 +47,11 @@ class RefreshToken(RefreshTokenBase, table=True):
         user_email (str): Email associated with the token.
     """
 
-    __tablename__ = "swx_refresh_token"
-    __table_args__ = {"extend_existing": True}
+    __tablename__ = cast(Any, "swx_refresh_token")
+    __table_args__ = cast(Any, {"extend_existing": True})
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_email: str = Field(index=True)  # Indexed for efficient lookups
-
 
 class RefreshTokenCreate(RefreshTokenBase):
     """
@@ -62,7 +62,6 @@ class RefreshTokenCreate(RefreshTokenBase):
     """
     pass
 
-
 class RefreshTokenUpdate(RefreshTokenBase):
     """
     Schema for updating an existing refresh token.
@@ -71,7 +70,6 @@ class RefreshTokenUpdate(RefreshTokenBase):
         RefreshTokenBase: Base fields for refresh tokens.
     """
     pass
-
 
 class RefreshTokenPublic(RefreshToken):
     """

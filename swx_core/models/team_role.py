@@ -9,11 +9,12 @@ permissions (admin, member, superadmin).
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import Column, String, Boolean, Integer, JSON
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 
 class TeamRoleBase(Base):
@@ -31,7 +32,7 @@ class TeamRoleBase(Base):
     key: str = Field(unique=True, index=True, max_length=50)
     name: str = Field(max_length=100)
     description: Optional[str] = Field(default=None, max_length=500)
-    permissions: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    permissions: dict[str, bool] = Field(default_factory=dict, sa_column=Column(JSON))
     priority: int = Field(default=0)
     is_system: bool = Field(default=False)
 
@@ -50,14 +51,14 @@ class TeamRole(TeamRoleBase, table=True):
         created_at (datetime): Timestamp when role was created.
         updated_at (datetime): Timestamp when role was last updated.
     """
-    __tablename__ = "swx_team_role"
+    __tablename__ = "swx_team_role"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc).replace(tzinfo=None)}
+        default_factory=utc_now,
+        sa_column_kwargs={"onupdate": utc_now}
     )
 
 
@@ -66,7 +67,7 @@ class TeamRoleCreate(SQLModel):
     key: str = Field(max_length=50)
     name: str = Field(max_length=100)
     description: Optional[str] = Field(default=None, max_length=500)
-    permissions: dict = Field(default_factory=dict)
+    permissions: dict[str, bool] = Field(default_factory=dict)
     priority: int = Field(default=0)
     is_system: bool = Field(default=False)
 
@@ -75,7 +76,7 @@ class TeamRoleUpdate(SQLModel):
     """Schema for updating a team role."""
     name: Optional[str] = Field(default=None, max_length=100)
     description: Optional[str] = Field(default=None, max_length=500)
-    permissions: Optional[dict] = Field(default=None)
+    permissions: Optional[dict[str, bool]] = Field(default=None)
     priority: Optional[int] = Field(default=None)
 
 

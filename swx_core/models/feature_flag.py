@@ -1,7 +1,7 @@
 # pyright: reportUnannotatedClassAttribute=false
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Boolean, Column, DateTime, Text, func
@@ -9,11 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+from swx_core.utils.time import utc_now
 
 class FeatureFlagBase(Base):
     key: str = Field(max_length=200, unique=True, index=True)
@@ -24,18 +20,16 @@ class FeatureFlagBase(Base):
     rules: dict[str, Any] | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     variants: dict[str, Any] | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     sticky: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default="false"))
-    start_date: datetime | None = Field(default=None, sa_column=Column(DateTime, nullable=True))
-    end_date: datetime | None = Field(default=None, sa_column=Column(DateTime, nullable=True))
+    start_date: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    end_date: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
     metadata_: dict[str, Any] | None = Field(default=None, sa_column=Column("metadata", JSONB, nullable=True))
-
 
 class FeatureFlag(FeatureFlagBase, table=True):
     __tablename__ = "swx_feature_flag"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-    updated_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now()))
-
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()))
 
 class FeatureFlagCreate(SQLModel):
     key: str = Field(max_length=200)
@@ -50,7 +44,6 @@ class FeatureFlagCreate(SQLModel):
     end_date: datetime | None = None
     metadata_: dict[str, Any] | None = None
 
-
 class FeatureFlagUpdate(SQLModel):
     name: str | None = None
     description: str | None = None
@@ -62,7 +55,6 @@ class FeatureFlagUpdate(SQLModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     metadata_: dict[str, Any] | None = None
-
 
 class FeatureFlagPublic(SQLModel):
     id: uuid.UUID

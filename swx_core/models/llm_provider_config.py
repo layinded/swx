@@ -1,7 +1,7 @@
 # pyright: reportUnannotatedClassAttribute=false
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -10,21 +10,15 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from swx_core.models.base import Base
-
+from swx_core.utils.time import utc_now
 
 SECRET_KEY_TOKENS = ("key", "token", "secret", "password")
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
 
 class LLMProviderType(str, Enum):
     OPENAI = "openai"
     AZURE = "azure"
     OLLAMA = "ollama"
     ANTHROPIC = "anthropic"
-
 
 def mask_credentials_map(credentials: dict[str, Any]) -> dict[str, Any]:
     masked: dict[str, Any] = {}
@@ -34,7 +28,6 @@ def mask_credentials_map(credentials: dict[str, Any]) -> dict[str, Any]:
             continue
         masked[key] = "***" if any(token in key.lower() for token in SECRET_KEY_TOKENS) else value
     return masked
-
 
 class LLMProviderConfigBase(SQLModel):
     provider: str = Field(max_length=50)
@@ -58,7 +51,6 @@ class LLMProviderConfigBase(SQLModel):
     daily_token_limit: int | None = None
     extra_data: dict[str, Any] = Field(default_factory=dict, serialization_alias="metadata")
 
-
 class LLMProviderConfig(LLMProviderConfigBase, Base, table=True):
     __tablename__ = "swx_llm_provider_config"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (
@@ -78,13 +70,11 @@ class LLMProviderConfig(LLMProviderConfigBase, Base, table=True):
     circuit_breaker_reset_seconds: int | None = Field(default=None, sa_column=Column(Integer, nullable=True))
     rate_limit_per_minute: int | None = Field(default=None, sa_column=Column(Integer, nullable=True))
     daily_token_limit: int | None = Field(default=None, sa_column=Column(Integer, nullable=True))
-    created_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now()))
-    updated_at: datetime = Field(default_factory=utc_now_naive, sa_column=Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now()))
-
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()))
 
 class LLMProviderConfigCreate(LLMProviderConfigBase):
     pass
-
 
 class LLMProviderConfigUpdate(SQLModel):
     provider: str | None = Field(default=None, max_length=50)
@@ -107,7 +97,6 @@ class LLMProviderConfigUpdate(SQLModel):
     daily_token_limit: int | None = None
     extra_data: dict[str, Any] | None = Field(default=None, serialization_alias="metadata")
 
-
 class LLMProviderConfigPublic(LLMProviderConfigBase):
     id: uuid.UUID
     credentials: dict[str, Any] = Field(default_factory=dict)
@@ -116,7 +105,6 @@ class LLMProviderConfigPublic(LLMProviderConfigBase):
 
     class Config:
         from_attributes: bool = True
-
 
 LLM_PROVIDER_DEFAULTS: list[dict[str, Any]] = [
     {
