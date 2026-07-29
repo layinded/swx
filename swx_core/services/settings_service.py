@@ -20,7 +20,6 @@ import json
 import os
 from typing import Any, Optional
 from datetime import datetime, timezone, timedelta
-from functools import lru_cache
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -162,16 +161,16 @@ class SettingsService:
     
     def _convert_value(self, value: str, value_type: Optional[SettingValueType]) -> Any:
         """Convert string value to appropriate type."""
-        if value_type == SystemConfigValueType.INT:
+        if value_type == SettingValueType.INT:
             try:
                 return int(value)
             except (ValueError, TypeError):
                 return 0
-        elif value_type == SystemConfigValueType.BOOL:
+        elif value_type == SettingValueType.BOOL:
             if isinstance(value, bool):
                 return value
             return str(value).lower() in ("true", "1", "yes", "on")
-        elif value_type == SystemConfigValueType.JSON:
+        elif value_type == SettingValueType.JSON:
             try:
                 return json.loads(value)
             except (ValueError, TypeError, json.JSONDecodeError):
