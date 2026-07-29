@@ -1,7 +1,7 @@
 """add organization tables
 
 Revision ID: f38a4c8d9b12
-Revises: cb96a87ddcc2
+Revises: f7b6d8e0a2c4
 Create Date: 2026-07-28 00:00:00.000000
 """
 
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision: str = "f38a4c8d9b12"
-down_revision: str | None = "cb96a87ddcc2"
+down_revision: str | None = "f7b6d8e0a2c4"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 
