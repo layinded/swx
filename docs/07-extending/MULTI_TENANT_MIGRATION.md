@@ -62,6 +62,12 @@ cp swx_core/database/migrations/add_tenant_id_migration.py your_project/migratio
 alembic upgrade head
 ```
 
+If you are upgrading to the optional team-scoped support added for `LLMProviderConfig`,
+`Notification`, and `ApiKey`, also copy `swx_core/database/migrations/v2_15_1_add_team_id_to_platform_models.py`
+into your project's Alembic versions directory and run `alembic upgrade head`. That migration adds
+nullable `team_id` columns, foreign keys to `swx_team.id`, and indexes for existing databases while
+preserving platform-level rows with `team_id = NULL`.
+
 #### Step 2: Create Default Tenant
 
 ```sql

@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.1] - 2026-07-29
+
+### Added — Multi-Tenancy for Platform-Level Models
+
+Three platform-level models now support optional team scoping via a nullable `team_id` foreign key to `swx_team.id`. This enables multi-tenant projects to adopt these native models without forking.
+
+---
+
+#### What Changed
+
+- **`LLMProviderConfig`** — Added nullable `team_id` FK. `NULL` = platform-level default provider (visible to all teams). Non-`NULL` = team-specific provider override. Repository functions `get_all()` and `get_by_provider()` accept an optional `team_id` parameter for filtering.
+
+- **`Notification`** — Added nullable `team_id` FK. `NULL` = platform announcement (all users). Non-`NULL` = team-scoped notification. Repository functions `list_notifications()` and `count_notifications()` accept an optional `team_id` parameter.
+
+- **`ApiKey`** — Added nullable `team_id` FK. `NULL` = platform-wide key (admin/service key). Non-`NULL` = team-scoped key. Repository functions `list_api_keys()` and `count_api_keys()` accept an optional `team_id` parameter.
+
+- **Data migration** — `swx_core/database/migrations/v2_15_1_add_team_id_to_platform_models.py` adds the `team_id` column + FK + index to existing databases. Copy to project migrations, set `down_revision`, run `alembic upgrade head`.
+
+- **Template migrations** — The 3 template migrations that create these tables now include the `team_id` column, FK, and index.
+
+- **Docs** — `docs/04-core-concepts/MULTI_TENANT.md` and `docs/07-extending/MULTI_TENANT_MIGRATION.md` updated with the new team-scoping semantics, query patterns, and migration instructions.
+
+---
+
+#### Design Rationale
+
+This follows the industrial-standard nullable `team_id` pattern (used by Stripe, Supabase, GitHub) and matches the existing `UserRole` model in swx-core which already uses nullable `team_id`. The existing `TenantAwareRepository` class and `core/tenant.py` context infrastructure provide automatic tenant filtering for projects that prefer class-based repositories.
+
+---
+
+#### Backward Compatibility
+
+- Existing rows get `team_id = NULL` (platform-level) — behavior unchanged
+- All repository functions default `team_id = None` — no filtering when not provided
+- No breaking change to existing API responses
+
+---
+
 ## [2.15.0] - 2026-07-29
 
 ### Changed — Timezone-Aware Timestamps (Breaking)

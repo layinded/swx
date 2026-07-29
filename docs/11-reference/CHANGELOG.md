@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.15.0  
+**Version:** 2.15.1  
 **Last Updated:** 2026-07-29
 
 ---
@@ -29,6 +29,30 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.15.1 (2026-07-29)
+
+**Multi-Tenancy for Platform-Level Models**
+
+Added optional team scoping to `LLMProviderConfig`, `Notification`, and `ApiKey` via nullable `team_id` FK to `swx_team.id`. `NULL` = platform-level, non-`NULL` = team-scoped. Backward compatible — existing rows get `NULL`.
+
+#### Changes
+
+1. **LLMProviderConfig** — nullable `team_id`, `get_all()` and `get_by_provider()` accept `team_id` filter
+2. **Notification** — nullable `team_id`, `list_notifications()` and `count_notifications()` accept `team_id` filter
+3. **ApiKey** — nullable `team_id`, `list_api_keys()` and `count_api_keys()` accept `team_id` filter
+4. **Data migration** — `v2_15_1_add_team_id_to_platform_models.py` for existing databases
+5. **Template migrations** — 3 template migrations updated with `team_id` column + FK + index
+6. **Docs** — `MULTI_TENANT.md` and `MULTI_TENANT_MIGRATION.md` updated
+
+#### Migration Guide
+
+1. Install `swx-core>=2.15.1`
+2. Copy `v2_15_1_add_team_id_to_platform_models.py` to project's `migrations/versions/`
+3. Set `down_revision` to current head
+4. Run `alembic upgrade head`
+
+---
 
 ### Version 2.15.0 (2026-07-29)
 

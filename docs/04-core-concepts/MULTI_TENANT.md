@@ -149,6 +149,24 @@ with super_admin_context():
 repository = TenantAwareRepository(model=Task, team_field="team_id")
 ```
 
+### Platform-Level and Team-Scoped Records
+
+`LLMProviderConfig`, `Notification`, and `ApiKey` support an optional `team_id`.
+
+- `team_id IS NULL` - platform-level record visible to all teams
+- `team_id IS NOT NULL` - team-scoped record visible only within that team context
+
+Use the repository or service methods that accept `team_id` to include the correct scope:
+
+```python
+api_keys = await list_api_keys(session, team_id=team_id)
+provider_configs = await repository.get_all(session, team_id=team_id)
+notifications = await repository.get_all(session, team_id=team_id)
+```
+
+When you want automatic filtering instead of passing `team_id` manually, use `TenantAwareRepository`
+with `team_field="team_id"` so the current team context is applied automatically.
+
 ---
 
 ## TenantContextMiddleware
