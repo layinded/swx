@@ -6,11 +6,10 @@ Standardized API response utilities.
 
 from typing import Generic, TypeVar, Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-from datetime import datetime, timezone
-
+from datetime import datetime
+from swx_core.utils.time import utc_now
 
 T = TypeVar("T")
-
 
 class APIResponse(BaseModel, Generic[T]):
     """
@@ -32,7 +31,7 @@ class APIResponse(BaseModel, Generic[T]):
     message: Optional[str] = Field(default=None, description="Human-readable message")
     errors: Optional[List[str]] = Field(default=None, description="List of error messages")
     meta: Optional[Dict[str, Any]] = Field(default=None, description="Additional metadata")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None), description="Response timestamp")
+    timestamp: datetime = Field(default_factory=lambda: utc_now(), description="Response timestamp")
     
     class Config:
         arbitrary_types_allowed = True
@@ -129,7 +128,6 @@ class APIResponse(BaseModel, Generic[T]):
             message=None,
         )
 
-
 class DataResponse(BaseModel, Generic[T]):
     """
     Simple data-only response without metadata.
@@ -144,7 +142,6 @@ class DataResponse(BaseModel, Generic[T]):
     
     class Config:
         arbitrary_types_allowed = True
-
 
 class ErrorResponse(BaseModel):
     """
@@ -164,15 +161,13 @@ class ErrorResponse(BaseModel):
     message: str = Field(..., description="Error message")
     errors: Optional[List[str]] = Field(default=None, description="Detailed error messages")
     details: Optional[Dict[str, Any]] = Field(default=None, description="Additional error details")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None), description="Error timestamp")
-
+    timestamp: datetime = Field(default_factory=lambda: utc_now(), description="Error timestamp")
 
 class ValidationError(BaseModel):
     """Validation error detail."""
     field: str = Field(..., description="Field that failed validation")
     message: str = Field(..., description="Validation error message")
     value: Optional[Any] = Field(default=None, description="Invalid value")
-
 
 class ValidationErrorResponse(BaseModel):
     """
@@ -197,23 +192,20 @@ class ValidationErrorResponse(BaseModel):
     code: str = Field(default="VALIDATION_ERROR", description="Error code")
     message: str = Field(default="Validation failed", description="Error message")
     errors: List[ValidationError] = Field(..., description="Validation errors")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None), description="Error timestamp")
-
+    timestamp: datetime = Field(default_factory=lambda: utc_now(), description="Error timestamp")
 
 class SuccessResponse(BaseModel):
     """Simple success response without data."""
     success: bool = Field(default=True)
     message: str = Field(default="Success")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-
+    timestamp: datetime = Field(default_factory=lambda: utc_now())
 
 class DeleteResponse(BaseModel):
     """Response for delete operations."""
     success: bool = Field(default=True)
     message: str = Field(default="Resource deleted successfully")
     id: str = Field(..., description="ID of deleted resource")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-
+    timestamp: datetime = Field(default_factory=lambda: utc_now())
 
 class BatchResponse(BaseModel, Generic[T]):
     """
@@ -235,19 +227,17 @@ class BatchResponse(BaseModel, Generic[T]):
     successful: int = Field(..., description="Successfully processed items")
     failed: int = Field(default=0, description="Failed items")
     errors: Optional[List[Dict[str, Any]]] = Field(default=None, description="Errors for failed items")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-
+    timestamp: datetime = Field(default_factory=lambda: utc_now())
 
 class HealthResponse(BaseModel):
     """Health check response."""
     status: str = Field(default="healthy", description="Health status")
     version: str = Field(..., description="Application version")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    timestamp: datetime = Field(default_factory=lambda: utc_now())
     services: Dict[str, str] = Field(
         default_factory=dict,
         description="Status of dependent services"
     )
-
 
 class PagedResponse(BaseModel, Generic[T]):
     """
@@ -279,12 +269,10 @@ class PagedResponse(BaseModel, Generic[T]):
     class Config:
         arbitrary_types_allowed = True
 
-
 # Convenience functions
 def success(message: str = "Success") -> SuccessResponse:
     """Create a simple success response."""
     return SuccessResponse(message=message)
-
 
 def error(message: str, errors: List[str] = None) -> ErrorResponse:
     """Create an error response."""
@@ -293,7 +281,6 @@ def error(message: str, errors: List[str] = None) -> ErrorResponse:
         message=message,
         errors=errors,
     )
-
 
 def validation_error(errors: List[Dict[str, Any]]) -> ValidationErrorResponse:
     """Create a validation error response."""
