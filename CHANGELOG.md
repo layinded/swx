@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.16.1] - 2026-07-29
+
+### Added — NeuronaHealth Production Patterns
+
+7 framework-level features adopted from NeuronaHealth's production deployment. All backward compatible.
+
+---
+
+#### #1 — Security Headers Middleware
+
+New `swx_core/middleware/security_headers_middleware.py`. Adds X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, and HSTS (production only) to all responses.
+
+```python
+from swx_core.middleware.security_headers_middleware import setup_security_headers
+setup_security_headers(app)
+```
+
+#### #2 — Device Registration Model
+
+New `swx_core/models/device.py` for push notification token management. Platform enum (ios/android/web), FCM token, device metadata, status (active/inactive/unregistered), is_primary, last_used_at, extra_data (JSONB).
+
+#### #3 — String-Based Rate Limit Parsing
+
+New `parse_rate_limit("5/minute")` → `(5, 60)` and `enforce_rate_limit(request, limit="5/minute", namespace="auth:login")` in `enforce.py`. Human-readable rate strings for route handlers — no need to look up integer limits from the registry.
+
+#### #4 — Trusted Proxy IP Extraction
+
+New `get_client_ip(request)` in `enforce.py`. Handles X-Forwarded-For chains with `TRUSTED_PROXIES` validation — walks the chain backwards to find the first untrusted IP. Fixes rate limiting accuracy behind reverse proxies.
+
+#### #5 — DB-Driven OTP Bypass with Per-Email Whitelist
+
+`email_otp_service.py` now supports `OTP_BYPASS_EMAILS` setting (comma-separated whitelist). When `OTP_BYPASS_FOR_TESTING=True` and the email is in the whitelist (or whitelist is empty = all emails), OTP is bypassed. New `is_email_bypassed(email)` function. Also adds `OtpInvalidError`, `OtpRateLimitError`, `OtpDeliveryError` exception classes.
+
+#### #6 — Redis-Backed Config Cache for Cross-Worker Invalidation
+
+`SettingsService` now checks Redis before hitting the DB, and writes to Redis on DB miss. `invalidate_cache()` clears both in-process and Redis caches. Uses the container's `redis.client` singleton. Falls back to in-process-only when Redis is unavailable.
+
+#### #7 — SystemConfig Defaults Registry
+
+New `DEFAULT_SYSTEM_CONFIGS` list in `system_config.py` with 10 default config entries (auth token expiry, rate limit toggles, feature flags, job limits, audit retention, password policy, email toggle, maintenance mode). Services can reference these as fallback when DB has no entry.
+
+---
+
+### New Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `OTP_BYPASS_EMAILS` | `""` | Comma-separated email whitelist for OTP bypass |
+| `TRUSTED_PROXIES` | `""` | Comma-separated trusted proxy IPs for X-Forwarded-For parsing |
+
+---
+
 ## [2.16.0] - 2026-07-29
 
 ### Added — Notification System Enhancements (Round 5 Feedback)

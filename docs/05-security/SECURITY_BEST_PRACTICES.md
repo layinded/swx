@@ -405,6 +405,40 @@ token = await get_csrf_token(request, cookie_name="my_csrf_token")
 await set_csrf_cookie(response, token, cookie_name="my_csrf_token")
 ```
 
+**Security Headers Middleware (v2.16.1+):**
+
+Adds standard security headers to all HTTP responses:
+
+```python
+from swx_core.middleware.security_headers_middleware import setup_security_headers
+
+setup_security_headers(app)
+```
+
+Headers added:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `X-XSS-Protection: 1; mode=block`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+- `Strict-Transport-Security` (production only, 2-year max-age with preload)
+
+**Trusted Proxy IP Extraction (v2.16.1+):**
+
+For accurate rate limiting behind reverse proxies (nginx, Cloudflare, AWS ALB):
+
+```python
+# settings.py
+TRUSTED_PROXIES=10.0.0.1,10.0.0.2  # Comma-separated proxy IPs
+```
+
+```python
+from swx_core.services.rate_limit.enforce import get_client_ip
+
+# Walks X-Forwarded-For chain backwards to find first untrusted IP
+real_ip = get_client_ip(request)
+```
+
 **SameSite Cookie Attribute (Default Protection):**
 
 swx-core sets `SameSite=Lax` by default (via `COOKIE_SAMESITE` setting):

@@ -503,6 +503,29 @@ RateLimitMiddleware(
 
 Routes matching these glob patterns skip middleware rate limiting entirely. `enforce_limit()` handles them exclusively. The middleware sets `request.state.rate_limit_handled = True` on exempt routes.
 
+### String-Based Rate Limit API (v2.16.1+)
+
+For routes that need human-readable rate limits without looking up the registry:
+
+```python
+from swx_core.services.rate_limit.enforce import enforce_rate_limit
+
+@router.post("/login")
+async def login(request: Request):
+    await enforce_rate_limit(request, limit="5/minute", namespace="auth:login")
+    ...
+```
+
+Supported formats: `"5/second"`, `"100/minute"`, `"1000/hour"`, `"10000/day"`.
+
+Also available as a standalone parser:
+
+```python
+from swx_core.services.rate_limit.enforce import parse_rate_limit
+
+max_requests, window_seconds = parse_rate_limit("5/minute")  # (5, 60)
+```
+
 ---
 
 ## Usage Examples
