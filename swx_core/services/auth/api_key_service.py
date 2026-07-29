@@ -1,8 +1,9 @@
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Optional
 from uuid import UUID
+from swx_core.utils.time import utc_now
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,10 +15,8 @@ from swx_core.models.api_key_scope import (
 )
 from swx_core.repositories import api_key_scope_repository as repo
 
-
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+    return utc_now()
 
 async def create_api_key(
     session: AsyncSession, user_id: UUID, data: ApiKeyCreate
@@ -54,7 +53,6 @@ async def create_api_key(
         scopes=scopes, expires_at=key.expires_at, created_at=key.created_at,
     )
 
-
 async def rotate_api_key(session: AsyncSession, key_id: UUID, user_id: UUID) -> ApiKeyCreatedResponse:
     old_key = await repo.get_api_key_by_id(session, key_id)
     if old_key is None or old_key.user_id != user_id:
@@ -78,7 +76,6 @@ async def rotate_api_key(session: AsyncSession, key_id: UUID, user_id: UUID) -> 
     })
     return new_response
 
-
 async def revoke_api_key(session: AsyncSession, key_id: UUID, user_id: UUID) -> ApiKeyPublic:
     key = await repo.get_api_key_by_id(session, key_id)
     if key is None or key.user_id != user_id:
@@ -88,7 +85,6 @@ async def revoke_api_key(session: AsyncSession, key_id: UUID, user_id: UUID) -> 
         raise HTTPException(status_code=404, detail="API key not found")
     await event_bus.dispatch("api_key.revoked", payload={"key_id": str(key_id), "user_id": str(user_id)})
     return ApiKeyPublic.model_validate(deactivated)
-
 
 async def validate_api_key(session: AsyncSession, raw_key: str) -> Optional[ApiKeyPublic]:
     hashed = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -100,11 +96,9 @@ async def validate_api_key(session: AsyncSession, raw_key: str) -> Optional[ApiK
     await repo.update_last_used(session, key.id)
     return ApiKeyPublic.model_validate(key)
 
-
 async def list_user_api_keys(session: AsyncSession, user_id: UUID, skip: int = 0, limit: int = 100) -> list[ApiKeyPublic]:
     keys = await repo.list_api_keys(session, user_id=user_id, is_active=None, skip=skip, limit=limit)
     return [ApiKeyPublic.model_validate(k) for k in keys]
-
 
 async def get_api_key_detail(session: AsyncSession, key_id: UUID) -> ApiKeyPublicWithScopes:
     key = await repo.get_api_key_by_id(session, key_id)
@@ -114,7 +108,6 @@ async def get_api_key_detail(session: AsyncSession, key_id: UUID) -> ApiKeyPubli
     public = ApiKeyPublicWithScopes.model_validate(key)
     public.scopes = [ApiKeyScopePublic.model_validate(s) for s in scopes]
     return public
-
 
 async def update_scopes(
     session: AsyncSession, key_id: UUID, add: list[dict[str, str]], remove: list[UUID]
@@ -128,7 +121,6 @@ async def update_scopes(
         await repo.remove_scopes(session, key_id, remove)
     await event_bus.dispatch("api_key.scope_changed", payload={"key_id": str(key_id)})
     return await get_api_key_detail(session, key_id)
-
 
 async def get_usage_analytics(session: AsyncSession, key_id: UUID) -> dict[str, Any]:
     key = await repo.get_api_key_by_id(session, key_id)

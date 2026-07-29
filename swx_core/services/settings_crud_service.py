@@ -5,7 +5,8 @@ Service layer for system settings CRUD operations with validation and audit.
 """
 
 import json
-from datetime import datetime, timezone
+from swx_core.utils.time import utc_now
+
 from typing import Any, List, Optional, cast
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +26,6 @@ from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOut
 from swx_core.services.alert_engine import alert_engine
 from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertActorType
 
-
 # Settings that should trigger alerts when changed
 HIGH_RISK_SETTINGS = {
     "auth.access_token_expire_minutes",
@@ -33,7 +33,6 @@ HIGH_RISK_SETTINGS = {
     "rate_limit.free.read.burst",
     "rate_limit.free.write.burst",
 }
-
 
 def validate_setting_value(value: str, value_type: SettingValueType) -> bool:
     """Validate setting value matches its type."""
@@ -49,7 +48,6 @@ def validate_setting_value(value: str, value_type: SettingValueType) -> bool:
     except (ValueError, json.JSONDecodeError):
         return False
 
-
 async def _invalidate_runtime_setting_caches(key: str) -> None:
     # Invalidate L1/L2 runtime caches if enabled
     if env_settings.FEATURE_FLAG_CACHE_ENABLED and key.startswith("feature."):
@@ -62,7 +60,6 @@ async def _invalidate_runtime_setting_caches(key: str) -> None:
         from swx_core.utils.runtime_cache import invalidate_cached_setting
 
         await invalidate_cached_setting(key)
-
 
 def validate_security_guards(key: str, value: str, value_type: SettingValueType) -> tuple[bool, Optional[str]]:
     """
@@ -98,7 +95,6 @@ def validate_security_guards(key: str, value: str, value_type: SettingValueType)
     
     return True, None
 
-
 async def list_settings_service(
     session: AsyncSession,
     category: Optional[str] = None,
@@ -112,7 +108,6 @@ async def list_settings_service(
     stmt = stmt.offset(skip).limit(limit).order_by(SystemConfig.key)
     result = await session.execute(stmt)
     return list(result.scalars().all())
-
 
 async def get_setting_service(
     session: AsyncSession,
@@ -133,7 +128,6 @@ async def get_setting_service(
         return None
     return config
 
-
 async def get_setting_by_id_service(
     session: AsyncSession,
     setting_id: UUID,
@@ -144,7 +138,6 @@ async def get_setting_by_id_service(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Setting not found")
     return config
-
 
 async def create_setting_service(
     session: AsyncSession,
@@ -192,7 +185,6 @@ async def create_setting_service(
     logger.info(f"Created setting: {setting_in.key} = {setting_in.value}")
     return config
 
-
 async def update_setting_service(
     session: AsyncSession,
     key: str,
@@ -231,7 +223,7 @@ async def update_setting_service(
         setattr(config, "metadata_", setting_in.metadata)
     
     config.updated_by = updated_by
-    config.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    config.updated_at = utc_now()
     
     # Create history record
     history = SystemConfigHistory(
@@ -282,7 +274,6 @@ async def update_setting_service(
     
     logger.info(f"Updated setting: {key} = {old_value} -> {config.value} (by {updated_by})")
     return config
-
 
 async def get_setting_history_service(
     session: AsyncSession,

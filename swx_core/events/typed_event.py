@@ -19,12 +19,12 @@ Usage:
             return self.payload["data"]["email"]
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, ClassVar, Dict, Optional
 from uuid import uuid4
+from swx_core.utils.time import utc_now
 
 from swx_core.events.dispatcher import Event
-
 
 @dataclass
 class TypedEvent:
@@ -61,7 +61,7 @@ class TypedEvent:
     event_type: ClassVar[str] = "typed.event"
     name: str
     payload: Dict[str, Any]
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    timestamp: datetime = field(default_factory=lambda: utc_now())
     stopped: bool = False
     
     def __hash__(self) -> int:
@@ -108,7 +108,6 @@ class TypedEvent:
     def new_values(self) -> Dict[str, Any]:
         """Get new values for update events."""
         return self.payload.get("new_values", {})
-
 
 class TypedEventFactory:
     """
@@ -173,10 +172,8 @@ class TypedEventFactory:
         """Check if an event type is registered."""
         return event_type in self._registry
 
-
 # Global factory instance
 _typed_event_factory = TypedEventFactory()
-
 
 def register_typed_event(event_class: type[TypedEvent]) -> type[TypedEvent]:
     """
@@ -193,7 +190,6 @@ def register_typed_event(event_class: type[TypedEvent]) -> type[TypedEvent]:
     """
     _typed_event_factory.register(event_class)
     return event_class
-
 
 def create_typed_event(event_type: str, payload: Dict[str, Any]) -> TypedEvent:
     """

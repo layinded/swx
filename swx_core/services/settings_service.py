@@ -19,7 +19,8 @@ Features:
 import json
 import os
 from typing import Any, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
+from swx_core.utils.time import utc_now
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -35,7 +36,6 @@ from swx_core.middleware.logging_middleware import logger
 # In-memory cache with TTL
 _settings_cache: dict[str, tuple[Any, datetime]] = {}
 _cache_ttl = timedelta(seconds=60)  # 1 minute TTL
-
 
 class SettingsService:
     """
@@ -69,13 +69,13 @@ class SettingsService:
         # Check cache first
         if key in _settings_cache:
             value, cached_at = _settings_cache[key]
-            if datetime.now(timezone.utc).replace(tzinfo=None) - cached_at < _cache_ttl:
+            if utc_now() - cached_at < _cache_ttl:
                 return value
         
         # Try database
         db_value = await self._get_from_db(key, value_type)
         if db_value is not None:
-            _settings_cache[key] = (db_value, datetime.now(timezone.utc).replace(tzinfo=None))
+            _settings_cache[key] = (db_value, utc_now())
             return db_value
         
         # Try environment
@@ -83,7 +83,7 @@ class SettingsService:
         if env_value is not None:
             # Convert based on value_type or infer
             converted = self._convert_value(env_value, value_type)
-            _settings_cache[key] = (converted, datetime.now(timezone.utc).replace(tzinfo=None))
+            _settings_cache[key] = (converted, utc_now())
             return converted
         
         # Use default
@@ -197,12 +197,10 @@ class SettingsService:
             _settings_cache.clear()
         logger.info(f"Settings cache invalidated for: {key or 'all'}")
 
-
 # Global settings service instance (session-dependent)
 def get_settings_service(session: AsyncSession) -> SettingsService:
     """Get settings service instance."""
     return SettingsService(session)
-
 
 # Convenience function for common settings (uses env_settings as fallback)
 async def get_setting(

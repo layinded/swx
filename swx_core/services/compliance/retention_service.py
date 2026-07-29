@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
+from swx_core.utils.time import utc_now
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,25 +10,20 @@ from swx_core.models.compliance_audit import RetentionPolicyCreate, RetentionPol
 from swx_core.repositories import compliance_audit_repository
 from swx_core.services.job.job_dispatcher import enqueue_job
 
-
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+    return utc_now()
 
 async def get_retention_policies(session: AsyncSession) -> list[RetentionPolicyPublic]:
     return [RetentionPolicyPublic.model_validate(item) for item in await compliance_audit_repository.list_retention_policies(session)]
-
 
 async def get_retention_policy(session: AsyncSession, resource_type: str) -> RetentionPolicyPublic | None:
     policy = await compliance_audit_repository.get_retention_policy(session, resource_type)
     return RetentionPolicyPublic.model_validate(policy) if policy else None
 
-
 async def upsert_retention_policy(session: AsyncSession, data: RetentionPolicyCreate) -> RetentionPolicyPublic:
     policy = await compliance_audit_repository.upsert_retention_policy(session, data.model_dump())
     await event_bus.dispatch("compliance.retention_policy_updated", payload={"resource_type": policy.resource_type})
     return RetentionPolicyPublic.model_validate(policy)
-
 
 async def apply_retention(session: AsyncSession, resource_type: str | None = None) -> dict[str, Any]:
     policies = await compliance_audit_repository.list_retention_policies(session)
@@ -49,7 +45,6 @@ async def apply_retention(session: AsyncSession, resource_type: str | None = Non
         results[resource_name] = {"action": policy_action, "affected": affected}
         await event_bus.dispatch("compliance.retention_policy_applied", payload={"resource_type": resource_name, "action": policy_action, "affected": affected})
     return results
-
 
 async def schedule_retention_check(session: AsyncSession, resource_type: str | None = None) -> dict[str, str]:
     job = await enqueue_job("compliance.retention.apply", {"resource_type": resource_type}, session=session, tags=["compliance", "retention"])

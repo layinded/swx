@@ -1,27 +1,20 @@
 import asyncio
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Awaitable, Callable
-
+from swx_core.utils.time import utc_now
 
 class CircuitOpenError(RuntimeError):
     pass
 
-
 class LLMTimeoutError(TimeoutError):
     pass
-
 
 class CircuitState(str, Enum):
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
 
 class CircuitBreaker:
     def __init__(self, name: str, failure_threshold: int, success_threshold: int, recovery_timeout_seconds: int):
@@ -37,7 +30,7 @@ class CircuitBreaker:
     def allow_request(self) -> bool:
         if self.state != CircuitState.OPEN:
             return True
-        if self.last_failure_time and utc_now_naive() >= self.last_failure_time + timedelta(seconds=self.recovery_timeout_seconds):
+        if self.last_failure_time and utc_now() >= self.last_failure_time + timedelta(seconds=self.recovery_timeout_seconds):
             self.state = CircuitState.HALF_OPEN
             self.success_count = 0
             return True
@@ -53,11 +46,10 @@ class CircuitBreaker:
 
     def record_failure(self) -> None:
         self.failure_count += 1
-        self.last_failure_time = utc_now_naive()
+        self.last_failure_time = utc_now()
         self.success_count = 0
         if self.failure_count >= self.failure_threshold:
             self.state = CircuitState.OPEN
-
 
 class CircuitBreakerRegistry:
     _registry: dict[str, CircuitBreaker] = {}
@@ -79,13 +71,11 @@ class CircuitBreakerRegistry:
     def all_states(cls) -> dict[str, str]:
         return {name: breaker.state.value for name, breaker in cls._registry.items()}
 
-
 def calculate_backoff(attempt: int, base_delay: float, max_delay: float, jitter: bool = True) -> float:
     delay = min(max_delay, base_delay * (2 ** max(attempt - 1, 0)))
     if not jitter:
         return delay
     return delay + random.uniform(0, delay / 4)
-
 
 async def retry_with_backoff(
     fn: Callable[[], Awaitable[Any]], max_retries: int, base_delay: float, max_delay: float, circuit_breaker: CircuitBreaker | None = None,
@@ -104,7 +94,6 @@ async def retry_with_backoff(
     if last_error is None:
         raise RuntimeError("Retry failed without captured exception")
     raise last_error
-
 
 async def call_with_timeout(fn: Callable[[], Awaitable[Any]], timeout_seconds: int, provider_name: str) -> Any:
     try:

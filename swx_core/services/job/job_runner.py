@@ -19,16 +19,15 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, Callable, Awaitable
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update, text
+from swx_core.utils.time import utc_now
 
 from swx_core.models.job import Job, JobStatus
 from swx_core.database.db import AsyncSessionLocal
 from swx_core.middleware.logging_middleware import logger
 from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
 
-
 # Job handler registry
 _job_handlers: Dict[str, Callable[[AsyncSession, Dict[str, Any]], Awaitable[Dict[str, Any]]]] = {}
-
 
 def register_job_handler(
     job_type: str,
@@ -44,22 +43,14 @@ def register_job_handler(
     _job_handlers[job_type] = handler
     logger.info(f"Registered job handler for type: {job_type}")
 
-
 def get_worker_id() -> str:
     """Generate a unique worker identifier."""
     hostname = socket.gethostname()
     return f"{hostname}-{uuid.uuid4().hex[:8]}"
 
-
 def _utc_now() -> datetime:
     """Get current UTC timezone-aware datetime."""
-    return datetime.now(timezone.utc)
-
-
-def _utc_now_naive() -> datetime:
-    """Get current UTC timezone-naive datetime for database comparisons."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+    return utc_now()
 
 class JobRunner:
     """
@@ -159,14 +150,13 @@ class JobRunner:
             try:
                 now = _utc_now()
                 cutoff = now - timedelta(seconds=self.lock_timeout)
-                cutoff_naive = cutoff.replace(tzinfo=None)
                 
                 stmt = (
                     update(Job)
                     .where(
                         and_(
                             Job.status == JobStatus.running.value,
-                            Job.locked_at < cutoff_naive
+                            Job.locked_at < cutoff
                         )
                     )
                     .values(
@@ -233,7 +223,7 @@ class JobRunner:
         """
         async with AsyncSessionLocal() as session:
             try:
-                now_naive = _utc_now_naive()
+                now_naive = _utc_now()
 
                 # Find next job: pending/queued, scheduled_at <= now, ordered by priority.
                 # Use raw SQL for status filter so we send 'pending'/'queued' literals;
@@ -314,7 +304,7 @@ class JobRunner:
                 
                 # Mark as completed
                 job.status = JobStatus.completed
-                job.completed_at = _utc_now_naive()
+                job.completed_at = _utc_now()
                 job.result = result if result else {}
                 job.locked_at = None
                 job.locked_by = None
@@ -374,7 +364,7 @@ class JobRunner:
                     if job.attempts < job.max_attempts:
                         # Retry with exponential backoff
                         backoff_seconds = 2 ** job.attempts  # 2, 4, 8, 16...
-                        scheduled_at = _utc_now_naive() + timedelta(seconds=backoff_seconds)
+                        scheduled_at = _utc_now() + timedelta(seconds=backoff_seconds)
                         
                         job.status = JobStatus.queued
                         job.scheduled_at = scheduled_at
@@ -407,7 +397,7 @@ class JobRunner:
                 # Check if should retry
                 if job.attempts < job.max_attempts:
                     backoff_seconds = 2 ** job.attempts
-                    scheduled_at = _utc_now_naive() + timedelta(seconds=backoff_seconds)
+                    scheduled_at = _utc_now() + timedelta(seconds=backoff_seconds)
                     
                     job.status = JobStatus.queued
                     job.scheduled_at = scheduled_at
@@ -429,7 +419,7 @@ class JobRunner:
         """Mark a job as failed (dead letter)."""
         try:
             job.status = JobStatus.dead_letter
-            job.completed_at = _utc_now_naive()
+            job.completed_at = _utc_now()
             job.last_error = {"error": error_msg, "attempt": job.attempts, "final": True}
             job.locked_at = None
             job.locked_by = None
@@ -459,10 +449,8 @@ class JobRunner:
             await session.rollback()
             raise
 
-
 # Global job runner instance
 _job_runner: Optional[JobRunner] = None
-
 
 def get_job_runner() -> JobRunner:
     """Get or create the global job runner instance."""
@@ -471,12 +459,10 @@ def get_job_runner() -> JobRunner:
         _job_runner = JobRunner()
     return _job_runner
 
-
 async def start_job_runner() -> None:
     """Start the global job runner."""
     runner = get_job_runner()
     await runner.start()
-
 
 async def stop_job_runner() -> None:
     """Stop the global job runner."""

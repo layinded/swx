@@ -8,6 +8,8 @@ import hashlib
 import secrets
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
+
+from swx_core.utils.time import utc_now
 from fastapi import Request
 
 from swx_core.guards.base import BaseGuard, AuthenticatedUser
@@ -64,9 +66,9 @@ class APIKeyGuard(BaseGuard):
             if isinstance(expires_at, str):
                 expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
             
-            now = datetime.now(timezone.utc)
+            now = utc_now()
             if expires_at.tzinfo is None:
-                now = now.replace(tzinfo=None)
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
             
             if now > expires_at:
                 logger.info(f"Expired API key used: {key_info.get('key_id')}")

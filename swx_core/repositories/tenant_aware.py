@@ -7,7 +7,8 @@ Supports both context-var-based and explicit tenant_id patterns.
 
 import uuid
 from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
-from datetime import datetime, timezone
+from swx_core.utils.time import utc_now
+
 from sqlalchemy import select, func, or_, and_, false as sa_false
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import BinaryExpression
@@ -17,9 +18,7 @@ from swx_core.database.db import AsyncSessionLocal
 from swx_core.models.base import Base
 from swx_core.core.tenant import get_current_tenant_id, is_super_admin, get_current_team_id
 
-
 ModelType = TypeVar("ModelType", bound=Base)
-
 
 class TenantAwareRepository(BaseRepository[ModelType]):
     def __init__(
@@ -179,7 +178,7 @@ class TenantAwareRepository(BaseRepository[ModelType]):
                 return None
             
             if hasattr(self.model, "updated_at") and "updated_at" not in data:
-                data["updated_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
+                data["updated_at"] = utc_now()
             
             for field, value in data.items():
                 if hasattr(instance, field):

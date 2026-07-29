@@ -16,16 +16,15 @@ import time
 from typing import Optional
 from datetime import datetime, timezone
 from enum import Enum
+from swx_core.utils.time import utc_now
 
 from swx_core.middleware.logging_middleware import logger
-
 
 class LimitWindow(str, Enum):
     """Rate limit time windows."""
     MINUTE = "1m"
     HOUR = "1h"
     DAY = "24h"
-
 
 class RateLimitResult:
     """Result of a rate limit check."""
@@ -42,7 +41,6 @@ class RateLimitResult:
         self.remaining = remaining
         self.reset_at = reset_at
         self.retry_after = retry_after
-
 
 class RateLimiter:
     """
@@ -72,7 +70,7 @@ class RateLimiter:
 
         if getattr(settings, "RATE_LIMIT_FAIL_OPEN", False):
             logger.warning("Redis unavailable, rate limit check allowed (fail-open)")
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            now = utc_now()
             return RateLimitResult(
                 allowed=True,
                 limit=limit,
@@ -81,7 +79,7 @@ class RateLimiter:
                 retry_after=None,
             )
         logger.warning("Redis unavailable, rate limit check denied (fail-closed)")
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = utc_now()
         return RateLimitResult(
             allowed=False,
             limit=limit,
@@ -202,10 +200,8 @@ class RateLimiter:
         """Build Redis key for rate limit."""
         return f"rate_limit:{actor_type}:{actor_id}:{feature}:{endpoint_class}:{window.value}"
 
-
 # Global rate limiter instance
 _rate_limiter: Optional[RateLimiter] = None
-
 
 def get_rate_limiter() -> RateLimiter:
     """Get or create the global rate limiter instance."""
@@ -213,7 +209,6 @@ def get_rate_limiter() -> RateLimiter:
     if _rate_limiter is None:
         _rate_limiter = RateLimiter()
     return _rate_limiter
-
 
 def set_rate_limiter(limiter: RateLimiter) -> None:
     """Set the global rate limiter instance."""

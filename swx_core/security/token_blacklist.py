@@ -9,8 +9,8 @@ Provides token revocation for JWT-based authentication with:
 
 import hashlib
 from typing import Optional, Set
-from datetime import datetime, timezone, timedelta
-
+from datetime import datetime, timezone
+from swx_core.utils.time import utc_now
 
 class TokenBlacklist:
     """
@@ -76,7 +76,6 @@ class TokenBlacklist:
         """
         raise NotImplementedError
 
-
 class RedisTokenBlacklist(TokenBlacklist):
     """
     Redis-backed token blacklist.
@@ -133,7 +132,7 @@ class RedisTokenBlacklist(TokenBlacklist):
         
         # Calculate TTL
         if exp:
-            ttl = max(1, int(exp - datetime.now(timezone.utc).replace(tzinfo=None).timestamp()))
+            ttl = max(1, int(exp - utc_now().timestamp()))
         else:
             ttl = 2592000  # 30 days default
         
@@ -211,7 +210,7 @@ class RedisTokenBlacklist(TokenBlacklist):
             ttl_seconds = 2592000  # 30 days
         
         key = f"{self.user_prefix}{user_id}"
-        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        now = utc_now().isoformat()
         
         await self.redis.setex(key, ttl_seconds, now)
     
@@ -267,7 +266,6 @@ class RedisTokenBlacklist(TokenBlacklist):
         keys = await self.redis.keys(f"{self.prefix}*")
         return len(keys)
 
-
 class InMemoryTokenBlacklist(TokenBlacklist):
     """
     In-memory token blacklist for development/testing.
@@ -316,7 +314,7 @@ class InMemoryTokenBlacklist(TokenBlacklist):
         ttl_seconds: int = None
     ) -> None:
         """Revoke all tokens for a user."""
-        self._user_revoked[user_id] = datetime.now(timezone.utc).replace(tzinfo=None)
+        self._user_revoked[user_id] = utc_now()
     
     async def is_user_revoked(self, user_id: str, token_iat: datetime) -> bool:
         """Check if user's tokens are revoked."""

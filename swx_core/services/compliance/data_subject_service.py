@@ -1,7 +1,8 @@
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
+from swx_core.utils.time import utc_now
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,10 +13,8 @@ from swx_core.models.compliance_audit import DataSubjectRequestCreate, DataSubje
 from swx_core.repositories import compliance_audit_repository
 from swx_core.services.job.job_dispatcher import enqueue_job
 
-
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+    return utc_now()
 
 async def create_data_subject_request(session: AsyncSession, user_id: UUID, data: DataSubjectRequestCreate) -> DataSubjectRequestPublic:
     now = _utc_now()
@@ -32,7 +31,6 @@ async def create_data_subject_request(session: AsyncSession, user_id: UUID, data
     await event_bus.dispatch("compliance.request_created", payload={"request_id": str(request.id), "user_id": str(user_id), "request_type": request.request_type})
     return DataSubjectRequestPublic.model_validate(request)
 
-
 async def verify_request(session: AsyncSession, request_id: UUID, verification_token: str, user_id: UUID | None = None) -> DataSubjectRequestPublic:
     request = await compliance_audit_repository.get_data_subject_request(session, request_id)
     if request is None or request.verification_token != verification_token or (user_id and request.user_id != user_id):
@@ -42,7 +40,6 @@ async def verify_request(session: AsyncSession, request_id: UUID, verification_t
         raise HTTPException(status_code=404, detail="Data subject request not found")
     await event_bus.dispatch("compliance.request_verified", payload={"request_id": str(updated.id), "user_id": str(updated.user_id)})
     return DataSubjectRequestPublic.model_validate(updated)
-
 
 async def process_data_subject_request(session: AsyncSession, request_id: UUID, admin_notes: str | None = None) -> dict[str, Any]:
     request = await compliance_audit_repository.get_data_subject_request(session, request_id)
@@ -63,10 +60,8 @@ async def process_data_subject_request(session: AsyncSession, request_id: UUID, 
     await event_bus.dispatch("compliance.request_processed", payload={**payload, "status": status})
     return {"request": DataSubjectRequestPublic.model_validate(updated) if updated else None, "payload": payload}
 
-
 async def get_data_subject_requests(session: AsyncSession, user_id: UUID | None = None) -> list[DataSubjectRequestPublic]:
     return [DataSubjectRequestPublic.model_validate(item) for item in await compliance_audit_repository.list_data_subject_requests(session, user_id=user_id)]
-
 
 async def cancel_data_subject_request(session: AsyncSession, request_id: UUID, user_id: UUID) -> DataSubjectRequestPublic:
     request = await compliance_audit_repository.get_data_subject_request(session, request_id)
@@ -79,7 +74,6 @@ async def cancel_data_subject_request(session: AsyncSession, request_id: UUID, u
         raise HTTPException(status_code=404, detail="Data subject request not found")
     await event_bus.dispatch("compliance.request_cancelled", payload={"request_id": str(updated.id), "user_id": str(updated.user_id)})
     return DataSubjectRequestPublic.model_validate(updated)
-
 
 async def export_own_data(session: AsyncSession, user_id: UUID) -> dict[str, Any]:
     payload = await compliance_audit_repository.export_user_data(session, user_id)

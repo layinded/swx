@@ -5,9 +5,10 @@ Service for managing team invitations.
 """
 
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 from uuid import UUID
 from typing import List
+from swx_core.utils.time import utc_now
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +24,6 @@ from swx_core.models.team import Team
 from swx_core.models.team_member import TeamMember
 from swx_core.models.user import User
 from swx_core.middleware.logging_middleware import logger
-
 
 class TeamInvitationService:
     """
@@ -81,7 +81,7 @@ class TeamInvitationService:
             message=message,
             token=secrets.token_urlsafe(32),
             status=InvitationStatus.PENDING,
-            expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=self.INVITATION_EXPIRY_DAYS),
+            expires_at=utc_now() + timedelta(days=self.INVITATION_EXPIRY_DAYS),
         )
         
         self.session.add(invitation)
@@ -121,7 +121,7 @@ class TeamInvitationService:
         if invitation.status != InvitationStatus.PENDING:
             raise HTTPException(400, f"Invitation already {invitation.status.value}")
         
-        if invitation.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+        if invitation.expires_at < utc_now():
             invitation.status = InvitationStatus.EXPIRED
             await self.session.commit()
             raise HTTPException(400, "Invitation has expired")
@@ -136,7 +136,7 @@ class TeamInvitationService:
         existing_member = await self._get_team_member(invitation.team_id, user_id)
         if existing_member:
             invitation.status = InvitationStatus.ACCEPTED
-            invitation.accepted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            invitation.accepted_at = utc_now()
             await self.session.commit()
             return await self._get_team(invitation.team_id)
         
@@ -148,7 +148,7 @@ class TeamInvitationService:
         self.session.add(member)
         
         invitation.status = InvitationStatus.ACCEPTED
-        invitation.accepted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        invitation.accepted_at = utc_now()
         await self.session.commit()
         
         logger.info(f"User {user_id} accepted invitation to team {invitation.team_id}")
@@ -170,7 +170,7 @@ class TeamInvitationService:
             raise HTTPException(403, "This invitation is for a different email address")
         
         invitation.status = InvitationStatus.REJECTED
-        invitation.rejected_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        invitation.rejected_at = utc_now()
         await self.session.commit()
         
         logger.info(f"Invitation {invitation.id} rejected")

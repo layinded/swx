@@ -8,25 +8,23 @@ Register these handlers at application startup.
 
 import uuid
 from typing import Dict, Any
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, and_
+from swx_core.utils.time import utc_now
 
 from swx_core.middleware.logging_middleware import logger
 from swx_core.models.billing import BillingAccount, Subscription, SubscriptionStatus
 from swx_core.services.billing.stripe_provider import get_stripe_provider
 from swx_core.services.billing.subscription_service import SubscriptionService
 
-
 SUBSCRIPTION_SYNC_EVENT_TYPES = {
     "customer.subscription.created",
     "customer.subscription.updated",
 }
 
-
 def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
+    return utc_now()
 
 async def billing_sync_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -81,7 +79,6 @@ async def billing_sync_handler(session: AsyncSession, payload: Dict[str, Any]) -
     except Exception as e:
         logger.error(f"Failed to sync billing account {account_id}: {e}")
         return {"status": "error", "message": str(e), "account_id": str(account_id)}
-
 
 async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -162,7 +159,6 @@ async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]
         logger.error(f"Failed to process billing webhook {event_type}: {e}")
         return {"processed": False, "event_type": event_type, "error": str(e)}
 
-
 async def alert_send_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handler for alert.send jobs.
@@ -229,7 +225,6 @@ async def alert_send_handler(session: AsyncSession, payload: Dict[str, Any]) -> 
         logger.error(f"Failed to send alert {alert_id} via {channel}: {e}")
         return {"sent": False, "alert_id": alert_id, "channel": channel, "error": str(e)}
 
-
 async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handler for audit.aggregate jobs.
@@ -245,12 +240,12 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
     if date_from_str:
         date_from = datetime.fromisoformat(date_from_str.replace("Z", "+00:00"))
     else:
-        date_from = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)  # Default: last 7 days
+        date_from = utc_now() - timedelta(days=7)  # Default: last 7 days
     
     if date_to_str:
         date_to = datetime.fromisoformat(date_to_str.replace("Z", "+00:00"))
     else:
-        date_to = datetime.now(timezone.utc).replace(tzinfo=None)
+        date_to = utc_now()
     
     logger.info(f"Aggregating audit logs from {date_from} to {date_to}")
     
@@ -364,7 +359,6 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
     except Exception as e:
         logger.error(f"Failed to aggregate audit logs: {e}")
         return {"aggregated": False, "error": str(e), "records": 0}
-
 
 async def cache_refresh_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """

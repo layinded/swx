@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
+from swx_core.utils.time import utc_now
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,25 +14,21 @@ from swx_core.models.user import User
 from swx_core.repositories import notification_repository, user_repository
 from swx_core.services.notifications import delivery_tracker, provider_factory, template_service
 
-
 def _allowed(preferences: NotificationPreferencePublic | None, channel: str) -> bool:
     if preferences is None:
         return channel in {"email", "in_app"}
     return bool(getattr(preferences, f"{channel}_enabled", False))
 
-
 def _in_quiet_hours(preferences: NotificationPreferencePublic | None) -> bool:
     if preferences is None or not preferences.quiet_hours_start or not preferences.quiet_hours_end:
         return False
-    current = datetime.utcnow().strftime("%H:%M")
+    current = utc_now().strftime("%H:%M")
     start, end = preferences.quiet_hours_start, preferences.quiet_hours_end
     return start <= current <= end if start <= end else current >= start or current <= end
-
 
 async def _preferences(session: AsyncSession, user_id: UUID) -> NotificationPreferencePublic | None:
     prefs = await notification_repository.get_user_notification_preference(session, user_id)
     return NotificationPreferencePublic.model_validate(prefs) if prefs else None
-
 
 async def _require_user(session: AsyncSession, user_id: UUID) -> User:
     user = await user_repository.get_user_by_id(session, user_id)
@@ -39,16 +36,14 @@ async def _require_user(session: AsyncSession, user_id: UUID) -> User:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-
 async def _check_rate_limit(session: AsyncSession, user_id: UUID) -> None:
-    now = datetime.utcnow()
+    now = utc_now()
     hourly_window_start = now - timedelta(hours=1)
     daily_window_start = now - timedelta(days=1)
     if await notification_repository.count_notifications(session, user_id=user_id, start_date=hourly_window_start) >= NOTIFICATION_RATE_LIMIT_HOURLY:
         raise HTTPException(status_code=429, detail="Hourly notification limit exceeded")
     if await notification_repository.count_notifications(session, user_id=user_id, start_date=daily_window_start) >= NOTIFICATION_RATE_LIMIT_DAILY:
         raise HTTPException(status_code=429, detail="Daily notification limit exceeded")
-
 
 async def _deliver(session: AsyncSession, notification_id: UUID, channel: str, payload: dict[str, Any]) -> NotificationPublic:
     if channel == "email":
@@ -58,9 +53,8 @@ async def _deliver(session: AsyncSession, notification_id: UUID, channel: str, p
     else:
         provider, response = None, {"provider": channel, "accepted": True}
     await delivery_tracker.record_provider_response(session, notification_id, response)
-    sent = await delivery_tracker.update_notification_status(session, notification_id, "sent", provider_config_id=getattr(provider, "id", None), provider_name=getattr(provider, "name", channel), sent_at=datetime.utcnow())
-    return await delivery_tracker.update_notification_status(session, sent.id, "delivered", delivered_at=datetime.utcnow())
-
+    sent = await delivery_tracker.update_notification_status(session, notification_id, "sent", provider_config_id=getattr(provider, "id", None), provider_name=getattr(provider, "name", channel), sent_at=utc_now())
+    return await delivery_tracker.update_notification_status(session, sent.id, "delivered", delivered_at=utc_now())
 
 async def send_notification(session: AsyncSession, *, user_id: UUID, channel: str, notification_type: str, template_key: str | None = None, context: dict[str, Any] | None = None, subject: str | None = None, body: str | None = None, recipient: str | None = None, scheduled_at: datetime | None = None) -> NotificationPublic:
     if not NOTIFICATION_ENABLED:
@@ -90,10 +84,8 @@ async def send_notification(session: AsyncSession, *, user_id: UUID, channel: st
         await event_bus.dispatch("notification.failed", payload={"notification_id": str(failed.id), "error": str(exc), "channel": failed.channel})
         raise
 
-
 async def send_notification_to_user(session: AsyncSession, user_id: UUID, **kwargs: Any) -> NotificationPublic:
     return await send_notification(session, user_id=user_id, **kwargs)
-
 
 async def broadcast_notification(session: AsyncSession, *, user_ids: list[UUID] | None = None, **kwargs: Any) -> list[NotificationPublic]:
     await event_bus.dispatch("notification.broadcast_requested", payload={"user_count": len(user_ids or []) if user_ids else None, "channel": kwargs.get("channel")})
@@ -102,13 +94,11 @@ async def broadcast_notification(session: AsyncSession, *, user_ids: list[UUID] 
         sent.append(await send_notification(session, user_id=user.id, **kwargs))
     return sent
 
-
 async def get_notification_status(session: AsyncSession, notification_id: UUID, user_id: UUID | None = None) -> NotificationPublic:
     notification = await delivery_tracker.get_notification(session, notification_id)
     if notification is None or (user_id is not None and notification.user_id != user_id):
         raise HTTPException(status_code=404, detail="Notification not found")
     return NotificationPublic.model_validate(notification)
-
 
 async def list_user_notifications(session: AsyncSession, *, user_id: UUID | None = None, status: str | None = None, channel: str | None = None, notification_type: str | None = None, skip: int = 0, limit: int = 100) -> list[NotificationPublic]:
     items = await notification_repository.list_notifications(session, user_id=user_id, status=status, channel=channel, notification_type=notification_type, skip=skip, limit=limit)

@@ -28,6 +28,7 @@ from swx_core.config.settings import settings
 from swx_core.models.refresh_token import RefreshToken
 from swx_core.auth.core.jwt import create_token, TokenAudience
 from swx_core.utils.language_helper import translate
+from swx_core.utils.time import utc_now
 
 
 def create_access_token(
@@ -81,9 +82,7 @@ async def create_refresh_token(
     Returns:
         str: The encoded JWT refresh token.
     """
-    expire_at = datetime.now(timezone.utc) + expires_delta
-    # Convert to timezone-naive for database storage
-    expire_at_naive = expire_at.replace(tzinfo=None)
+    expire_at = utc_now() + expires_delta
     encoded_jwt = jwt.encode(
         {"exp": expire_at.timestamp(), "sub": email, "auth_provider": auth_provider},
         settings.REFRESH_SECRET_KEY,
@@ -98,11 +97,11 @@ async def create_refresh_token(
     if existing_token:
         # Update the existing refresh token
         existing_token.token = encoded_jwt
-        existing_token.expires_at = expire_at_naive
+        existing_token.expires_at = expire_at
     else:
         # Create a new refresh token record
         new_refresh_token = RefreshToken(
-            user_email=email, token=encoded_jwt, expires_at=expire_at_naive
+            user_email=email, token=encoded_jwt, expires_at=expire_at
         )
         session.add(new_refresh_token)
 
@@ -162,7 +161,7 @@ async def verify_refresh_token(
             token_exp = token_exp.replace(tzinfo=timezone.utc)
 
         # Check if the token is expired
-        if datetime.now(timezone.utc) > token_exp:
+        if utc_now() > token_exp:
             raise HTTPException(
                 status_code=401, detail=translate(request, "refresh_token_expired")
             )

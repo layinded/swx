@@ -1,7 +1,8 @@
 import logging
 from base64 import b64encode
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from swx_core.utils.time import utc_now
+
 from typing import cast
 from typing import Protocol
 
@@ -15,9 +16,7 @@ except ImportError:
 
 from swx_core.services.billing.providers import LocalPaymentProvider
 
-
 logger = logging.getLogger(__name__)
-
 
 class _ResponseLike(Protocol):
     def raise_for_status(self) -> None:
@@ -25,7 +24,6 @@ class _ResponseLike(Protocol):
 
     def json(self) -> dict[str, object]:
         ...
-
 
 class MpesaProvider(LocalPaymentProvider):
     def __init__(self, consumer_key: str, consumer_secret: str, passkey: str, shortcode: str, env: str = "sandbox"):
@@ -36,7 +34,7 @@ class MpesaProvider(LocalPaymentProvider):
         self.base_url: str = "https://sandbox.safaricom.co.ke" if env == "sandbox" else "https://api.safaricom.co.ke"
 
     def _timestamp(self) -> str:
-        return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d%H%M%S")
+        return utc_now().strftime("%Y%m%d%H%M%S")
 
     async def _token(self) -> str:
         if httpx is None:

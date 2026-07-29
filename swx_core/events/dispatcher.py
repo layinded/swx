@@ -10,13 +10,13 @@ Provides:
 
 from typing import Any, Callable, Dict, List, Optional, Set
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from functools import wraps
 import asyncio
 import inspect
+from swx_core.utils.time import utc_now
 
 from swx_core.middleware.logging_middleware import logger
-
 
 class EventPriority:
     """Listener priority levels."""
@@ -26,7 +26,6 @@ class EventPriority:
     NORMAL = 50
     LOW = 25
     LOWEST = 1
-
 
 @dataclass(eq=True, frozen=False)
 class Event:
@@ -39,7 +38,7 @@ class Event:
 
     name: str
     payload: Any = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    timestamp: datetime = field(default_factory=lambda: utc_now())
     stopped: bool = False
     _metadata: Dict[str, Any] = field(default_factory=dict)
     
@@ -73,7 +72,6 @@ class Event:
             "metadata": self._metadata,
         }
 
-
 @dataclass
 class ListenerRegistration:
     """Registered listener details."""
@@ -85,7 +83,6 @@ class ListenerRegistration:
     async_listener: bool = False
     once: bool = False
     pattern: str | None = None
-
 
 class EventBus:
     """
@@ -444,7 +441,6 @@ class EventBus:
     async def emit(self, event: Event) -> Event:
         """Alias for dispatch() for backward compatibility."""
         return await self.dispatch(event.name, event.payload)
-
 
 # Global event bus instance
 event_bus = EventBus()

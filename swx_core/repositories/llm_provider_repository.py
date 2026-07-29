@@ -1,18 +1,14 @@
 # pyright: reportAny=false, reportUnknownVariableType=false
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, TypedDict
 from uuid import UUID
+from swx_core.utils.time import utc_now
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from swx_core.models.llm_provider_config import LLMProviderConfig
-
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
 
 class LLMProviderConfigData(TypedDict, total=False):
     provider: str
@@ -36,7 +32,6 @@ class LLMProviderConfigData(TypedDict, total=False):
     extra_data: dict[str, Any]
     updated_at: datetime
 
-
 async def create(session: AsyncSession, data: LLMProviderConfigData) -> LLMProviderConfig:
     config = LLMProviderConfig(**data)
     session.add(config)
@@ -44,11 +39,9 @@ async def create(session: AsyncSession, data: LLMProviderConfigData) -> LLMProvi
     await session.refresh(config)
     return config
 
-
 async def get_by_id(session: AsyncSession, config_id: UUID) -> LLMProviderConfig | None:
     stmt = select(LLMProviderConfig).where(LLMProviderConfig.id == config_id)  # pyright: ignore[reportArgumentType]
     return (await session.execute(stmt)).scalar_one_or_none()
-
 
 async def get_all(session: AsyncSession, active_only: bool = False) -> list[LLMProviderConfig]:
     stmt = select(LLMProviderConfig)
@@ -59,33 +52,28 @@ async def get_all(session: AsyncSession, active_only: bool = False) -> list[LLMP
     stmt = stmt.order_by(priority_column, name_column)
     return list((await session.execute(stmt)).scalars().all())
 
-
 async def get_by_provider(session: AsyncSession, provider_type: str) -> list[LLMProviderConfig]:
     priority_column = getattr(LLMProviderConfig, "priority")
     stmt = select(LLMProviderConfig).where(LLMProviderConfig.provider == provider_type).order_by(priority_column)  # pyright: ignore[reportArgumentType]
     return list((await session.execute(stmt)).scalars().all())
 
-
 async def get_primary_for_phase(session: AsyncSession, phase: str) -> LLMProviderConfig | None:
     return next((config for config in await get_all(session, active_only=True) if config.is_primary and phase in config.supported_phases), None)
-
 
 async def get_fallbacks_for_phase(session: AsyncSession, phase: str, exclude_id: UUID | None = None) -> list[LLMProviderConfig]:
     configs = await get_all(session, active_only=True)
     return [config for config in configs if phase in config.supported_phases and config.id != exclude_id]
 
-
 async def update(session: AsyncSession, config_id: UUID, data: LLMProviderConfigData) -> LLMProviderConfig | None:
     config = await get_by_id(session, config_id)
     if config is None:
         return None
-    for key, value in {**data, "updated_at": utc_now_naive()}.items():
+    for key, value in {**data, "updated_at": utc_now()}.items():
         setattr(config, key, value)
     session.add(config)
     await session.commit()
     await session.refresh(config)
     return config
-
 
 async def delete(session: AsyncSession, config_id: UUID) -> bool:
     config = await get_by_id(session, config_id)
@@ -95,13 +83,12 @@ async def delete(session: AsyncSession, config_id: UUID) -> bool:
     await session.commit()
     return True
 
-
 async def set_primary(session: AsyncSession, config_id: UUID, phase: str) -> None:
     configs = await get_all(session, active_only=False)
     for config in configs:
         if phase not in config.supported_phases:
             continue
         config.is_primary = config.id == config_id
-        config.updated_at = utc_now_naive()
+        config.updated_at = utc_now()
         session.add(config)
     await session.commit()

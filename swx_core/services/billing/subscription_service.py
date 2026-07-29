@@ -7,6 +7,7 @@ Handles subscription lifecycle management.
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from swx_core.utils.time import utc_now
 
 from fastapi import HTTPException
 from sqlmodel import select, and_
@@ -32,11 +33,11 @@ class SubscriptionService:
 
     @staticmethod
     def _utc_now_naive() -> datetime:
-        return datetime.now(timezone.utc).replace(tzinfo=None)
+        return utc_now()
 
     @staticmethod
     def _from_stripe_timestamp(timestamp: int | float) -> datetime:
-        return datetime.fromtimestamp(timestamp, tz=timezone.utc).replace(tzinfo=None)
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc)
 
     @staticmethod
     def _get_stripe_subscription_status(stripe_status: str) -> SubscriptionStatus:

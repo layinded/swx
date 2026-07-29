@@ -1,7 +1,7 @@
 # pyright: reportMissingImports=false, reportAttributeAccessIssue=false
 
-from datetime import datetime, timezone
 from uuid import UUID
+from swx_core.utils.time import utc_now
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,14 +10,8 @@ from ...models.sso_session import SSOSession, SSOSessionCreate, SSOSessionPublic
 from ...repositories import sso_repository
 from .sso_cache import get_cached_provider
 
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
 def _to_public(sso_session: SSOSession) -> SSOSessionPublic:
     return SSOSessionPublic.model_validate(sso_session)
-
 
 async def _get_session_or_raise(session: AsyncSession, sso_session_id: UUID, user_id: UUID | None = None) -> SSOSession:
     sso_session = await sso_repository.get_session_by_id(session, sso_session_id)
@@ -26,7 +20,6 @@ async def _get_session_or_raise(session: AsyncSession, sso_session_id: UUID, use
     if user_id is not None and sso_session.user_id != user_id:
         raise PermissionError("SSO session access denied")
     return sso_session
-
 
 async def initiate_sso(session: AsyncSession, user_id: UUID, provider_id: UUID, metadata: dict[str, object] | None = None) -> dict[str, object]:
     provider = await get_cached_provider(session, provider_id)
@@ -48,7 +41,6 @@ async def initiate_sso(session: AsyncSession, user_id: UUID, provider_id: UUID, 
         "metadata": provider.metadata_ or {},
     }
 
-
 async def complete_sso_login(session: AsyncSession, sso_session_id: UUID, body: SSOSessionUpdate, user_id: UUID | None = None) -> SSOSessionPublic:
     await _get_session_or_raise(session, sso_session_id, user_id)
     sso_session = await sso_repository.update_session(session, sso_session_id, body.model_dump(exclude_unset=True))
@@ -56,7 +48,6 @@ async def complete_sso_login(session: AsyncSession, sso_session_id: UUID, body: 
         raise ValueError("SSO session not found")
     _ = await event_bus.dispatch("sso.session_completed", payload={"session_id": str(sso_session.id), "user_id": str(sso_session.user_id), "provider_id": str(sso_session.provider_id)})
     return _to_public(sso_session)
-
 
 async def terminate_session(session: AsyncSession, sso_session_id: UUID, user_id: UUID | None = None) -> SSOSessionPublic:
     await _get_session_or_raise(session, sso_session_id, user_id)
@@ -66,16 +57,14 @@ async def terminate_session(session: AsyncSession, sso_session_id: UUID, user_id
     _ = await event_bus.dispatch("sso.session_terminated", payload={"session_id": str(sso_session.id), "user_id": str(sso_session.user_id), "provider_id": str(sso_session.provider_id)})
     return _to_public(sso_session)
 
-
 async def get_active_sessions(session: AsyncSession, user_id: UUID | None = None, skip: int = 0, limit: int = 100) -> list[SSOSessionPublic]:
     sessions = await sso_repository.list_sessions(session, user_id=user_id, skip=skip, limit=limit)
     return [_to_public(sso_session) for sso_session in sessions]
 
-
 async def cleanup_expired_sessions(session: AsyncSession) -> list[SSOSessionPublic]:
     expired_sessions: list[SSOSessionPublic] = []
     for sso_session in await sso_repository.list_sessions(session, status="active", limit=500):
-        if sso_session.expires_at is None or sso_session.expires_at > utc_now_naive():
+        if sso_session.expires_at is None or sso_session.expires_at > utc_now():
             continue
         expired = await sso_repository.update_session(session, sso_session.id, {"status": "expired"})
         if expired is not None:

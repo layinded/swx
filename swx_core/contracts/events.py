@@ -7,9 +7,9 @@ Defines interfaces for the event dispatcher and listeners.
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import IntEnum
-
+from swx_core.utils.time import utc_now
 
 class EventPriority(IntEnum):
     """Listener priority levels."""
@@ -18,7 +18,6 @@ class EventPriority(IntEnum):
     NORMAL = 50
     LOW = 25
     LOWEST = 1
-
 
 @dataclass
 class EventInterface:
@@ -29,7 +28,7 @@ class EventInterface:
     """
     name: str
     payload: Any = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    timestamp: datetime = field(default_factory=lambda: utc_now())
     stopped: bool = False
     _metadata: Dict[str, Any] = field(default_factory=dict)
     
@@ -48,7 +47,6 @@ class EventInterface:
     def get(self, key: str, default: Any = None) -> Any:
         """Get metadata."""
         return self._metadata.get(key, default)
-
 
 class ListenerInterface(ABC):
     """
@@ -129,7 +127,6 @@ class ListenerInterface(ABC):
             exception: The exception that occurred
         """
         pass
-
 
 class EventBusInterface(ABC):
     """

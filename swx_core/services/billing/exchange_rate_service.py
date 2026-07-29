@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from swx_core.utils.time import utc_now
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,19 +8,12 @@ from swx_core.models.currency import ExchangeRatePublic
 from swx_core.repositories import currency_repository, exchange_rate_repository
 from swx_core.repositories.exchange_rate_repository import ExchangeRateData
 
-
-def utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
 def _manual_rates(base: str) -> dict[str, float]:
     defaults = {"USD": {"NGN": 1500.0, "KES": 129.5, "ZAR": 18.2, "GHS": 15.4}}
     return defaults.get(base.upper(), {})
 
-
 def _manual_rate_payload(base: str, quote: str, rate: float) -> ExchangeRateData:
-    return {"base_currency": base.upper(), "quote_currency": quote.upper(), "rate": rate, "source": "manual", "fetched_at": utc_now_naive()}
-
+    return {"base_currency": base.upper(), "quote_currency": quote.upper(), "rate": rate, "source": "manual", "fetched_at": utc_now()}
 
 async def get_rate(session: AsyncSession, base: str, quote: str) -> float:
     source = base.upper()
@@ -41,11 +34,9 @@ async def get_rate(session: AsyncSession, base: str, quote: str) -> float:
             return pivot_rates[target] / pivot_rates[source]
     raise HTTPException(status_code=404, detail=f"Exchange rate not found for {source}/{target}")
 
-
 async def convert(session: AsyncSession, amount_nano: int, from_currency: str, to_currency: str) -> int:
     rate = await get_rate(session, from_currency, to_currency)
     return int(round(amount_nano * rate))
-
 
 async def sync_rates(session: AsyncSession, base: str = "USD") -> dict[str, float]:
     base_code = base.upper()
@@ -53,7 +44,6 @@ async def sync_rates(session: AsyncSession, base: str = "USD") -> dict[str, floa
     for quote, rate in rates.items():
         _ = await exchange_rate_repository.create(session, _manual_rate_payload(base_code, quote, rate))
     return rates
-
 
 async def set_manual_rate(session: AsyncSession, base: str, quote: str, rate: float) -> ExchangeRatePublic:
     if rate <= 0:

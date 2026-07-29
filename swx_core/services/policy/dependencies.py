@@ -8,6 +8,7 @@ from typing import Optional, Annotated, Callable
 from uuid import UUID
 from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from swx_core.utils.time import utc_now
 
 from swx_core.database.db import SessionDep
 from swx_core.services.policy.policy_engine import PolicyEngine, PolicyDecision
@@ -22,8 +23,6 @@ from swx_core.services.policy.actor import ActorType as PolicyActorType
 from swx_core.services.settings_service import get_settings_service
 from swx_core.config.settings import settings as env_settings
 from swx_core.middleware.logging_middleware import logger
-from datetime import datetime, timezone
-
 
 async def build_actor_from_user(
     session: AsyncSession,
@@ -78,7 +77,6 @@ async def build_actor_from_user(
         }
     )
 
-
 async def build_actor_from_admin(
     session: AsyncSession,
     admin: AdminUserDep
@@ -99,7 +97,6 @@ async def build_actor_from_admin(
             "is_active": admin.is_active,
         }
     )
-
 
 def require_policy(
     action: str,
@@ -175,7 +172,7 @@ def require_policy(
         
         # Build context
         context = PolicyContext(
-            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
+            timestamp=utc_now(),
             ip_address=request.client.host if request and request.client else None,
             user_agent=request.headers.get("user-agent") if request else None,
             environment=environment,

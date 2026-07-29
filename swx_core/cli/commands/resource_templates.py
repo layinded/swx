@@ -250,6 +250,7 @@ class {service_class}:
 from typing import Optional
 from sqlmodel import SQLModel, Field
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 class {class_name}Base(Base):
 {columns_base_placeholder}
@@ -482,10 +483,11 @@ The controller handles all CRUD operations. Add custom routes in the controller.
 # Recommended: Use model mixins from swx_core.utils.mixins for common fields.
 
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
 from sqlmodel import SQLModel, Field
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 # Option 1: Use FullModelMixin (recommended for production)
 # Includes: id (UUID), created_at, updated_at, is_deleted
@@ -515,8 +517,8 @@ class {class_name}({class_name}Base, table=True):
     __table_args__ = {{"extend_existing": True}}
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at: datetime = Field(default_factory=lambda: utc_now())
+    updated_at: datetime = Field(default_factory=lambda: utc_now())
     is_deleted: bool = Field(default=False, index=True)
 {columns_placeholder}
 

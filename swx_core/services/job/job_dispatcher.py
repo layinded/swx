@@ -14,15 +14,15 @@ Usage:
 """
 
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
+from swx_core.utils.time import utc_now
 
 from swx_core.models.job import Job, JobStatus, JobCreate
 from swx_core.database.db import AsyncSessionLocal
 from swx_core.middleware.logging_middleware import logger
 from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
-
 
 async def enqueue_job(
     job_type: str,
@@ -110,7 +110,6 @@ async def enqueue_job(
             await session.rollback()
         raise
 
-
 async def enqueue_job_delayed(
     job_type: str,
     payload: Dict[str, Any],
@@ -133,7 +132,7 @@ async def enqueue_job_delayed(
     Returns:
         Created Job instance
     """
-    scheduled_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=delay_seconds)
+    scheduled_at = utc_now() + timedelta(seconds=delay_seconds)
     return await enqueue_job(
         job_type=job_type,
         payload=payload,
@@ -142,7 +141,6 @@ async def enqueue_job_delayed(
         priority=priority,
         tags=tags
     )
-
 
 async def cancel_job(job_id: uuid.UUID, session: Optional[AsyncSession] = None) -> bool:
     """
@@ -168,7 +166,7 @@ async def cancel_job(job_id: uuid.UUID, session: Optional[AsyncSession] = None) 
         # Only cancel if not already running/completed
         if job.status in (JobStatus.PENDING, JobStatus.QUEUED):
             job.status = JobStatus.CANCELLED
-            job.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            job.completed_at = utc_now()
             session.add(job)
             
             # Audit log

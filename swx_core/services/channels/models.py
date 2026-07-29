@@ -1,8 +1,9 @@
 from enum import Enum
 from typing import Optional, Any, Dict, List
 from pydantic import BaseModel, Field
-from datetime import datetime, timezone
+from datetime import datetime
 import uuid
+from swx_core.utils.time import utc_now
 
 class AlertSeverity(str, Enum):
     INFO = "info"
@@ -27,7 +28,7 @@ class AlertActorType(str, Enum):
 
 class Alert(BaseModel):
     alert_id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    timestamp: datetime = Field(default_factory=lambda: utc_now())
     source: AlertSource
     event_type: str
     severity: AlertSeverity
