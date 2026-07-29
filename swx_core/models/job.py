@@ -61,11 +61,23 @@ class JobBase(Base):
     status: JobStatus = Field(default=JobStatus.pending, index=True)
     attempts: int = Field(default=0)
     max_attempts: int = Field(default=3)
-    scheduled_at: Optional[datetime] = Field(default=None, index=True)
-    locked_at: Optional[datetime] = Field(default=None)
-    locked_by: Optional[str] = Field(default=None, max_length=255)  # Worker identifier
-    started_at: Optional[datetime] = Field(default=None)
-    completed_at: Optional[datetime] = Field(default=None)
+    scheduled_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True, index=True),
+    )
+    locked_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    locked_by: Optional[str] = Field(default=None, max_length=255)
+    started_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    completed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     last_error: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))
     result: Optional[Dict[str, Any]] = Field(
         default=None,
