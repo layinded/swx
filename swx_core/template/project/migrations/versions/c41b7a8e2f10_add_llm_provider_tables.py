@@ -22,6 +22,7 @@ def upgrade() -> None:
     op.create_table(
         "swx_llm_provider_config",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("team_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("provider", sa.String(length=50), nullable=False),
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("model_name", sa.String(length=100), nullable=False),
@@ -43,8 +44,10 @@ def upgrade() -> None:
         sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.ForeignKeyConstraint(["team_id"], ["swx_team.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index("ix_swx_llm_provider_config_team_id", "swx_llm_provider_config", ["team_id"], unique=False)
     op.create_index(op.f("ix_swx_llm_provider_config_provider"), "swx_llm_provider_config", ["provider"], unique=False)
     op.create_index("idx_swx_llm_provider_phase_priority", "swx_llm_provider_config", ["is_active", "priority"], unique=False)
 
@@ -76,5 +79,6 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_swx_llm_usage_log_account_id"), table_name="swx_llm_usage_log")
     op.drop_table("swx_llm_usage_log")
     op.drop_index("idx_swx_llm_provider_phase_priority", table_name="swx_llm_provider_config")
+    op.drop_index("ix_swx_llm_provider_config_team_id", table_name="swx_llm_provider_config")
     op.drop_index(op.f("ix_swx_llm_provider_config_provider"), table_name="swx_llm_provider_config")
     op.drop_table("swx_llm_provider_config")

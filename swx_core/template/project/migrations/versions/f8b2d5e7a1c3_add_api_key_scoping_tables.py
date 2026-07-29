@@ -21,6 +21,7 @@ depends_on: Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "swx_api_key",
+        sa.Column("team_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("key_prefix", sa.String(length=8), nullable=False),
         sa.Column("hashed_key", sa.String(length=64), nullable=False),
@@ -33,10 +34,12 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.ForeignKeyConstraint(["team_id"], ["swx_team.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["swx_users.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("hashed_key"),
     )
+    op.create_index("ix_swx_api_key_team_id", "swx_api_key", ["team_id"], unique=False)
     op.create_index(op.f("ix_swx_api_key_key_prefix"), "swx_api_key", ["key_prefix"], unique=False)
     op.create_index(op.f("ix_swx_api_key_hashed_key"), "swx_api_key", ["hashed_key"], unique=True)
     op.create_index(op.f("ix_swx_api_key_user_id"), "swx_api_key", ["user_id"], unique=False)
@@ -65,5 +68,6 @@ def downgrade() -> None:
 
     op.drop_index(op.f("ix_swx_api_key_user_id"), table_name="swx_api_key")
     op.drop_index(op.f("ix_swx_api_key_hashed_key"), table_name="swx_api_key")
+    op.drop_index("ix_swx_api_key_team_id", table_name="swx_api_key")
     op.drop_index(op.f("ix_swx_api_key_key_prefix"), table_name="swx_api_key")
     op.drop_table("swx_api_key")
