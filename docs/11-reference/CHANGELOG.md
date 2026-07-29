@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.14.3  
-**Last Updated:** 2026-07-28
+**Version:** 2.14.4  
+**Last Updated:** 2026-07-29
 
 ---
 
@@ -29,6 +29,28 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.14.4 (2026-07-29)
+
+**Bug Fixes from FastPII Migration Feedback — 4 fixes**
+
+Patch release fixing a P0 runtime crash and three P1 issues surfaced during the FastPII Platform migration from v2.7.44 → v2.14.3. All changes are backward compatible.
+
+#### P0 Critical Fixes
+
+1. **`SettingsService._convert_value()` NameError** — `settings_service.py` referenced `SystemConfigValueType` (a non-existent name) instead of the imported `SettingValueType`. Every typed getter (`get_int()`, `get_bool()`, `get_json()`) crashed at runtime. Only `get_string()` survived via the `else` fallthrough.
+
+2. **Template migrations: branched chain (two heads)** — The 15 template migrations shipped with a branch at `cb96a87ddcc2` producing two alembic heads. Rewired `f38a4c8d9b12.down_revision` to `f7b6d8e0a2c4`, producing a single linear chain.
+
+3. **`RateLimitMiddleware._get_user_billing_plan()` always returned `"free"`** — The stub hardcoded `return "free"` with dead `EntitlementResolver`/`AsyncSessionLocal` imports. Pro/Enterprise users got rate-limited as `free` when `request.state.current_user` was pre-resolved. Replaced with JWT claim decode.
+
+4. **CSRF helpers hardcoded `CSRF_COOKIE_NAME`** — `get_csrf_token()` and `set_csrf_cookie()` used the module constant instead of the middleware instance's `cookie_name`. Added `cookie_name` parameter (backward-compatible default).
+
+#### P3 Minor Fixes
+
+5. **Dead `lru_cache` import** — `settings_service.py` imported `lru_cache` from `functools` but never used it. Removed.
+
+---
 
 ### Version 2.14.3 (2026-07-28)
 

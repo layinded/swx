@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.14.4] - 2026-07-29
+
+### Fixed — Bug Fixes from FastPII Migration Feedback
+
+Patch release fixing a P0 runtime crash and three P1 issues surfaced during the FastPII Platform migration from v2.7.44 → v2.14.3. All changes are backward compatible.
+
+---
+
+#### P0 Critical
+
+- **`SettingsService._convert_value()` NameError** — `settings_service.py` referenced `SystemConfigValueType` (a non-existent name) instead of the imported `SettingValueType` on lines 165/170/174. Every typed getter (`get_int()`, `get_bool()`, `get_json()`) crashed at runtime. Only `get_string()` survived via the `else` fallthrough. Replaced with the correct `SettingValueType`.
+
+---
+
+#### P1 High
+
+- **Template migrations: branched chain (two heads)** — The 15 template migrations shipped with a branch at `cb96a87ddcc2` producing two alembic heads. Projects copying these migrations had to manually linearize the chain. Rewired `f38a4c8d9b12.down_revision` from `cb96a87ddcc2` to `f7b6d8e0a2c4`, producing a single linear chain with one root and one head.
+
+- **`RateLimitMiddleware._get_user_billing_plan()` always returned `"free"`** — The middleware had two code paths for billing plan resolution: `_actor_from_bearer()` (correctly read the JWT `billing_plan` claim) and `_get_user_billing_plan()` (a stub that hardcoded `return "free"` with dead `EntitlementResolver`/`AsyncSessionLocal` imports). When `request.state.current_user` was pre-resolved by a dependency, the stub path was taken — Pro/Enterprise users got rate-limited as `free`. Replaced the stub with JWT claim decode, consistent with `_actor_from_bearer()`.
+
+- **CSRF helper functions hardcoded `CSRF_COOKIE_NAME`** — `get_csrf_token()` and `set_csrf_cookie()` used the module constant `CSRF_COOKIE_NAME` instead of the middleware instance's `cookie_name`. Projects configuring `CSRFMiddleware(cookie_name="my_csrf_token")` got silent cookie name mismatches when using the helpers. Added a `cookie_name: str = CSRF_COOKIE_NAME` parameter to both helpers (backward-compatible default).
+
+---
+
+#### P3 Minor
+
+- **Dead `lru_cache` import** — `settings_service.py` imported `lru_cache` from `functools` but never used it. Removed.
+
+---
+
+### Changed Files
+
+| File | Change |
+|---|---|
+| `swx_core/services/settings_service.py` | Replace `SystemConfigValueType` → `SettingValueType` (3 sites); remove dead `lru_cache` import |
+| `swx_core/template/project/migrations/versions/f38a4c8d9b12_add_organization_tables.py` | Rewire `down_revision` to `f7b6d8e0a2c4` (linearize chain) |
+| `swx_core/middleware/rate_limit_middleware.py` | Replace stubbed `_get_user_billing_plan()` with JWT claim decode |
+| `swx_core/middleware/csrf_middleware.py` | Parameterize `cookie_name` on `get_csrf_token()` and `set_csrf_cookie()` |
+
+---
+
 ## [2.14.3] - 2026-07-28
 
 ### Fixed — Edge Case & Security Hardening (27 issues from comprehensive audit)
