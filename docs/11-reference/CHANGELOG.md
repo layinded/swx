@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.15.3  
+**Version:** 2.15.4  
 **Last Updated:** 2026-07-29
 
 ---
@@ -29,6 +29,23 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.15.4 (2026-07-29)
+
+**Dual-Format API Key Scopes + Code-Clarity Cleanup**
+
+#### Added
+
+1. **`ApiKeyCreate.scopes`** — accepts both `list[str]` (`["billing:read"]`) and `list[dict]` (`[{"resource": "billing", "action": "read"}]`). Normalized internally. No API contract break for migrating projects.
+2. **`parse_scope_string()`** — new function in `api_key_scope_service.py`. Inverse of `expand_scopes()`.
+3. **`_normalize_scopes()`** — internal normalization in `api_key_service.py`.
+
+#### Code-Clarity Cleanup
+
+4. Removed redundant `_utc_now()` / `_utc_now_naive()` wrappers in `api_key_service.py`, `subscription_service.py`, `job_runner.py`
+5. Removed dead imports in `refresh_token_service.py`, `api_key_scope_repository.py`, `webhook_repository.py`
+
+---
 
 ### Version 2.15.3 (2026-07-29)
 

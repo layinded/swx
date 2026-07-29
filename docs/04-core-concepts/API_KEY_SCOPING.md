@@ -105,6 +105,30 @@ response = await create_api_key(session, user_id, ApiKeyCreate(
 # Store it securely — it cannot be retrieved again
 ```
 
+**Scope formats (v2.15.4+):**
+
+`ApiKeyCreate.scopes` accepts both structured and flat-string formats:
+
+```python
+# Structured (default)
+scopes=[{"resource": "billing", "action": "read"}]
+
+# Flat string — useful for projects migrating from list[str] format
+scopes=["billing:read", "users:*"]
+```
+
+Both formats are normalized internally to `swx_api_key_scope` rows. Use `parse_scope_string()` and `expand_scopes()` for bidirectional conversion:
+
+```python
+from swx_core.services.auth.api_key_scope_service import parse_scope_string, expand_scopes
+
+# String -> tuple
+resource, action = parse_scope_string("billing:read")  # ("billing", "read")
+
+# Structured -> list[str]
+strings = expand_scopes(scopes)  # ["billing:read", "users:*"]
+```
+
 ### Rotate
 ```python
 from swx_core.services.auth.api_key_service import rotate_api_key

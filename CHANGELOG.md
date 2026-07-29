@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.4] - 2026-07-29
+
+### Added — Dual-Format API Key Scopes + Code-Clarity Cleanup
+
+`ApiKeyCreate.scopes` now accepts both `list[str]` (`["billing:read"]`) and `list[dict]` (`[{"resource": "billing", "action": "read"}]`) formats. Projects migrating from flat-string scope formats no longer need to change their API clients.
+
+---
+
+#### What Changed
+
+- **`ApiKeyCreate.scopes`** — type changed from `list[dict[str, str]]` to `list[str] | list[dict[str, str]]`. Both formats are normalized internally to `swx_api_key_scope` rows.
+
+- **`parse_scope_string()`** — new function in `api_key_scope_service.py`. Parses `"resource:action"` strings into `(resource, action)` tuples. Inverse of the existing `expand_scopes()`.
+
+- **`_normalize_scopes()`** — new internal function in `api_key_service.py`. Normalizes mixed scope formats before persisting. Called automatically in `create_api_key()`.
+
+- **Code-clarity cleanup** — removed redundant `_utc_now()` / `_utc_now_naive()` wrappers in `api_key_service.py`, `subscription_service.py`, and `job_runner.py` (all now call `utc_now()` directly). Removed dead imports across 4 files.
+
+---
+
+#### Backward Compatibility
+
+- Existing clients sending `list[dict]` are unaffected
+- New clients can send `list[str]` without any changes
+- Storage format unchanged — still normalized rows in `swx_api_key_scope`
+- Key generation and validation unchanged
+
+---
+
 ## [2.15.3] - 2026-07-29
 
 ### Added — Per-Route Rate Limit API + Pluggable Config Resolver
