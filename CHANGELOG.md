@@ -2,6 +2,60 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.18.0] - 2026-07-30
+
+### Added — System Config Value Type: FLOAT + Wrapped-Scalar Unwrapping
+
+Extends `SettingValueType` with `FLOAT` and alias values (`INTEGER`, `BOOLEAN`), and updates `SettingsService._convert_value()` to unwrap single-key dict values for scalar types. Unblocks FastPII production seeding.
+
+---
+
+#### New: `FLOAT` value type + `INTEGER`/`BOOLEAN` aliases
+
+The `SettingValueType` enum and the PostgreSQL `settingvaluetype` enum now include `float`, `integer`, and `boolean`. `INTEGER` and `BOOLEAN` are semantic aliases for `INT` and `BOOL`.
+
+| File | Change |
+|---|---|
+| `swx_core/models/system_config.py` | Added `FLOAT`, `INTEGER`, `BOOLEAN` to `SettingValueType` |
+| `swx_core/database/migrations/v2_18_0_add_setting_value_type_float.py` | New migration: `ALTER TYPE settingvaluetype ADD VALUE` for `float`, `integer`, `boolean` |
+
+---
+
+#### New: `SettingsService.get_float()`
+
+```python
+threshold = await service.get_float("detection.confidence_threshold", default=0.7)
+```
+
+| File | Change |
+|---|---|
+| `swx_core/services/settings_service.py` | Added `get_float()` method |
+
+---
+
+#### Fixed: `_convert_value()` unwraps single-key dicts for scalar types
+
+FastPII wraps scalar config values in single-key JSON objects (e.g. `{"threshold": 0.7}`). Previously, `int({"max_length": 50000})` silently returned `0`, causing detection requests to fail. Now `_unwrap_scalar()` extracts the inner value before conversion.
+
+| File | Change |
+|---|---|
+| `swx_core/services/settings_service.py` | Added `_unwrap_scalar()` helper + `_SCALAR_VALUE_TYPES`; updated `_convert_value()` to unwrap and handle `FLOAT`/aliases |
+| `swx_core/services/settings_crud_service.py` | Updated `validate_setting_value()` to handle `FLOAT` and `INTEGER`/`BOOLEAN` aliases |
+
+---
+
+### Migration Required
+
+Copy `swx_core/database/migrations/v2_18_0_add_setting_value_type_float.py` to your project's `migrations/versions/` directory, set `down_revision`, and run `alembic upgrade head`. See `MIGRATION_GUIDE_v2.18.0.md` for details.
+
+### Backward Compatibility
+
+- All existing `INT`, `BOOL`, `STRING`, `JSON` configs work unchanged.
+- Bare scalar values are not affected by the unwrapping logic.
+- The migration `downgrade()` is a no-op — PostgreSQL cannot remove individual enum values.
+
+---
+
 ## [2.17.0] - 2026-07-30
 
 ### Fixed — OAuth Multi-Domain Support & Registration Bug

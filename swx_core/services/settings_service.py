@@ -35,6 +35,30 @@ from swx_core.middleware.logging_middleware import logger
 _settings_cache: dict[str, tuple[Any, datetime]] = {}
 _cache_ttl = timedelta(seconds=60)  # 1 minute TTL
 
+# Scalar types whose values should be unwrapped from single-key dicts
+# before conversion (FastPII wrapped-scalar convention: {"threshold": 0.7}).
+_SCALAR_VALUE_TYPES: frozenset[SettingValueType] = frozenset({
+    SettingValueType.INT,
+    SettingValueType.INTEGER,
+    SettingValueType.BOOL,
+    SettingValueType.BOOLEAN,
+    SettingValueType.STRING,
+    SettingValueType.FLOAT,
+})
+
+
+def _unwrap_scalar(value: Any) -> Any:
+    """Unwrap a single-key dict to its scalar contents.
+
+    FastPII wraps scalar config values in single-key JSON objects for
+    namespacing (e.g. ``{"threshold": 0.7}``).  This extracts the inner
+    value so ``int()``/``float()``/``bool()`` succeed instead of
+    silently returning ``0``.  Only single-key dicts are unwrapped.
+    """
+    if isinstance(value, dict) and len(value) == 1:
+        return next(iter(value.values()))
+    return value
+
 
 def _get_redis_client():
     try:
@@ -151,6 +175,11 @@ class SettingsService:
         """Get integer setting."""
         value = await self.get(key, default, SettingValueType.INT)
         return int(value) if value is not None else default
+
+    async def get_float(self, key: str, default: float = 0.0) -> float:
+        """Get float setting."""
+        value = await self.get(key, default, SettingValueType.FLOAT)
+        return float(value) if value is not None else default
     
     async def get_bool(self, key: str, default: bool = False) -> bool:
         """Get boolean setting."""
@@ -210,17 +239,31 @@ class SettingsService:
     
     def _convert_value(self, value: Any, value_type: Optional[SettingValueType]) -> Any:
         """Convert value to appropriate type."""
-        if value_type == SettingValueType.INT:
+        if value_type is None:
+            return value
+
+        # Unwrap single-key dicts for scalar types (FastPII wrapped-scalar convention)
+        if value_type in _SCALAR_VALUE_TYPES:
+            value = _unwrap_scalar(value)
+
+        if value_type in (SettingValueType.INT, SettingValueType.INTEGER):
             if isinstance(value, int) and not isinstance(value, bool):
                 return value
             try:
                 return int(value)
             except (ValueError, TypeError):
                 return 0
-        elif value_type == SettingValueType.BOOL:
+        elif value_type in (SettingValueType.BOOL, SettingValueType.BOOLEAN):
             if isinstance(value, bool):
                 return value
             return str(value).lower() in ("true", "1", "yes", "on")
+        elif value_type == SettingValueType.FLOAT:
+            if isinstance(value, float):
+                return value
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return 0.0
         elif value_type == SettingValueType.JSON:
             if isinstance(value, (dict, list)):
                 return value

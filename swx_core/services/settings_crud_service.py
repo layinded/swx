@@ -37,16 +37,21 @@ HIGH_RISK_SETTINGS = {
 def validate_setting_value(value: Any, value_type: SettingValueType) -> bool:
     """Validate setting value matches its type."""
     try:
-        if value_type == SettingValueType.INT:
+        if value_type in (SettingValueType.INT, SettingValueType.INTEGER):
             if isinstance(value, int) and not isinstance(value, bool):
                 pass
             else:
                 int(value)
-        elif value_type == SettingValueType.BOOL:
+        elif value_type in (SettingValueType.BOOL, SettingValueType.BOOLEAN):
             if isinstance(value, bool):
                 pass
             else:
                 return str(value).lower() in ("true", "false", "1", "0", "yes", "no", "on", "off")
+        elif value_type == SettingValueType.FLOAT:
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                pass
+            else:
+                float(value)
         elif value_type == SettingValueType.JSON:
             if isinstance(value, (dict, list)):
                 pass

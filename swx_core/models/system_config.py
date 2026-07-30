@@ -26,11 +26,20 @@ from swx_core.utils.time import utc_now
 
 
 class SettingValueType(str, Enum):
-    """Type of setting value for type safety."""
+    """Type of setting value for type safety.
+
+    Includes aliases (``INTEGER``, ``BOOLEAN``) for consumers that use
+    long-form type names in their default configs (e.g. FastPII).  The
+    aliases are semantically identical to their short-form counterparts
+    and are handled identically by ``SettingsService._convert_value``.
+    """
     INT = "int"
+    INTEGER = "integer"   # alias for INT
     BOOL = "bool"
+    BOOLEAN = "boolean"   # alias for BOOL
     STRING = "string"
     JSON = "json"
+    FLOAT = "float"
 
 
 class SettingCategory(str, Enum):
