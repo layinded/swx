@@ -23,6 +23,8 @@ import base64
 import logging
 import secrets
 import httpx
+from functools import lru_cache
+from urllib.parse import urlparse
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import JSONResponse, RedirectResponse
@@ -115,6 +117,13 @@ def store_pkce_session(request: Request) -> tuple[str, str, str]:
     code_challenge = generate_pkce_challenge(code_verifier)
     state = secrets.token_urlsafe(16)
 
+    # Capture origin domain for redirect after OAuth
+    origin = request.query_params.get("origin") or request.headers.get("referer")
+    if origin:
+        parsed = urlparse(origin)
+        if parsed.scheme and parsed.netloc:
+            request.session["oauth_origin"] = f"{parsed.scheme}://{parsed.netloc}"
+
     request.session["oauth_state"] = state
     request.session["code_verifier"] = code_verifier
 
@@ -125,6 +134,7 @@ def clear_oauth_session(request: Request) -> None:
     """Clear OAuth-related session data."""
     request.session.pop("oauth_state", None)
     request.session.pop("code_verifier", None)
+    request.session.pop("oauth_origin", None)
 
 
 async def complete_oauth_login(
@@ -132,6 +142,7 @@ async def complete_oauth_login(
     email: str,
     provider: str,
     is_new_user: bool,
+    request: Request,
 ) -> RedirectResponse:
     """Complete OAuth login by generating tokens and setting cookies."""
     auth_token = await login_social_user_controller(
@@ -143,7 +154,20 @@ async def complete_oauth_login(
     access_expires = await get_token_expiration(session, "access")
     refresh_expires = await get_token_expiration(session, "refresh")
 
-    response = RedirectResponse(url=FRONTEND_CALLBACK_URL, status_code=302)
+    # Use stored origin if valid, otherwise fall back to configured frontend host
+    stored_origin = request.session.get("oauth_origin")
+    if stored_origin:
+        parsed = urlparse(stored_origin)
+        if parsed.scheme and parsed.netloc:
+            origin = stored_origin
+        else:
+            origin = settings.FRONTEND_HOST
+    else:
+        origin = settings.FRONTEND_HOST
+
+    redirect_url = f"{origin}/auth/callback"
+
+    response = RedirectResponse(url=redirect_url, status_code=302)
     return await set_auth_cookies(
         response=response,
         access_token=auth_token.access_token,
@@ -180,8 +204,9 @@ for provider_name, config in oauth_provider_settings.get_provider_configs().item
         )
 
 
-@router.get("/urls")
-async def get_oauth_urls():
+@lru_cache(maxsize=1)
+def _get_oauth_urls_cached() -> dict[str, str]:
+    """Build OAuth provider URLs (cached since config is static)."""
     base_url = settings.BACKEND_HOST
     urls = {}
 
@@ -194,7 +219,12 @@ async def get_oauth_urls():
     for provider_name in oauth_provider_settings.get_provider_configs():
         urls[provider_name] = f"{base_url}/api/oauth/{provider_name}"
 
-    return JSONResponse(urls)
+    return urls
+
+
+@router.get("/urls")
+async def get_oauth_urls():
+    return JSONResponse(_get_oauth_urls_cached())
 
 
 @router.get("/google")
@@ -250,7 +280,7 @@ async def google_auth_callback(request: Request, session: SessionDep):
             # Create user with proper event emission
             user_in = UserCreate(
                 email=email,
-                password=secrets.token_urlsafe(32),  # Random placeholder, unused for social auth
+                password=secrets.token_urlsafe(28),  # Random placeholder, unused for social auth
                 full_name=user_info.get("name"),
             )
 
@@ -263,8 +293,9 @@ async def google_auth_callback(request: Request, session: SessionDep):
                 event_context={"social_provider": "google"},
             )
 
+        response = await complete_oauth_login(session, existing_user.email, "google", is_new_user, request)
         clear_oauth_session(request)
-        return await complete_oauth_login(session, existing_user.email, "google", is_new_user)
+        return response
 
     except HTTPException:
         raise
@@ -348,7 +379,7 @@ async def facebook_auth_callback(request: Request, session: SessionDep):
             # Create user with proper event emission
             user_in = UserCreate(
                 email=email,
-                password=secrets.token_urlsafe(32),  # Random placeholder, unused for social auth
+                password=secrets.token_urlsafe(28),  # Random placeholder, unused for social auth
                 full_name=user_info.get("name"),
             )
 
@@ -361,8 +392,9 @@ async def facebook_auth_callback(request: Request, session: SessionDep):
                 event_context={"social_provider": "facebook"},
             )
 
+        response = await complete_oauth_login(session, existing_user.email, "facebook", is_new_user, request)
         clear_oauth_session(request)
-        return await complete_oauth_login(session, existing_user.email, "facebook", is_new_user)
+        return response
 
     except HTTPException:
         raise
@@ -454,7 +486,7 @@ async def provider_auth_callback(request: Request, session: SessionDep, provider
             # Create user with proper event emission
             user_in = UserCreate(
                 email=email,
-                password=secrets.token_urlsafe(32),  # Random placeholder, unused for social auth
+                password=secrets.token_urlsafe(28),  # Random placeholder, unused for social auth
                 full_name=user_info.get("name"),
             )
 
@@ -467,8 +499,9 @@ async def provider_auth_callback(request: Request, session: SessionDep, provider
                 event_context={"social_provider": provider},
             )
 
+        response = await complete_oauth_login(session, existing_user.email, provider, is_new_user, request)
         clear_oauth_session(request)
-        return await complete_oauth_login(session, existing_user.email, provider, is_new_user)
+        return response
 
     except HTTPException:
         raise
