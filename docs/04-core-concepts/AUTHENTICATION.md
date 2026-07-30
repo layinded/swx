@@ -1,7 +1,7 @@
 # Authentication
 
-**Version:** 2.8.0  
-**Last Updated:** 2026-07-22
+**Version:** 2.17.0
+**Last Updated:** 2026-07-30
 
 ---
 
@@ -793,6 +793,9 @@ SwX-API implements **OAuth 2.0 Authorization Code Flow with PKCE** following RFC
 1. Frontend → GET /api/oauth/{provider}
    - Backend generates PKCE challenge
    - Stores verifier in session
+   - Captures origin domain (from ?origin param, Origin header, or Referer)
+   - Stores origin in session as oauth_origin
+   - Matches origin against *_REDIRECT_URIS for redirect URI selection
    - Redirects to OAuth provider
 
 2. User authenticates with provider
@@ -807,12 +810,25 @@ SwX-API implements **OAuth 2.0 Authorization Code Flow with PKCE** following RFC
 4. Backend sets HTTP-only cookies and redirects
    - Sets: swx_access_token (httpOnly, secure)
    - Sets: swx_refresh_token (httpOnly, secure)
-   - Redirects to: {FRONTEND_HOST}/auth/callback
+   - Redirects to: {oauth_origin}/auth/callback (preserves subdomain)
+   - Falls back to: {FRONTEND_HOST}/auth/callback (if no origin stored)
 
 5. Frontend receives redirect
    - Cookies already set (no token handling needed)
    - Redirect to dashboard
 ```
+
+### Multi-Domain Redirect URIs
+
+When serving multiple domains or subdomains, configure `*_REDIRECT_URIS` to ensure users return to their origin domain after OAuth:
+
+```bash
+# .env
+GOOGLE_REDIRECT_URI=https://fastpii.com/api/oauth/google/callback
+GOOGLE_REDIRECT_URIS=https://fastpii.com/api/oauth/google/callback,https://chat.fastpii.com/api/oauth/google/callback,https://app.fastpii.com/api/oauth/google/callback
+```
+
+See [OAuth Providers](OAUTH_PROVIDERS.md) for full configuration details.
 
 ### HTTP-Only Cookie Authentication
 

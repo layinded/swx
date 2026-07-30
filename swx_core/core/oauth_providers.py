@@ -33,6 +33,7 @@ class OAuthProviderConfig:
         client_id: str | None,
         client_secret: str | None,
         redirect_uri: str | None,
+        redirect_uris: list[str] | None = None,
         auth_url: str | None = None,
         token_url: str | None = None,
         user_info_url: str | None = None,
@@ -43,6 +44,7 @@ class OAuthProviderConfig:
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
+        self.redirect_uris = redirect_uris or []
         self.auth_url = auth_url
         self.token_url = token_url
         self.user_info_url = user_info_url
@@ -91,6 +93,14 @@ class OAuthProviderSettings(BaseSettings):
             client_id = getattr(self, f"{provider_upper}_CLIENT_ID", None)
             client_secret = getattr(self, f"{provider_upper}_CLIENT_SECRET", None)
             redirect_uri = getattr(self, f"{provider_upper}_REDIRECT_URI", None)
+            redirect_uris_raw = getattr(self, f"{provider_upper}_REDIRECT_URIS", None)
+
+            # Parse comma-separated redirect URIs from env
+            redirect_uris: list[str] = []
+            if isinstance(redirect_uris_raw, str):
+                redirect_uris = [u.strip() for u in redirect_uris_raw.split(",") if u.strip()]
+            elif isinstance(redirect_uris_raw, list):
+                redirect_uris = redirect_uris_raw
 
             if not all([client_id, client_secret, redirect_uri]):
                 continue
@@ -100,6 +110,7 @@ class OAuthProviderSettings(BaseSettings):
                 client_id=client_id,
                 client_secret=client_secret,
                 redirect_uri=redirect_uri,
+                redirect_uris=redirect_uris,
                 auth_url=getattr(self, f"{provider_upper}_AUTH_URL", None),
                 token_url=getattr(self, f"{provider_upper}_TOKEN_URL", None),
                 user_info_url=getattr(self, f"{provider_upper}_USER_INFO_URL", None),

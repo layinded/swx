@@ -59,6 +59,27 @@ def generate_pkce_challenge(verifier: str) -> str:
     return base64.urlsafe_b64encode(sha256).decode().rstrip('=')
 
 
+def resolve_redirect_uri(request: Request, allowed_uris: list[str], fallback_uri: str | None) -> str | None:
+    """Match request origin against allowed redirect URIs, falling back to the single configured URI."""
+    if not allowed_uris:
+        return fallback_uri
+
+    origin = request.headers.get("origin")
+    if not origin:
+        referer = request.headers.get("referer")
+        if referer:
+            parsed = urlparse(referer)
+            if parsed.scheme and parsed.netloc:
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+
+    if origin:
+        for uri in allowed_uris:
+            if uri.startswith(origin):
+                return uri
+
+    return fallback_uri
+
+
 def error_redirect(error: str) -> RedirectResponse:
     """Create redirect response with error parameter."""
     return RedirectResponse(url=f"{FRONTEND_CALLBACK_URL}?error={error}", status_code=302)
@@ -233,7 +254,9 @@ async def google_login(request: Request):
         if not social_settings.ENABLE_GOOGLE_LOGIN:
             raise HTTPException(status_code=400, detail=translate(request, "google_login_disabled"))
 
-        redirect_uri = social_settings.GOOGLE_REDIRECT_URI
+        redirect_uri = resolve_redirect_uri(
+            request, social_settings.GOOGLE_REDIRECT_URIS, social_settings.GOOGLE_REDIRECT_URI
+        )
         if not redirect_uri:
             raise HTTPException(status_code=500, detail=translate(request, "google_redirect_uri_not_configured"))
 
@@ -310,7 +333,9 @@ async def facebook_login(request: Request):
         if not social_settings.ENABLE_FACEBOOK_LOGIN:
             raise HTTPException(status_code=400, detail=translate(request, "facebook_login_disabled"))
 
-        redirect_uri = social_settings.FACEBOOK_REDIRECT_URI
+        redirect_uri = resolve_redirect_uri(
+            request, social_settings.FACEBOOK_REDIRECT_URIS, social_settings.FACEBOOK_REDIRECT_URI
+        )
         if not redirect_uri:
             raise HTTPException(status_code=500, detail=translate(request, "facebook_redirect_uri_not_configured"))
 
@@ -412,7 +437,7 @@ async def provider_login(request: Request, provider: str):
             raise HTTPException(status_code=400, detail=translate(request, f"{provider}_login_disabled"))
 
         config = configs[provider]
-        redirect_uri = config.redirect_uri
+        redirect_uri = resolve_redirect_uri(request, config.redirect_uris, config.redirect_uri)
 
         if not redirect_uri:
             raise HTTPException(

@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.16.1  
-**Last Updated:** 2026-07-29
+**Version:** 2.17.0  
+**Last Updated:** 2026-07-30
 
 ---
 
@@ -29,6 +29,34 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.17.0 (2026-07-30)
+
+**OAuth Multi-Domain Support & Registration Bug Fix**
+
+#### Fixed
+
+1. **P0 — OAuth registration fails: password exceeds max_length** — `secrets.token_urlsafe(32)` generates 43 characters, exceeding `UserCreate.password` max_length of 40. Changed to `token_urlsafe(28)` (~38 chars). All new OAuth registrations were blocked.
+
+2. **P1 — OAuth callback redirects to wrong domain** — Callbacks were hardcoded to `FRONTEND_HOST`, losing user context on subdomains. Added origin preservation via session (`oauth_origin`) so users on `chat.fastpii.com` return there instead of `fastpii.com`.
+
+3. **P2 — Single redirect URI limitation** — Only one `GOOGLE_REDIRECT_URI` / `FACEBOOK_REDIRECT_URI` could be configured. Added `GOOGLE_REDIRECT_URIS` and `FACEBOOK_REDIRECT_URIS` (comma-separated lists) for multi-domain support, with `resolve_redirect_uri()` matching request origin against allowed URIs.
+
+4. **P2 — OAuth URLs endpoint performance** — Added `@lru_cache(maxsize=1)` to `_get_oauth_urls_cached()` since URLs are static.
+
+#### New Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `GOOGLE_REDIRECT_URIS` | `[]` | Comma-separated allowed Google redirect URIs (takes precedence over `GOOGLE_REDIRECT_URI`) |
+| `FACEBOOK_REDIRECT_URIS` | `[]` | Comma-separated allowed Facebook redirect URIs (takes precedence over `FACEBOOK_REDIRECT_URI`) |
+| `{PROVIDER}_REDIRECT_URIS` | `[]` | Comma-separated allowed redirect URIs for any custom OAuth provider |
+
+#### Backward Compatibility
+
+Fully backward compatible. If `*_REDIRECT_URIS` is not set, the existing `*_REDIRECT_URI` single-URI behavior is used unchanged.
+
+---
 
 ### Version 2.16.0 (2026-07-29)
 

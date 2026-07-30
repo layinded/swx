@@ -1,7 +1,7 @@
 # OAuth Provider Extensibility
 
-**Version:** 2.7.34
-**Last Updated:** 2026-07-02
+**Version:** 2.17.0
+**Last Updated:** 2026-07-30
 
 ---
 
@@ -38,7 +38,64 @@ ENABLE_FACEBOOK_LOGIN=false
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:8001/api/oauth/google/callback
+
+# Multi-domain support (takes precedence over single URI)
+GOOGLE_REDIRECT_URIS=http://localhost:8001/api/oauth/google/callback,https://chat.example.com/api/oauth/google/callback,https://app.example.com/api/oauth/google/callback
 ```
+
+---
+
+## Multi-Domain Redirect URI Support
+
+When your application serves multiple domains or subdomains (e.g., `fastpii.com`, `chat.fastpii.com`, `app.fastpii.com`), users authenticating via OAuth should be redirected back to their origin domain — not always to the main site.
+
+### How It Works
+
+1. **Frontend** initiates OAuth from `https://chat.fastpii.com`
+2. **Backend** matches the request's `Origin` or `Referer` header against the configured `*_REDIRECT_URIS` list
+3. **OAuth provider** redirects back to the matched URI
+4. **Backend callback** preserves the origin domain in the session and redirects to `{origin}/auth/callback`
+
+If no match is found, or `*_REDIRECT_URIS` is not configured, the single `*_REDIRECT_URI` is used as fallback.
+
+### Configuration
+
+For built-in providers (Google, Facebook):
+
+```bash
+# Single domain (existing behavior)
+GOOGLE_REDIRECT_URI=https://fastpii.com/api/oauth/google/callback
+
+# Multi-domain (new, takes precedence)
+GOOGLE_REDIRECT_URIS=https://fastpii.com/api/oauth/google/callback,https://chat.fastpii.com/api/oauth/google/callback,https://app.fastpii.com/api/oauth/google/callback
+
+FACEBOOK_REDIRECT_URIS=https://fastpii.com/api/oauth/facebook/callback,https://chat.fastpii.com/api/oauth/facebook/callback
+```
+
+For custom providers:
+
+```bash
+GITHUB_REDIRECT_URI=https://fastpii.com/api/oauth/github/callback
+GITHUB_REDIRECT_URIS=https://fastpii.com/api/oauth/github/callback,https://chat.fastpii.com/api/oauth/github/callback
+```
+
+### Origin Detection
+
+The backend detects the origin domain from:
+
+1. `origin` query parameter (explicit, e.g., `?origin=https://chat.fastpii.com`)
+2. `Origin` request header (set by browsers on CORS requests)
+3. `Referer` request header (fallback)
+
+### Registering Redirect URIs with OAuth Providers
+
+Each URI in `*_REDIRECT_URIS` must be registered individually with the OAuth provider:
+
+- **Google Cloud Console** → APIs & Services → Credentials → Authorized redirect URIs
+- **Facebook Developers** → App Settings → Facebook Login → Valid OAuth Redirect URIs
+- **GitHub** → Developer settings → OAuth Apps → Authorization callback URL
+
+All listed URIs must match exactly (including protocol and path).
 
 ---
 
@@ -86,12 +143,13 @@ Each custom provider requires:
 |----------|-------------|
 | `{PROVIDER}_CLIENT_ID` | OAuth client ID |
 | `{PROVIDER}_CLIENT_SECRET` | OAuth client secret |
-| `{PROVIDER}_REDIRECT_URI` | Callback URL |
+| `{PROVIDER}_REDIRECT_URI` | Callback URL (single domain) |
 
 ### Optional Variables
 
 | Variable | Description |
 |----------|-------------|
+| `{PROVIDER}_REDIRECT_URIS` | Comma-separated list of allowed callback URLs (multi-domain). Takes precedence over `{PROVIDER}_REDIRECT_URI`. |
 | `{PROVIDER}_AUTH_URL` | Authorization endpoint |
 | `{PROVIDER}_TOKEN_URL` | Token endpoint |
 | `{PROVIDER}_USER_INFO_URL` | User info endpoint (for non-OIDC providers) |
@@ -199,7 +257,7 @@ When a new user registers via OAuth, swx-core uses the same registration flow as
 # swx_core/routes/access/oauth_route.py (Google example)
 user_in = UserCreate(
     email=email,
-    password=secrets.token_urlsafe(32),  # Random placeholder, unused for social auth
+    password=secrets.token_urlsafe(28),  # Random placeholder, unused for social auth
     full_name=user_info.get("name"),
 )
 
@@ -273,6 +331,7 @@ User(
 GITHUB_CLIENT_ID=Iv1.abc123...
 GITHUB_CLIENT_SECRET=abc123...
 GITHUB_REDIRECT_URI=http://localhost:8001/api/oauth/github/callback
+GITHUB_REDIRECT_URIS=http://localhost:8001/api/oauth/github/callback,https://chat.example.com/api/oauth/github/callback
 GITHUB_AUTH_URL=https://github.com/login/oauth/authorize
 GITHUB_TOKEN_URL=https://github.com/login/oauth/access_token
 GITHUB_USER_INFO_URL=https://api.github.com/user
@@ -285,6 +344,7 @@ GITHUB_SCOPE=user:email
 LINKEDIN_CLIENT_ID=78abc123...
 LINKEDIN_CLIENT_SECRET=abc123...
 LINKEDIN_REDIRECT_URI=http://localhost:8001/api/oauth/linkedin/callback
+LINKEDIN_REDIRECT_URIS=http://localhost:8001/api/oauth/linkedin/callback,https://chat.example.com/api/oauth/linkedin/callback
 LINKEDIN_AUTH_URL=https://www.linkedin.com/oauth/v2/authorization
 LINKEDIN_TOKEN_URL=https://www.linkedin.com/oauth/v2/accessToken
 LINKEDIN_USER_INFO_URL=https://api.linkedin.com/v2/me
@@ -307,6 +367,7 @@ APPLE_SCOPE=email name
 MICROSOFT_CLIENT_ID=abc123-456-def...
 MICROSOFT_CLIENT_SECRET=abc123...
 MICROSOFT_REDIRECT_URI=http://localhost:8001/api/oauth/microsoft/callback
+MICROSOFT_REDIRECT_URIS=http://localhost:8001/api/oauth/microsoft/callback,https://chat.example.com/api/oauth/microsoft/callback
 MICROSOFT_SERVER_METADATA_URL=https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration
 MICROSOFT_SCOPE=openid email profile
 ```

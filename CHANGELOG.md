@@ -2,6 +2,88 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.17.0] - 2026-07-30
+
+### Fixed — OAuth Multi-Domain Support & Registration Bug
+
+3 fixes from FastPII Platform production deployment. Includes a P0 registration-breaking bug, a P1 multi-domain redirect issue, and a P2 configuration gap for multi-redirect-URI support.
+
+---
+
+#### P0 — OAuth registration fails: `secrets.token_urlsafe(32)` generates 43-char password exceeding `UserCreate.password` max_length of 40
+
+When a new user registers via OAuth (Google, Facebook, or any custom provider), `secrets.token_urlsafe(32)` generates a 43-character string that exceeds `UserCreate.password`'s `max_length=40`, causing a Pydantic validation error. This blocks **all new OAuth user registrations**.
+
+**Fix:** Changed all three OAuth callback handlers to use `secrets.token_urlsafe(28)` (~38 chars, within the 40-char limit).
+
+| File | Change |
+|---|---|
+| `swx_core/routes/access/oauth_route.py` | `token_urlsafe(32)` → `token_urlsafe(28)` in Google, Facebook, and generic provider callbacks |
+
+---
+
+#### P1 — OAuth callback redirects to `FRONTEND_HOST` instead of preserving origin domain
+
+OAuth callbacks were hardcoded to redirect to `FRONTEND_HOST` regardless of which subdomain the user started from. Users on `chat.fastpii.com` would be redirected to `fastpii.com` after login, losing their context.
+
+**Fix:** Added origin preservation through the OAuth flow:
+- `store_pkce_session()` captures `origin` from query params or `Referer` header, stores in session as `oauth_origin`
+- `complete_oauth_login()` reads `oauth_origin` from session and redirects to the origin domain
+- `clear_oauth_session()` cleans up `oauth_origin`
+
+| File | Change |
+|---|---|
+| `swx_core/routes/access/oauth_route.py` | Origin capture in `store_pkce_session()`, origin-based redirect in `complete_oauth_login()`, cleanup in `clear_oauth_session()` |
+
+---
+
+#### P2 — Single redirect URI limitation for multi-domain deployments
+
+Only a single `GOOGLE_REDIRECT_URI` / `FACEBOOK_REDIRECT_URI` could be configured, forcing all OAuth flows through one domain. Multi-domain applications (chat.fastpii.com, app.fastpii.com, fastpii.com) needed separate redirect URIs registered with each OAuth provider.
+
+**Fix:** Added multi-redirect-URI support with origin-based matching:
+
+- `GOOGLE_REDIRECT_URIS` / `FACEBOOK_REDIRECT_URIS` — comma-separated list of allowed redirect URIs (takes precedence over single `*_REDIRECT_URI`)
+- `{PROVIDER}_REDIRECT_URIS` — same for custom providers via `OAuthProviderSettings`
+- `resolve_redirect_uri()` — matches request `Origin`/`Referer` header against allowed URIs, falls back to single configured URI
+
+| File | Change |
+|---|---|
+| `swx_core/config/social_settings.py` | Added `GOOGLE_REDIRECT_URIS: list[str]` and `FACEBOOK_REDIRECT_URIS: list[str]` fields |
+| `swx_core/core/oauth_providers.py` | Added `redirect_uris: list[str]` to `OAuthProviderConfig`, parses `{PROVIDER}_REDIRECT_URIS` from env |
+| `swx_core/routes/access/oauth_route.py` | Added `resolve_redirect_uri()` helper; updated `google_login`, `facebook_login`, `provider_login` to use it |
+| `.env.example` | Added `GOOGLE_REDIRECT_URIS` and `FACEBOOK_REDIRECT_URIS` examples |
+
+---
+
+#### P2 — OAuth URLs endpoint performance
+
+`GET /api/oauth/urls` was rebuilding provider URLs on every request despite configuration being static.
+
+**Fix:** Added `@lru_cache(maxsize=1)` to `_get_oauth_urls_cached()`.
+
+| File | Change |
+|---|---|
+| `swx_core/routes/access/oauth_route.py` | Wrapped URL builder in `lru_cache` |
+
+---
+
+### Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `GOOGLE_REDIRECT_URIS` | `[]` | Comma-separated list of allowed redirect URIs for Google OAuth. Takes precedence over `GOOGLE_REDIRECT_URI`. |
+| `FACEBOOK_REDIRECT_URIS` | `[]` | Comma-separated list of allowed redirect URIs for Facebook OAuth. Takes precedence over `FACEBOOK_REDIRECT_URI`. |
+| `{PROVIDER}_REDIRECT_URIS` | `[]` | Comma-separated list of allowed redirect URIs for any custom OAuth provider. Takes precedence over `{PROVIDER}_REDIRECT_URI`. |
+
+### Backward Compatibility
+
+- **Fully backward compatible.** If `*_REDIRECT_URIS` is not set (empty list), the existing `*_REDIRECT_URI` single-URI behavior is used unchanged.
+- Origin-based redirect matching only activates when the `Origin` or `Referer` header matches an allowed URI.
+- The `secrets.token_urlsafe(28)` change only affects the placeholder password for OAuth registrations — regular email/password registrations are unaffected.
+
+---
+
 ## [2.16.1] - 2026-07-29
 
 ### Added — NeuronaHealth Production Patterns
