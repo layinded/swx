@@ -1,7 +1,7 @@
 # Rate Limiting & Abuse Protection
 
-**Version:** 2.11.0  
-**Last Updated:** 2026-07-27
+**Version:** 2.12.0  
+**Last Updated:** 2026-08-03
 
 ---
 
@@ -16,10 +16,11 @@
 7. [Fail-Open Mode](#fail-open-mode)
 8. [Database-Driven Overrides](#database-driven-overrides)
 9. [Billing Plan Resolution](#billing-plan-resolution)
-10. [Usage Examples](#usage-examples)
-11. [Abuse Detection](#abuse-detection)
-12. [Operational Tuning](#operational-tuning)
-13. [Troubleshooting](#troubleshooting)
+10. [Auth Rate Limiting](#auth-rate-limiting)
+11. [Usage Examples](#usage-examples)
+12. [Abuse Detection](#abuse-detection)
+13. [Operational Tuning](#operational-tuning)
+14. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -525,6 +526,72 @@ from swx_core.services.rate_limit.enforce import parse_rate_limit
 
 max_requests, window_seconds = parse_rate_limit("5/minute")  # (5, 60)
 ```
+
+---
+
+## Auth Rate Limiting
+
+The **Auth Rate Limit Middleware** (`swx_core/middleware/auth_rate_limit.py`) provides declarative, per-path rate limiting for authentication endpoints. It's a pure-ASGI implementation that works correctly with SSE streaming.
+
+### Key Features
+
+- **Declarative rules** — define rate limits as a JSON configuration
+- **Per-namespace tracking** — each rule has a unique namespace for independent counting
+- **Sliding window** — in-memory sliding window counter with per-IP granularity
+- **Path matching** — prefix or exact path matching with HTTP method filtering
+- **SSE-compatible** — pure ASGI, doesn't buffer response bodies
+- **Opt-in** — when no rules are configured, the middleware is a no-op
+
+### Configuration
+
+```bash
+# .env
+SWX_AUTH_RATE_LIMIT_RULES=[
+  {"namespace":"auth:login","path_prefix":"/api/auth/login","methods":["POST"],"max_requests":5,"window_seconds":60},
+  {"namespace":"auth:register","path_prefix":"/api/auth/register","methods":["POST"],"max_requests":3,"window_seconds":3600},
+  {"namespace":"auth:refresh","exact_path":"/api/auth/refresh","methods":["POST"],"max_requests":10,"window_seconds":60},
+  {"namespace":"auth:password","path_prefix":"/api/auth/password-recover","methods":["POST"],"max_requests":3,"window_seconds":3600}
+]
+```
+
+### RateLimitRule Reference
+
+| Field | Type | Description |
+|---|---|---|
+| `namespace` | `str` | Unique name (e.g., `"auth:login"`) |
+| `path_prefix` | `str` | Path prefix to match (e.g., `"/api/auth/login"`) |
+| `exact_path` | `str` | Exact path to match |
+| `methods` | `tuple` | HTTP methods to limit (empty = all) |
+| `max_requests` | `int` | Max requests in the window (default: 5) |
+| `window_seconds` | `int` | Time window in seconds (default: 60) |
+
+### 429 Response Format
+
+```json
+{
+    "success": false,
+    "error": {
+        "code": "RATE_LIMIT_EXCEEDED",
+        "message": "Rate limit exceeded for auth:login.",
+        "details": {
+            "namespace": "auth:login",
+            "retry_after": 45
+        }
+    }
+}
+```
+
+### Registration
+
+```python
+from swx_core.middleware.auth_rate_limit import apply_middleware
+from fastapi import FastAPI
+
+app = FastAPI()
+apply_middleware(app)
+```
+
+See [Auth Rate Limiting](AUTH_RATE_LIMITING.md) for full documentation.
 
 ---
 

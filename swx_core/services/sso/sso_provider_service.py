@@ -7,7 +7,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...events.dispatcher import event_bus
 from ...models.sso_provider import SSOProvider, SSOProviderCreate, SSOProviderPublic, SSOProviderUpdate
 from ...repositories import sso_repository
+from ...security.encryption import encrypt_value, decrypt_value, is_encrypted
 from .sso_cache import get_cached_enabled_providers, get_cached_provider, invalidate_provider_cache
+
+
+def _encrypt_field(plaintext: str | None) -> str | None:
+    """Encrypt a sensitive field for at-rest storage. No-ops if encryption is not configured."""
+    if not plaintext:
+        return plaintext
+    try:
+        return encrypt_value(plaintext)
+    except Exception:
+        return plaintext
+
+
+def _decrypt_field(ciphertext: str | None) -> str | None:
+    """Decrypt a sensitive field for runtime use. Returns input as-is if not encrypted."""
+    if not ciphertext or not is_encrypted(ciphertext):
+        return ciphertext
+    try:
+        return decrypt_value(ciphertext)
+    except Exception:
+        return ciphertext
 
 
 def _mask_secret(value: str | None) -> str | None:
@@ -16,13 +37,20 @@ def _mask_secret(value: str | None) -> str | None:
 
 def _to_public(provider: SSOProvider) -> SSOProviderPublic:
     data = provider.model_dump()
-    data["client_secret"] = _mask_secret(provider.client_secret)
-    data["certificate"] = _mask_secret(provider.certificate)
+    plain_secret = _decrypt_field(provider.client_secret)
+    plain_cert = _decrypt_field(provider.certificate)
+    data["client_secret"] = _mask_secret(plain_secret)
+    data["certificate"] = _mask_secret(plain_cert)
     return SSOProviderPublic.model_validate(data)
 
 
 async def create_provider(session: AsyncSession, body: SSOProviderCreate) -> SSOProviderPublic:
-    provider = await sso_repository.create_provider(session, body.model_dump(exclude_unset=True))
+    data = body.model_dump(exclude_unset=True)
+    if "client_secret" in data and data["client_secret"]:
+        data["client_secret"] = _encrypt_field(data["client_secret"])
+    if "certificate" in data and data["certificate"]:
+        data["certificate"] = _encrypt_field(data["certificate"])
+    provider = await sso_repository.create_provider(session, data)
     invalidate_provider_cache()
     _ = await event_bus.dispatch("sso.provider_created", payload={"provider_id": str(provider.id), "provider_type": provider.provider_type})
     return _to_public(provider)
@@ -41,7 +69,12 @@ async def list_providers(session: AsyncSession, *, enabled_only: bool = False, s
 
 
 async def update_provider(session: AsyncSession, provider_id: UUID, body: SSOProviderUpdate) -> SSOProviderPublic:
-    provider = await sso_repository.update_provider(session, provider_id, body.model_dump(exclude_unset=True))
+    data = body.model_dump(exclude_unset=True)
+    if "client_secret" in data and data["client_secret"]:
+        data["client_secret"] = _encrypt_field(data["client_secret"])
+    if "certificate" in data and data["certificate"]:
+        data["certificate"] = _encrypt_field(data["certificate"])
+    provider = await sso_repository.update_provider(session, provider_id, data)
     if provider is None:
         raise ValueError("SSO provider not found")
     invalidate_provider_cache()

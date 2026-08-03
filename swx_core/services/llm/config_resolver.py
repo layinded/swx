@@ -2,6 +2,8 @@ import os
 import re
 from typing import Any
 
+from swx_core.security.encryption import decrypt_value, is_encrypted
+
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::(?:-)?([^}]*))?\}")
 
 
@@ -33,6 +35,33 @@ def resolve_config(config: dict[str, Any]) -> dict[str, Any]:
         else:
             resolved_config[key] = value
     return resolved_config
+
+
+def resolve_api_key(config: dict[str, Any], credential_source: str, encrypted_api_key: str | None = None) -> str:
+    """Resolve an API key based on credential source.
+
+    Args:
+        config: The provider credentials dict.
+        credential_source: One of 'env_placeholder', 'encrypted_db', 'direct'.
+        encrypted_api_key: The encrypted API key from DB (used when credential_source='encrypted_db').
+
+    Returns:
+        The resolved plaintext API key.
+    """
+    match credential_source:
+        case "encrypted_db":
+            if encrypted_api_key and is_encrypted(encrypted_api_key):
+                return decrypt_value(encrypted_api_key)
+            if encrypted_api_key:
+                return encrypted_api_key
+            resolved = resolve_config(config)
+            return str(resolved.get("api_key", ""))
+        case "direct":
+            resolved = resolve_config(config)
+            return str(resolved.get("api_key", ""))
+        case _:
+            resolved = resolve_config(config)
+            return str(resolved.get("api_key", ""))
 
 
 def mask_api_key(key: str | None) -> str:

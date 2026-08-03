@@ -35,6 +35,7 @@ from swx_core.config.settings import settings
 from swx_core.database.db_setup import setup_database
 from swx_core.middleware.logging_middleware import logger
 from swx_core.router import router
+from swx_core.utils.errors import SwXError
 from swx_core.utils.loader import load_all_modules, load_middleware
 from swx_core.database.db_seed import seed_data
 from swx_core.services.alert_engine import alert_engine
@@ -126,10 +127,15 @@ async def lifespan(app: FastAPI):  # noqa
     logger.info("Starting cache refresh background task.")
     start_cache_refresh()
 
+    # Step 7: Start audit event queue drain worker
+    from swx_core.services.audit.audit_event_queue import audit_queue
+    await audit_queue.start()
+
     # Yield control to the application (it will run until shutdown)
     yield
 
-    # Shutdown logic (if needed)
+    # Shutdown: stop audit queue drain worker
+    await audit_queue.stop()
     logger.info("Shutting down application...")
 
 
@@ -180,6 +186,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "body": exc.body if hasattr(exc, 'body') else None,
         },
     )
+
+
+@app.exception_handler(SwXError)
+async def swx_error_handler(request: Request, exc: SwXError):
+    """Handle SwXError subclasses and return structured JSON error responses."""
+    logger.warning(f"SwXError at {request.url.path}: [{exc.code}] {exc.message}")
+    return JSONResponse(status_code=exc.status_code, content=exc.to_dict())
 
 
 @app.exception_handler(Exception)

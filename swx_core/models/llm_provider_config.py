@@ -21,6 +21,12 @@ class LLMProviderType(str, Enum):
     OLLAMA = "ollama"
     ANTHROPIC = "anthropic"
 
+
+class CredentialSource(str, Enum):
+    ENV_PLACEHOLDER = "env_placeholder"
+    ENCRYPTED_DB = "encrypted_db"
+    DIRECT = "direct"
+
 def mask_credentials_map(credentials: dict[str, Any]) -> dict[str, Any]:
     masked: dict[str, Any] = {}
     for key, value in credentials.items():
@@ -35,6 +41,8 @@ class LLMProviderConfigBase(SQLModel):
     name: str = Field(max_length=100)
     model_name: str = Field(max_length=100)
     credentials: dict[str, Any] = Field(default_factory=dict)
+    credential_source: str = Field(default=CredentialSource.ENV_PLACEHOLDER.value, max_length=20)
+    encrypted_api_key: str | None = Field(default=None, max_length=500)
     default_params: dict[str, Any] = Field(default_factory=dict)
     priority: int = 0
     is_primary: bool = False
@@ -65,6 +73,8 @@ class LLMProviderConfig(LLMProviderConfigBase, Base, table=True):
     )
     provider: str = Field(sa_column=Column(String(50), nullable=False, index=True))
     credentials: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")))
+    credential_source: str = Field(default=CredentialSource.ENV_PLACEHOLDER.value, sa_column=Column(String(20), nullable=False, server_default=text("'env_placeholder'")))
+    encrypted_api_key: str | None = Field(default=None, sa_column=Column(String(500), nullable=True))
     default_params: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")))
     supported_phases: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")))
     cost_per_1k_tokens: float | None = Field(default=None, sa_column=Column(Float, nullable=True))
@@ -80,12 +90,16 @@ class LLMProviderConfig(LLMProviderConfigBase, Base, table=True):
 
 class LLMProviderConfigCreate(LLMProviderConfigBase):
     team_id: uuid.UUID | None = None
+    credential_source: str = CredentialSource.ENV_PLACEHOLDER.value
+    encrypted_api_key: str | None = None
 
 class LLMProviderConfigUpdate(SQLModel):
     provider: str | None = Field(default=None, max_length=50)
     name: str | None = Field(default=None, max_length=100)
     model_name: str | None = Field(default=None, max_length=100)
     credentials: dict[str, Any] | None = None
+    credential_source: str | None = Field(default=None, max_length=20)
+    encrypted_api_key: str | None = Field(default=None, max_length=500)
     default_params: dict[str, Any] | None = None
     priority: int | None = None
     is_primary: bool | None = None
@@ -106,6 +120,8 @@ class LLMProviderConfigPublic(LLMProviderConfigBase):
     id: uuid.UUID
     team_id: uuid.UUID | None = None
     credentials: dict[str, Any] = Field(default_factory=dict)
+    credential_source: str = CredentialSource.ENV_PLACEHOLDER.value
+    encrypted_api_key: str | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -9,16 +9,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.config.settings import settings
 from swx_core.events import event_bus
-from swx_core.models.llm_provider_config import LLMProviderConfigCreate, LLMProviderConfigPublic, LLMProviderConfigUpdate, mask_credentials_map
+from swx_core.models.llm_provider_config import LLMProviderConfigCreate, LLMProviderConfigPublic, LLMProviderConfigUpdate, mask_credentials_map, CredentialSource
 from swx_core.models.llm_usage_log import LLMUsageLogPublic
 from swx_core.repositories import llm_provider_repository, llm_usage_repository
+from swx_core.security.encryption import encrypt_value
 from swx_core.services.llm.provider_factory import clear_cache as clear_provider_cache, create_provider, get_provider_chain
 from swx_core.services.llm.providers import LLMRequest
 from swx_core.services.llm.resilience import CircuitBreakerRegistry, call_with_timeout, retry_with_backoff
+from swx_core.contracts.llm import SSEEvent, ValidateProviderResult
 
 
 def _provider_public(config) -> LLMProviderConfigPublic:
-    return LLMProviderConfigPublic.model_validate({**config.model_dump(), "credentials": mask_credentials_map(config.credentials), "metadata": config.extra_data})
+    data = config.model_dump()
+    data["credentials"] = mask_credentials_map(config.credentials)
+    data["encrypted_api_key"] = None if not config.encrypted_api_key else "***"
+    data["metadata"] = config.extra_data
+    return LLMProviderConfigPublic.model_validate(data)
 
 
 def _cost(rate: float | None, total_tokens: int) -> float:
@@ -57,7 +63,7 @@ async def _log_usage(session: AsyncSession, provider: str, model: str, phase: st
     )
 
 
-_CONFIG_FIELDS = ("provider", "name", "model_name", "credentials", "default_params", "priority", "is_primary", "is_active", "supported_phases", "cost_per_1k_tokens", "supports_streaming", "supports_json_mode", "timeout_seconds", "max_retries", "circuit_breaker_threshold", "circuit_breaker_reset_seconds", "rate_limit_per_minute", "daily_token_limit", "extra_data")
+_CONFIG_FIELDS = ("provider", "name", "model_name", "credentials", "credential_source", "encrypted_api_key", "default_params", "priority", "is_primary", "is_active", "supported_phases", "cost_per_1k_tokens", "supports_streaming", "supports_json_mode", "timeout_seconds", "max_retries", "circuit_breaker_threshold", "circuit_breaker_reset_seconds", "rate_limit_per_minute", "daily_token_limit", "extra_data")
 
 
 def _create_provider_payload(data: LLMProviderConfigCreate) -> llm_provider_repository.LLMProviderConfigData:
@@ -87,38 +93,43 @@ async def generate(session: AsyncSession, prompt: str, phase: str = "chat", syst
             response = await retry_with_backoff(lambda: call_with_timeout(lambda: provider.generate(request), timeout, config.name), retries, 0.5, 4.0, breaker)
             if not response.success:
                 raise RuntimeError(response.error or f"{config.provider} failed")
-            breaker.record_success()
+            await breaker.record_success()
             cost = _cost(config.cost_per_1k_tokens, response.tokens_used)
             await _log_usage(session, response.provider, response.model or config.model_name, phase, (response.prompt_tokens, response.completion_tokens, response.tokens_used), cost, response.latency_ms or int((monotonic() - started) * 1000), True, None, account_id, config.id)
             parsed = _parse_response(response.content, json_mode)
             await event_bus.dispatch("llm.generate", payload={"provider": config.provider, "model": config.model_name, "phase": phase, "account_id": str(account_id) if account_id else None})
             return parsed
         except Exception as exc:  # noqa: BLE001
-            breaker.record_failure()
+            await breaker.record_failure()
             errors.append(f"{config.provider}: {exc}")
             await event_bus.dispatch("llm.provider_failed", payload={"provider": config.provider, "model": config.model_name, "phase": phase, "error": str(exc), "account_id": str(account_id) if account_id else None})
             await _log_usage(session, config.provider, config.model_name, phase, (0, 0, 0), 0.0, int((monotonic() - started) * 1000), False, str(exc), account_id, config.id)
     raise HTTPException(status_code=503, detail=f"All LLM providers failed: {'; '.join(errors)}")
 
 
-async def stream(session: AsyncSession, prompt: str, phase: str = "chat", system_prompt: str | None = None, account_id: UUID | None = None, **kwargs: Any) -> AsyncGenerator[str, None]:
+async def stream(session: AsyncSession, prompt: str, phase: str = "chat", system_prompt: str | None = None, account_id: UUID | None = None, **kwargs: Any) -> AsyncGenerator[SSEEvent, None]:
     request = LLMRequest(prompt=prompt, system_prompt=system_prompt, temperature=float(kwargs.get("temperature", 0.7)), max_tokens=int(kwargs.get("max_tokens", 1024)), top_p=float(kwargs.get("top_p", 1.0)), stop_sequences=kwargs.get("stop_sequences"))
     for provider, config in await get_provider_chain(session, phase):
         _, _, threshold, reset = _resilience_config(config)
         breaker = CircuitBreakerRegistry.get(f"{config.provider}:{config.id}", threshold, 1, reset)
-        if not breaker.allow_request():
+        if not await breaker.allow_request():
             continue
         started = monotonic()
+        usage_tokens: tuple[int, int, int] = (0, 0, 0)
         try:
-            async for chunk in provider.stream(request):
-                yield chunk
-            breaker.record_success()
-            await _log_usage(session, config.provider, config.model_name, phase, (0, 0, 0), 0.0, int((monotonic() - started) * 1000), True, None, account_id, config.id)
+            async for event in provider.stream(request):
+                if event.event_type == "usage" and isinstance(event.data, dict):
+                    usage_tokens = (int(event.data.get("prompt_tokens", 0)), int(event.data.get("completion_tokens", 0)), int(event.data.get("total_tokens", 0)))
+                yield event
+            await breaker.record_success()
+            cost = _cost(config.cost_per_1k_tokens, usage_tokens[2])
+            await _log_usage(session, config.provider, config.model_name, phase, usage_tokens, cost, int((monotonic() - started) * 1000), True, None, account_id, config.id)
             return
         except Exception as exc:  # noqa: BLE001
-            breaker.record_failure()
+            await breaker.record_failure()
             await event_bus.dispatch("llm.provider_failed", payload={"provider": config.provider, "model": config.model_name, "phase": phase, "error": str(exc), "account_id": str(account_id) if account_id else None})
-            await _log_usage(session, config.provider, config.model_name, phase, (0, 0, 0), 0.0, int((monotonic() - started) * 1000), False, str(exc), account_id, config.id)
+            cost = _cost(config.cost_per_1k_tokens, usage_tokens[2])
+            await _log_usage(session, config.provider, config.model_name, phase, usage_tokens, cost, int((monotonic() - started) * 1000), False, str(exc), account_id, config.id)
     raise HTTPException(status_code=503, detail="No streaming provider available")
 
 
@@ -145,13 +156,19 @@ async def get_provider_config(session: AsyncSession, config_id: UUID) -> LLMProv
 
 
 async def create_provider_config(session: AsyncSession, data: LLMProviderConfigCreate) -> LLMProviderConfigPublic:
-    result = _provider_public(await llm_provider_repository.create(session, _create_provider_payload(data)))
+    payload = _create_provider_payload(data)
+    if data.credential_source == CredentialSource.ENCRYPTED_DB.value and data.encrypted_api_key:
+        payload["encrypted_api_key"] = encrypt_value(data.encrypted_api_key)
+    result = _provider_public(await llm_provider_repository.create(session, payload))
     clear_provider_cache()
     return result
 
 
 async def update_provider_config(session: AsyncSession, config_id: UUID, data: LLMProviderConfigUpdate) -> LLMProviderConfigPublic:
-    config = await llm_provider_repository.update(session, config_id, _update_provider_payload(data))
+    payload = _update_provider_payload(data)
+    if data.credential_source == CredentialSource.ENCRYPTED_DB.value and data.encrypted_api_key:
+        payload["encrypted_api_key"] = encrypt_value(data.encrypted_api_key)
+    config = await llm_provider_repository.update(session, config_id, payload)
     if config is None:
         raise HTTPException(status_code=404, detail="LLM provider config not found")
     clear_provider_cache()
@@ -167,3 +184,23 @@ async def delete_provider_config(session: AsyncSession, config_id: UUID) -> dict
 async def get_usage_history(session: AsyncSession, account_id: UUID, skip: int = 0, limit: int = 100) -> dict[str, Any]:
     logs = [LLMUsageLogPublic.model_validate(item) for item in await llm_usage_repository.get_by_account(session, account_id, skip, limit)]
     return {"summary": await llm_usage_repository.get_cost_summary(session, account_id), "logs": logs}
+
+
+async def validate_provider(session: AsyncSession, config_id: UUID) -> ValidateProviderResult:
+    config = await llm_provider_repository.get_by_id(session, config_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="LLM provider config not found")
+    provider = create_provider(config)
+    if provider is None:
+        return ValidateProviderResult(valid=False, error=f"Unknown provider type: {config.provider}")
+    return await provider.validate_api_key()
+
+
+async def list_provider_models(session: AsyncSession, config_id: UUID) -> list[str]:
+    config = await llm_provider_repository.get_by_id(session, config_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="LLM provider config not found")
+    provider = create_provider(config)
+    if provider is None:
+        return []
+    return await provider.list_models()

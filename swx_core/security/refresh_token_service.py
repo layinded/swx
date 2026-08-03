@@ -27,8 +27,27 @@ from typing import Any, Optional, cast
 from swx_core.config.settings import settings
 from swx_core.models.refresh_token import RefreshToken
 from swx_core.auth.core.jwt import create_token, TokenAudience
+from swx_core.security.encryption import encrypt_value, decrypt_value, is_encrypted
 from swx_core.utils.language_helper import translate
 from swx_core.utils.time import utc_now
+
+
+def _encrypt_token(plaintext: str) -> str:
+    """Encrypt a refresh token for at-rest storage. No-ops if encryption is not configured."""
+    try:
+        return encrypt_value(plaintext)
+    except Exception:
+        return plaintext
+
+
+def _decrypt_token(ciphertext: str) -> str:
+    """Decrypt a stored refresh token. Returns input as-is if not encrypted."""
+    if not ciphertext or not is_encrypted(ciphertext):
+        return ciphertext
+    try:
+        return decrypt_value(ciphertext)
+    except Exception:
+        return ciphertext
 
 
 def create_access_token(
@@ -95,13 +114,11 @@ async def create_refresh_token(
     existing_token = result.scalar_one_or_none()
 
     if existing_token:
-        # Update the existing refresh token
-        existing_token.token = encoded_jwt
+        existing_token.token = _encrypt_token(encoded_jwt)
         existing_token.expires_at = expire_at
     else:
-        # Create a new refresh token record
         new_refresh_token = RefreshToken(
-            user_email=email, token=encoded_jwt, expires_at=expire_at
+            user_email=email, token=_encrypt_token(encoded_jwt), expires_at=expire_at
         )
         session.add(new_refresh_token)
 
@@ -145,22 +162,19 @@ async def verify_refresh_token(
                 detail=translate(request, "invalid_refresh_token_payload"),
             )
 
-        # Validate that the token exists in the database
-        statement = select(RefreshToken).where(RefreshToken.token == refresh_token)
+        statement = select(RefreshToken).where(RefreshToken.user_email == email)
         result = await session.execute(statement)
         db_token = result.scalar_one_or_none()
-        if not db_token:
+        if not db_token or _decrypt_token(db_token.token) != refresh_token:
             raise HTTPException(
                 status_code=401,
                 detail=translate(request, "invalid_or_revoked_refresh_token"),
             )
 
-        # Ensure token expiration is timezone-aware (assume UTC if naive)
         token_exp = db_token.expires_at
         if token_exp.tzinfo is None:
             token_exp = token_exp.replace(tzinfo=timezone.utc)
 
-        # Check if the token is expired
         if utc_now() > token_exp:
             raise HTTPException(
                 status_code=401, detail=translate(request, "refresh_token_expired")
@@ -186,6 +200,9 @@ async def revoke_refresh_token(session: AsyncSession, refresh_token: str) -> boo
     """
     Revoke a refresh token (logout).
 
+    Since tokens are encrypted at rest, we decode the JWT to extract the email,
+    look up by user_email, then decrypt and compare to find the matching record.
+
     Args:
         session (AsyncSession): The database session.
         refresh_token (str): The refresh token to revoke.
@@ -193,6 +210,25 @@ async def revoke_refresh_token(session: AsyncSession, refresh_token: str) -> boo
     Returns:
         bool: True if the token was revoked, False otherwise.
     """
+    try:
+        payload = jwt.decode(
+            refresh_token,
+            settings.REFRESH_SECRET_KEY,
+            algorithms=[settings.PASSWORD_SECURITY_ALGORITHM],
+        )
+        email = payload.get("sub")
+    except Exception:
+        email = None
+
+    if email:
+        statement = select(RefreshToken).where(RefreshToken.user_email == email)
+        result = await session.execute(statement)
+        db_token = result.scalar_one_or_none()
+        if db_token and _decrypt_token(db_token.token) == refresh_token:
+            await session.delete(db_token)
+            await session.commit()
+            return True
+
     statement = select(RefreshToken).where(RefreshToken.token == refresh_token)
     result = await session.execute(statement)
     db_token = result.scalar_one_or_none()
@@ -200,7 +236,6 @@ async def revoke_refresh_token(session: AsyncSession, refresh_token: str) -> boo
         await session.delete(db_token)
         await session.commit()
 
-    # Return True regardless to indicate that the token is no longer valid
     return True
 
 

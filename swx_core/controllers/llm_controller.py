@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from swx_core.contracts.llm import ValidateProviderResult
 from swx_core.models.llm_provider_config import LLMProviderConfigCreate, LLMProviderConfigPublic, LLMProviderConfigUpdate
 from swx_core.services.llm import llm_service
 
@@ -42,3 +43,11 @@ async def health_controller(session: AsyncSession) -> dict[str, bool]:
 
 async def usage_controller(session: AsyncSession, account_id: UUID, skip: int = 0, limit: int = 100) -> dict[str, Any]:
     return await llm_service.get_usage_history(session, account_id, skip, limit)
+
+
+async def validate_provider_controller(session: AsyncSession, config_id: UUID) -> ValidateProviderResult:
+    return await llm_service.validate_provider(session, config_id)
+
+
+async def list_models_controller(session: AsyncSession, config_id: UUID) -> list[str]:
+    return await llm_service.list_provider_models(session, config_id)

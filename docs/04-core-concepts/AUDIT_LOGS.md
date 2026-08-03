@@ -1,7 +1,7 @@
 # Audit Logging
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.0.0  
+**Last Updated:** 2026-08-03
 
 ---
 
@@ -12,10 +12,12 @@
 3. [What Is Not Logged](#what-is-not-logged)
 4. [Immutability Guarantees](#immutability-guarantees)
 5. [Access Controls](#access-controls)
-6. [Querying Audit Logs](#querying-audit-logs)
-7. [Usage Examples](#usage-examples)
-8. [Best Practices](#best-practices)
-9. [Troubleshooting](#troubleshooting)
+6. [Audit Retention](#audit-retention)
+7. [Audit Event Queue](#audit-event-queue)
+8. [Querying Audit Logs](#querying-audit-logs)
+9. [Usage Examples](#usage-examples)
+10. [Best Practices](#best-practices)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -474,6 +476,92 @@ logs = await get_audit_logs(
     limit=100
 )
 ```
+
+---
+
+## Audit Retention
+
+The **Audit Retention Service** (`swx_core/services/audit/audit_retention_service.py`) batch-deletes audit rows older than `SWX_AUDIT_RETENTION_DAYS`. When configured, the nightly background job calls `run_retention()` automatically.
+
+### Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `SWX_AUDIT_RETENTION_DAYS` | `None` | Days to retain. `None` or `0` disables retention |
+
+### Usage
+
+```python
+from swx_core.services.audit.audit_retention_service import run_retention
+
+# Execute retention (deletes old rows in batches)
+result = await run_retention(session)
+# {"deleted": 1234, "anonymized": 0, "cutoff": "2026-05-01T00:00:00Z"}
+
+# Dry run (compute cutoff, count eligible, no deletes)
+result = await run_retention(session, dry_run=True)
+# {"deleted": 0, "anonymized": 0, "cutoff": "2026-05-01T00:00:00Z", "eligible": 1234}
+```
+
+### Batch Deletion
+
+Retention uses batch deletion (default 5,000 rows per batch) to avoid long locks on large tables. Each batch:
+
+1. Selects IDs of rows older than the cutoff
+2. Deletes by ID
+3. Commits the batch
+4. Continues until no more rows match
+
+---
+
+## Audit Event Queue
+
+The **Audit Event Queue** (`swx_core/services/audit/audit_event_queue.py`) buffers audit events in an async queue and drains them to the database in a background task. Overflow is dropped with a warning to avoid unbounded memory growth under load.
+
+### Key Features
+
+- **Async queue** — `asyncio.Queue` with configurable max size (default: 10,000)
+- **Batch drain** — writes up to 100 events per DB transaction
+- **Overflow policy** — drops events and logs warnings when queue is full
+- **Graceful shutdown** — drains remaining events on app shutdown
+- **Retry on failure** — re-enqueues events if the DB write fails
+
+### Usage
+
+```python
+from swx_core.services.audit.audit_event_queue import audit_queue, AuditEvent
+
+# In FastAPI lifespan startup:
+await audit_queue.start()
+
+# In FastAPI lifespan shutdown:
+await audit_queue.stop(timeout=5.0)
+
+# Enqueue events from anywhere:
+audit_queue.put(AuditEvent(
+    action="user.login",
+    actor_type="user",
+    actor_id=str(user.id),
+    resource_type="session",
+    outcome="success",
+))
+
+# Monitor queue depth for alerting:
+depth = audit_queue.queue_depth
+```
+
+### AuditEvent Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `action` | `str` | Event action (e.g., `"user.login"`) |
+| `actor_type` | `str` | Actor type (e.g., `"user"`, `"admin"`, `"system"`) |
+| `actor_id` | `str | None` | Actor identifier |
+| `resource_type` | `str | None` | Resource type |
+| `resource_id` | `str | None` | Resource identifier |
+| `outcome` | `str` | `"success"` or `"failure"` (default: `"success"`) |
+| `severity` | `str` | `"info"`, `"warning"`, or `"critical"` (default: `"info"`) |
+| `context` | `dict` | Additional context metadata |
 
 ---
 

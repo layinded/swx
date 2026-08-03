@@ -11,13 +11,33 @@ from swx_core.models.webhook_delivery import WebhookDeliveryPublic
 from swx_core.models.webhook_endpoint import WebhookEndpointCreate, WebhookEndpointPublic, WebhookEndpointUpdate
 from swx_core.models.webhook_event import WebhookEventSubscriptionPublic
 from swx_core.repositories import webhook_repository
+from swx_core.security.encryption import encrypt_value, decrypt_value, is_encrypted
 from swx_core.services.llm.config_resolver import mask_api_key
 import swx_core.services.webhook.webhook_dispatcher as webhook_dispatcher
 
 
+def _encrypt_secret(plaintext: str) -> str:
+    """Encrypt a webhook secret for at-rest storage. No-ops if encryption is not configured."""
+    try:
+        return encrypt_value(plaintext)
+    except Exception:
+        return plaintext
+
+
+def _decrypt_secret(ciphertext: str) -> str:
+    """Decrypt a webhook secret for use in signing. Returns plaintext as-is if not encrypted."""
+    if not ciphertext or not is_encrypted(ciphertext):
+        return ciphertext
+    try:
+        return decrypt_value(ciphertext)
+    except Exception:
+        return ciphertext
+
+
 def _endpoint_public(endpoint: Any) -> WebhookEndpointPublic:
     endpoint_data = endpoint.model_dump()
-    endpoint_data["secret_masked"] = mask_api_key(endpoint.secret)
+    plain_secret = _decrypt_secret(endpoint.secret)
+    endpoint_data["secret_masked"] = mask_api_key(plain_secret)
     return WebhookEndpointPublic.model_validate(endpoint_data)
 
 
@@ -46,7 +66,10 @@ async def _sync_event_types(session: AsyncSession, endpoint_id: UUID, event_type
 
 
 async def create_endpoint(session: AsyncSession, user_id: UUID, body: WebhookEndpointCreate) -> WebhookEndpointPublic:
-    endpoint = await webhook_repository.create_webhook_endpoint(session, _endpoint_defaults({**body.model_dump(), "user_id": user_id}))
+    data = {**body.model_dump(), "user_id": user_id}
+    if "secret" in data and data["secret"]:
+        data["secret"] = _encrypt_secret(str(data["secret"]))
+    endpoint = await webhook_repository.create_webhook_endpoint(session, _endpoint_defaults(data))
     if endpoint.event_types:
         await webhook_repository.upsert_webhook_subscriptions(session, endpoint.id, endpoint.event_types, True)
     await event_bus.dispatch("webhook.endpoint_created", payload={"endpoint_id": str(endpoint.id), "user_id": str(user_id)})
@@ -55,7 +78,10 @@ async def create_endpoint(session: AsyncSession, user_id: UUID, body: WebhookEnd
 
 async def update_endpoint(session: AsyncSession, endpoint_id: UUID, body: WebhookEndpointUpdate, user_id: UUID | None = None) -> WebhookEndpointPublic:
     endpoint = await _owned_endpoint(session, endpoint_id, user_id)
-    updated_endpoint = await webhook_repository.update_webhook_endpoint(session, endpoint.id, _endpoint_defaults(body.model_dump(exclude_unset=True)))
+    data = body.model_dump(exclude_unset=True)
+    if "secret" in data and data["secret"]:
+        data["secret"] = _encrypt_secret(data["secret"])
+    updated_endpoint = await webhook_repository.update_webhook_endpoint(session, endpoint.id, _endpoint_defaults(data))
     await event_bus.dispatch("webhook.endpoint_updated", payload={"endpoint_id": str(endpoint.id), "user_id": str(endpoint.user_id)})
     return _endpoint_public(updated_endpoint or endpoint)
 

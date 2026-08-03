@@ -17,6 +17,14 @@ class CircuitState(str, Enum):
     HALF_OPEN = "half_open"
 
 class CircuitBreaker:
+    """Circuit breaker with async-safe state transitions.
+
+    Under high concurrency, multiple coroutines can read and write breaker state
+    simultaneously, causing inconsistent transitions. The asyncio.Lock ensures
+    that allow_request → state check, record_success → state change, and
+    record_failure → state change are each atomic.
+    """
+
     def __init__(self, name: str, failure_threshold: int, success_threshold: int, recovery_timeout_seconds: int):
         self.name = name
         self.failure_threshold = failure_threshold
@@ -26,30 +34,34 @@ class CircuitBreaker:
         self.failure_count = 0
         self.success_count = 0
         self.last_failure_time: datetime | None = None
+        self._lock = asyncio.Lock()
 
-    def allow_request(self) -> bool:
-        if self.state != CircuitState.OPEN:
-            return True
-        if self.last_failure_time and utc_now() >= self.last_failure_time + timedelta(seconds=self.recovery_timeout_seconds):
-            self.state = CircuitState.HALF_OPEN
-            self.success_count = 0
-            return True
-        return False
-
-    def record_success(self) -> None:
-        self.failure_count = 0
-        if self.state == CircuitState.HALF_OPEN:
-            self.success_count += 1
-            if self.success_count >= self.success_threshold:
-                self.state = CircuitState.CLOSED
+    async def allow_request(self) -> bool:
+        async with self._lock:
+            if self.state != CircuitState.OPEN:
+                return True
+            if self.last_failure_time and utc_now() >= self.last_failure_time + timedelta(seconds=self.recovery_timeout_seconds):
+                self.state = CircuitState.HALF_OPEN
                 self.success_count = 0
+                return True
+            return False
 
-    def record_failure(self) -> None:
-        self.failure_count += 1
-        self.last_failure_time = utc_now()
-        self.success_count = 0
-        if self.failure_count >= self.failure_threshold:
-            self.state = CircuitState.OPEN
+    async def record_success(self) -> None:
+        async with self._lock:
+            self.failure_count = 0
+            if self.state == CircuitState.HALF_OPEN:
+                self.success_count += 1
+                if self.success_count >= self.success_threshold:
+                    self.state = CircuitState.CLOSED
+                    self.success_count = 0
+
+    async def record_failure(self) -> None:
+        async with self._lock:
+            self.failure_count += 1
+            self.last_failure_time = utc_now()
+            self.success_count = 0
+            if self.failure_count >= self.failure_threshold:
+                self.state = CircuitState.OPEN
 
 class CircuitBreakerRegistry:
     _registry: dict[str, CircuitBreaker] = {}
@@ -82,7 +94,7 @@ async def retry_with_backoff(
 ) -> Any:
     last_error: Exception | None = None
     for attempt in range(1, max_retries + 2):
-        if circuit_breaker and not circuit_breaker.allow_request():
+        if circuit_breaker and not await circuit_breaker.allow_request():
             raise CircuitOpenError(f"Circuit open for {circuit_breaker.name}")
         try:
             return await fn()

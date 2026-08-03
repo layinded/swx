@@ -29,10 +29,10 @@ Framework-grade documentation for production deployment.
 
 ## 04. Core Concepts
 
-- [CACHING.md](04-core-concepts/CACHING.md) - L1/L2 caching: auth, feature flags, roles, settings (NEW)
+- [CACHING.md](04-core-concepts/CACHING.md) - L1/L2 caching: auth, feature flags, roles, settings, CacheService, tenant config cache (v2.11.0)
 - [CORE_PATTERNS.md](04-core-concepts/CORE_PATTERNS.md) - Design patterns overview
-- [BASE_CLASSES.md](04-core-concepts/BASE_CLASSES.md) - Controller-Service-Repository pattern (NEW)
-- [UTILITIES.md](04-core-concepts/UTILITIES.md) - Utilities reference (NEW)
+- [BASE_CLASSES.md](04-core-concepts/BASE_CLASSES.md) - Controller-Service-Repository pattern (v2.0)
+- [UTILITIES.md](04-core-concepts/UTILITIES.md) - Utilities reference (v2.0)
 - [SERVICE_CONTAINER.md](04-core-concepts/SERVICE_CONTAINER.md) - IoC container usage
 - [SERVICE_PROVIDERS.md](04-core-concepts/SERVICE_PROVIDERS.md) - Provider pattern
 - [GUARDS.md](04-core-concepts/GUARDS.md) - Authentication guards
@@ -43,6 +43,19 @@ Framework-grade documentation for production deployment.
 - [TOKEN_REVOCATION.md](04-core-concepts/TOKEN_REVOCATION.md) - Token blacklisting
 - [BACKGROUND_JOBS.md](04-core-concepts/BACKGROUND_JOBS.md) - Celery integration
 - [PLUGIN_SYSTEM.md](04-core-concepts/PLUGIN_SYSTEM.md) - Extensibility
+- [LLM_PROVIDER.md](04-core-concepts/LLM_PROVIDER.md) - LLM provider service, fallback chain, provider catalog (v2.0)
+- [RATE_LIMITING.md](04-core-concepts/RATE_LIMITING.md) - Rate limiting and abuse protection (v2.12.0)
+- [AUDIT_LOGS.md](04-core-concepts/AUDIT_LOGS.md) - Audit logging, retention, event queue (v2.0)
+- [BILLING.md](04-core-concepts/BILLING.md) - Billing and entitlements
+- [FALLBACK_CHAIN.md](04-core-concepts/FALLBACK_CHAIN.md) - LLM fallback chain with circuit breaker (NEW)
+- [ONBOARDING.md](04-core-concepts/ONBOARDING.md) - User onboarding step tracking (NEW)
+- [REGION_ROUTING.md](04-core-concepts/REGION_ROUTING.md) - Region routing middleware (NEW)
+- [AUTH_RATE_LIMITING.md](04-core-concepts/AUTH_RATE_LIMITING.md) - Auth rate limiting middleware (NEW)
+- [RESILIENCE.md](04-core-concepts/RESILIENCE.md) - LLM circuit breaker, retry, and timeout (NEW)
+- [ERROR_HANDLING.md](04-core-concepts/ERROR_HANDLING.md) - Structured error hierarchy and convenience functions (NEW)
+- [PROMPT_INJECTION.md](04-core-concepts/PROMPT_INJECTION.md) - Prompt injection detection and scoring (NEW)
+- [COMPLIANCE_REPORTS.md](04-core-concepts/COMPLIANCE_REPORTS.md) - Compliance readiness reports (GDPR, HIPAA, CCPA, DORA, FERPA) (NEW)
+- [LAZY_IMPORT.md](04-core-concepts/LAZY_IMPORT.md) - Lazy import proxy for circular imports and startup optimization (NEW)
 
 ## 05. Security
 
@@ -52,6 +65,10 @@ Framework-grade documentation for production deployment.
 - [SECRETS_MANAGEMENT.md](05-security/SECRETS_MANAGEMENT.md) - Secret handling
 - [AUTHENTICATION.md](05-security/AUTHENTICATION.md) - Auth flows
 - [AUTHORIZATION.md](05-security/AUTHORIZATION.md) - Permission system
+- [ENCRYPTION.md](05-security/ENCRYPTION.md) - Versioned Fernet encryption with key rotation (NEW)
+- [SECURITY_HEADERS.md](05-security/SECURITY_HEADERS.md) - Pure-ASGI security headers middleware (NEW)
+- [CSRF_PROTECTION.md](05-security/CSRF_PROTECTION.md) - CSRF middleware with cookie lifecycle (NEW)
+- [AUTH_GUARDS.md](05-security/AUTH_GUARDS.md) - JWT, API key, service token, and combined auth guards (NEW)
 
 ## 06. API Usage
 

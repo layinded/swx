@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator
 
 import httpx
 
-from swx_core.contracts.llm import LLMRequest, LLMResponse
+from swx_core.contracts.llm import LLMRequest, LLMResponse, SSEEvent, ValidateProviderResult
 from swx_core.services.llm.providers import BaseLLMProvider
 
 
@@ -52,21 +52,33 @@ class OllamaProvider(BaseLLMProvider):
             logger.error("LLM provider %s failed: %s", self.__class__.__name__, exc)
             return LLMResponse(False, "", error=str(exc), model=model_name, provider="ollama", latency_ms=int((monotonic() - started_at) * 1000))
 
-    async def stream(self, request: LLMRequest) -> AsyncGenerator[str, None]:
+    async def stream(self, request: LLMRequest) -> AsyncGenerator[SSEEvent, None]:
         model_name = self.config.get("model_name", "llama3.2")
         messages = _messages(request)
-        async with self.client.stream("POST", "/api/chat", json={"model": model_name, "messages": messages, "stream": True, "options": {"temperature": request.temperature, "num_predict": request.max_tokens, "top_p": request.top_p}}) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line:
-                    continue
-                try:
-                    payload = loads(line)
-                except JSONDecodeError:
-                    continue
-                content = payload.get("message", {}).get("content")
-                if content:
-                    yield str(content)
+        try:
+            async with self.client.stream("POST", "/api/chat", json={"model": model_name, "messages": messages, "stream": True, "options": {"temperature": request.temperature, "num_predict": request.max_tokens, "top_p": request.top_p}}) as response:
+                response.raise_for_status()
+                prompt_tokens = 0
+                completion_tokens = 0
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        payload = loads(line)
+                    except JSONDecodeError:
+                        continue
+                    content = payload.get("message", {}).get("content")
+                    if content:
+                        yield SSEEvent(event_type="text_delta", data=str(content))
+                    if payload.get("done", False):
+                        prompt_tokens = int(payload.get("prompt_eval_count", 0))
+                        completion_tokens = int(payload.get("eval_count", 0))
+            if prompt_tokens or completion_tokens:
+                yield SSEEvent(event_type="usage", data={"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "total_tokens": prompt_tokens + completion_tokens})
+            yield SSEEvent(event_type="done")
+        except Exception as exc:
+            yield SSEEvent(event_type="error", data={"code": "STREAM_ERROR", "message": str(exc)})
+            raise
 
     async def health_check(self) -> bool:
         try:
@@ -74,6 +86,29 @@ class OllamaProvider(BaseLLMProvider):
             return response.is_success
         except Exception:
             return False
+
+    async def validate_api_key(self) -> ValidateProviderResult:
+        try:
+            response = await self.client.get("/api/tags")
+            if response.is_success:
+                data = response.json()
+                models = [m.get("name", "") for m in data.get("models", [])]
+                return ValidateProviderResult(valid=True, models=models)
+            return ValidateProviderResult(valid=False, error=f"Ollama returned status {response.status_code}")
+        except Exception as exc:
+            return ValidateProviderResult(valid=False, error=str(exc))
+
+    async def list_models(self) -> list[str]:
+        try:
+            response = await self.client.get("/api/tags")
+            if response.is_success:
+                data = response.json()
+                return [m.get("name", "") for m in data.get("models", [])]
+            from swx_core.config.settings import settings
+            return list(settings.LLM_DEFAULT_MODELS_OLLAMA)
+        except Exception:
+            from swx_core.config.settings import settings
+            return list(settings.LLM_DEFAULT_MODELS_OLLAMA)
 
 
 def _messages(request: LLMRequest) -> list[dict[str, str]]:

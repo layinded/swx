@@ -9,7 +9,7 @@ try:
 except ImportError:
     AsyncOpenAI = None  # type: ignore[assignment]
 
-from swx_core.contracts.llm import LLMRequest, LLMResponse
+from swx_core.contracts.llm import LLMRequest, LLMResponse, SSEEvent, ValidateProviderResult
 from swx_core.services.llm.providers import BaseLLMProvider
 
 
@@ -52,13 +52,26 @@ class OpenAIProvider(BaseLLMProvider):
             logger.error("LLM provider %s failed: %s", self.__class__.__name__, exc)
             return LLMResponse(False, "", error=str(exc), model=model_name, provider="openai", latency_ms=int((monotonic() - started_at) * 1000))
 
-    async def stream(self, request: LLMRequest) -> AsyncGenerator[str, None]:
+    async def stream(self, request: LLMRequest) -> AsyncGenerator[SSEEvent, None]:
         model_name = self.config.get("model_name", "gpt-4o")
         messages = _messages(request)
-        async with self.client.chat.completions.stream(model=model_name, messages=messages, temperature=request.temperature, max_tokens=request.max_tokens, top_p=request.top_p) as stream:
-            async for event in stream:
-                if event.type == "content.delta" and getattr(event, "delta", None):
-                    yield str(event.delta)
+        try:
+            async with self.client.chat.completions.stream(model=model_name, messages=messages, temperature=request.temperature, max_tokens=request.max_tokens, top_p=request.top_p) as stream:
+                usage_snapshot = None
+                async for event in stream:
+                    if event.type == "content.delta" and getattr(event, "delta", None):
+                        yield SSEEvent(event_type="text_delta", data=str(event.delta))
+                    elif event.type == "message.done":
+                        msg = event.message if hasattr(event, "message") else None
+                        usage_obj = getattr(msg, "usage", None) if msg else None
+                        if usage_obj:
+                            usage_snapshot = usage_obj
+            if usage_snapshot:
+                yield SSEEvent(event_type="usage", data={"prompt_tokens": int(getattr(usage_snapshot, "prompt_tokens", 0)), "completion_tokens": int(getattr(usage_snapshot, "completion_tokens", 0)), "total_tokens": int(getattr(usage_snapshot, "total_tokens", 0))})
+            yield SSEEvent(event_type="done")
+        except Exception as exc:
+            yield SSEEvent(event_type="error", data={"code": "STREAM_ERROR", "message": str(exc)})
+            raise
 
     async def health_check(self) -> bool:
         try:
@@ -66,6 +79,22 @@ class OpenAIProvider(BaseLLMProvider):
             return True
         except Exception:
             return False
+
+    async def validate_api_key(self) -> ValidateProviderResult:
+        try:
+            models_page = await self.client.models.list()
+            model_ids = sorted(m.id for m in models_page.data)
+            return ValidateProviderResult(valid=True, models=model_ids)
+        except Exception as exc:
+            return ValidateProviderResult(valid=False, error=str(exc))
+
+    async def list_models(self) -> list[str]:
+        try:
+            models_page = await self.client.models.list()
+            return sorted(m.id for m in models_page.data)
+        except Exception:
+            from swx_core.config.settings import settings
+            return list(settings.LLM_DEFAULT_MODELS_OPENAI)
 
 
 def _messages(request: LLMRequest) -> list[dict[str, str]]:

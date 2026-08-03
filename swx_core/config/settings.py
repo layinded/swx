@@ -122,6 +122,20 @@ class Settings(BaseSettings):
         description="Secret key for password reset tokens (separate from access tokens)",
     )
 
+    # Encryption Settings
+    SWX_ENCRYPTION_KEY: str | None = Field(
+        default=None,
+        description="Master encryption key for at-rest field encryption. Required to enable encryption.",
+    )
+    SWX_ENCRYPTION_KEY_PREVIOUS: str | None = Field(
+        default=None,
+        description="Previous master key for key rotation. Enables dual-key decryption window.",
+    )
+    SWX_ENCRYPTION_SALT: str = Field(
+        default="swx-default-encryption-salt",
+        description="PBKDF2 salt for encryption key derivation. Changing this invalidates all existing encrypted data.",
+    )
+
     # CORS Settings
     BACKEND_CORS_ORIGINS: str | list[str] = Field(
         "", description="Allowed CORS origins"
@@ -391,6 +405,18 @@ class Settings(BaseSettings):
         default=86400,  # 24 hours
         description="CSRF cookie maximum age in seconds",
     )
+    CSRF_LOGIN_PATHS: list[str] = Field(
+        default=["/api/auth/login", "/api/auth/social/login"],
+        description="Paths that trigger CSRF cookie creation",
+    )
+    CSRF_LOGOUT_PATHS: list[str] = Field(
+        default=["/api/auth/logout"],
+        description="Paths that trigger CSRF cookie deletion",
+    )
+    CSRF_REFRESH_PATHS: list[str] = Field(
+        default=["/api/auth/refresh"],
+        description="Paths that refresh CSRF cookie",
+    )
 
     # Auth Cache Configuration
     USER_CACHE_ENABLED: bool = Field(
@@ -481,6 +507,52 @@ class Settings(BaseSettings):
     )
     LLM_USAGE_LOG_ENABLED: bool = Field(
         default=True, description="Persist LLM usage logs for cost and latency tracking"
+    )
+    LLM_STRUCTURED_SSE: bool = Field(
+        default=True,
+        description="Yield SSEEvent objects from stream() instead of raw strings. Gate for backward compatibility.",
+    )
+    LLM_DEFAULT_MODELS_OPENAI: list[str] = Field(
+        default=["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1-preview", "o1-mini"],
+        description="Fallback model list for OpenAI when API listing unavailable",
+    )
+    LLM_DEFAULT_MODELS_AZURE: list[str] = Field(
+        default=["gpt-4o", "gpt-4o-mini"],
+        description="Fallback model list for Azure OpenAI when API listing unavailable",
+    )
+    LLM_DEFAULT_MODELS_ANTHROPIC: list[str] = Field(
+        default=["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"],
+        description="Fallback model list for Anthropic (no model listing API)",
+    )
+    LLM_DEFAULT_MODELS_OLLAMA: list[str] = Field(
+        default=["llama3.2", "mistral", "codellama"],
+        description="Fallback model list for Ollama when API listing unavailable",
+    )
+    SWX_SERVICE_TOKEN: str | None = Field(
+        default=None,
+        description="Shared secret for service-to-service auth via X-Service-Token header",
+    )
+    SWX_SERVICE_TOKEN_SCOPES: str | None = Field(
+        default=None,
+        description="Comma-separated permission scopes granted to service principals",
+    )
+    SWX_AUDIT_RETENTION_DAYS: int | None = Field(
+        default=None,
+        description="Days to retain audit logs before batch deletion. None or 0 disables retention.",
+    )
+    SWX_REGIONS: str | None = Field(
+        default=None,
+        description="JSON mapping of region name → list of country codes for region routing. "
+        'Example: \'{"eu": ["DE","FR","NL"], "us": ["US","CA","MX"]}\'',
+    )
+    SWX_REGION_HEADER: str = Field(
+        default="CF-IPCountry",
+        description="HTTP header carrying the country code for region routing",
+    )
+    SWX_AUTH_RATE_LIMIT_RULES: str | None = Field(
+        default=None,
+        description="JSON array of rate-limit rules for auth endpoints. "
+        'Each rule: {"namespace","path_prefix"|"exact_path","methods","max_requests","window_seconds"}',
     )
     ORGANIZATION_ENABLED: bool = Field(
         default=True, description="Enable organization management framework"

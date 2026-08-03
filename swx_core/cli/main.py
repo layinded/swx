@@ -9,6 +9,7 @@ from swx_core.cli.commands.tinker import tinker
 from swx_core.cli.commands.format import format
 from swx_core.cli.commands.lint import lint
 from swx_core.cli.commands.new import new_project, init_project
+from swx_core.cli.commands.security import security
 
 # AI-Aware Layer imports
 from swx_core.ai_exports.cli import register_ai_commands
@@ -93,6 +94,9 @@ main.add_command(lint, "lint")
 # Project management
 main.add_command(new_project, "new")
 main.add_command(init_project, "init")
+
+# Security
+main.add_command(security, "security")
 
 # AI-Aware Layer commands
 register_ai_commands(main)

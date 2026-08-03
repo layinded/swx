@@ -237,6 +237,80 @@ class TestWebhookRetryLogic:
         assert delay <= 60 * 16
 
 
+class TestWebhookSecretEncryption:
+    """Tests for webhook secret encryption/decryption helpers."""
+
+    def test_encrypt_secret_round_trip(self) -> None:
+        """_encrypt_secret then _decrypt_secret returns the original plaintext."""
+        from swx_core.services.webhook.webhook_service import _encrypt_secret, _decrypt_secret
+        import base64
+
+        key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+        with patch.dict(os.environ, {"SWX_ENCRYPTION_KEY": key}):
+            import swx_core.security.encryption as enc_mod
+            enc_mod._encryption_service = None
+
+            plaintext = "my-webhook-secret"
+            ciphertext = _encrypt_secret(plaintext)
+            assert ciphertext != plaintext
+            assert _decrypt_secret(ciphertext) == plaintext
+
+    def test_encrypt_secret_produces_versioned_ciphertext(self) -> None:
+        """Encrypted secrets start with a version prefix like 'v1:'."""
+        from swx_core.services.webhook.webhook_service import _encrypt_secret
+        import base64
+
+        key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+        with patch.dict(os.environ, {"SWX_ENCRYPTION_KEY": key}):
+            import swx_core.security.encryption as enc_mod
+            enc_mod._encryption_service = None
+
+            ciphertext = _encrypt_secret("secret-value")
+            assert ciphertext.startswith("v")
+
+    def test_decrypt_secret_returns_plaintext_unchanged(self) -> None:
+        """_decrypt_secret returns non-encrypted values as-is."""
+        from swx_core.services.webhook.webhook_service import _decrypt_secret
+
+        assert _decrypt_secret("plain-secret") == "plain-secret"
+        assert _decrypt_secret("${ENV_VAR}") == "${ENV_VAR}"
+
+    def test_decrypt_secret_handles_empty_string(self) -> None:
+        """_decrypt_secret returns empty string as-is."""
+        from swx_core.services.webhook.webhook_service import _decrypt_secret
+
+        assert _decrypt_secret("") == ""
+
+    def test_encrypt_secret_fallback_without_key(self) -> None:
+        """_encrypt_secret returns plaintext when encryption key is not configured."""
+        from swx_core.services.webhook.webhook_service import _encrypt_secret
+
+        with patch.dict(os.environ, {}, clear=True):
+            import swx_core.security.encryption as enc_mod
+            enc_mod._encryption_service = None
+
+            result = _encrypt_secret("fallback-secret")
+            assert result == "fallback-secret"
+
+    def test_endpoint_public_masks_decrypted_secret(self) -> None:
+        """_endpoint_public decrypts the stored secret and masks it."""
+        from swx_core.services.webhook.webhook_service import _endpoint_public
+        import base64
+
+        key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+        with patch.dict(os.environ, {"SWX_ENCRYPTION_KEY": key}):
+            import swx_core.security.encryption as enc_mod
+            enc_mod._encryption_service = None
+
+            from swx_core.security.encryption import encrypt_value
+            encrypted = encrypt_value("my-secret-value")
+
+            endpoint = endpoint_object(secret=encrypted)
+            result = _endpoint_public(endpoint)
+            assert result.secret_masked is not None
+            assert result.secret_masked != "my-secret-value"
+
+
 class TestWebhookSigner:
     def test_sign_and_verify_roundtrip(self):
         os.environ.setdefault("WEBHOOK_SIGNER_KEY", "test-signer-key")

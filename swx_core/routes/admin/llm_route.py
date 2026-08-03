@@ -8,6 +8,7 @@ from swx_core.auth.admin.dependencies import get_current_admin_user
 from swx_core.controllers import llm_controller
 from swx_core.database.db import SessionDep
 from swx_core.models.llm_provider_config import LLMProviderConfigCreate, LLMProviderConfigPublic, LLMProviderConfigUpdate
+from swx_core.contracts.llm import ValidateProviderResult
 
 
 class LLMGenerateRequest(SQLModel):
@@ -48,6 +49,16 @@ async def update_provider(session: SessionDep, config_id: UUID, body: LLMProvide
 @router.delete("/providers/{config_id}", response_model=dict[str, bool])
 async def delete_provider(session: SessionDep, config_id: UUID) -> dict[str, bool]:
     return await llm_controller.delete_provider_controller(session, config_id)
+
+
+@router.post("/providers/{config_id}/validate", response_model=ValidateProviderResult)
+async def validate_provider(session: SessionDep, config_id: UUID) -> ValidateProviderResult:
+    return await llm_controller.validate_provider_controller(session, config_id)
+
+
+@router.get("/providers/{config_id}/models", response_model=list[str])
+async def list_provider_models(session: SessionDep, config_id: UUID) -> list[str]:
+    return await llm_controller.list_models_controller(session, config_id)
 
 
 @router.post("/generate", response_model=dict[str, Any])

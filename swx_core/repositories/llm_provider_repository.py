@@ -29,6 +29,8 @@ class LLMProviderConfigData(TypedDict, total=False):
     circuit_breaker_reset_seconds: int | None
     rate_limit_per_minute: int | None
     daily_token_limit: int | None
+    credential_source: str
+    encrypted_api_key: str | None
     extra_data: dict[str, Any]
     updated_at: datetime
 

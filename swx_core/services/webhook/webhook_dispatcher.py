@@ -72,14 +72,14 @@ async def deliver_to_endpoint(session: AsyncSession, endpoint: WebhookEndpoint, 
 
         response = await run_with_resilience(post_once, endpoint_id=str(endpoint.id), timeout_seconds=endpoint.timeout_seconds)
         if response.status_code < 400:
-            breaker.record_success()
+            await breaker.record_success()
             updated = await webhook_repository.update_webhook_delivery(session, delivery.id, {"status": "delivered", "response_status_code": response.status_code, "response_body": response.text, "error_message": None, "next_retry_at": None})
             await event_bus.dispatch("webhook.delivery_delivered", payload={"delivery_id": str(delivery.id), "endpoint_id": str(endpoint.id), "status_code": response.status_code})
             return updated or delivery
-        breaker.record_failure()
+        await breaker.record_failure()
         return await schedule_retry(session, endpoint, delivery.id, response.status_code, response.text, None)
     except Exception as exc:  # noqa: BLE001
-        breaker.record_failure()
+        await breaker.record_failure()
         return await schedule_retry(session, endpoint, delivery.id, None, None, str(exc))
 
 async def schedule_retry(session: AsyncSession, endpoint: WebhookEndpoint, delivery_id: Any, response_status_code: int | None, response_body: str | None, error_message: str | None) -> WebhookDelivery:

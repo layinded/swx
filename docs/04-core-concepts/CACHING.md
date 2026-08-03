@@ -1,7 +1,7 @@
 # Caching
 
-**Version:** 2.10.0
-**Last Updated:** 2026-07-26
+**Version:** 2.11.0
+**Last Updated:** 2026-08-03
 
 ---
 
@@ -13,10 +13,12 @@
 4. [Feature Flag Caching](#feature-flag-caching)
 5. [Role Caching](#role-caching)
 6. [Settings Caching](#settings-caching)
-7. [Configuration Reference](#configuration-reference)
-8. [Invalidation Reference](#invalidation-reference)
-9. [Redis Requirements](#redis-requirements)
-10. [Best Practices](#best-practices)
+7. [CacheService](#cacheservice)
+8. [Tenant Config Cache](#tenant-config-cache)
+9. [Configuration Reference](#configuration-reference)
+10. [Invalidation Reference](#invalidation-reference)
+11. [Redis Requirements](#redis-requirements)
+12. [Best Practices](#best-practices)
 
 ---
 
@@ -297,6 +299,84 @@ await invalidate_cached_setting("auth.access_token_expire_minutes")
 # Invalidate ALL cached settings
 await invalidate_all_settings()
 ```
+
+---
+
+## CacheService
+
+`swx_core/services/cache/cache_service.py` provides a high-level cache interface with Redis primary and in-memory fallback. When Redis is unavailable, operations silently fall back to an in-memory LRU cache so the application never crashes due to cache failures.
+
+### Usage
+
+```python
+from swx_core.services.cache.cache_service import CacheService
+
+cache = CacheService()
+
+# Get or compute (primary API)
+user = await cache.get_or_set(
+    f"user:{user_id}",
+    factory=lambda: fetch_user(user_id),
+    ttl=300,
+)
+
+# Direct operations
+await cache.set("key", value, ttl=60)
+result = await cache.get("key")
+await cache.delete("key")
+deleted_count = await cache.invalidate("key1", "key2", "key3")
+```
+
+### Methods
+
+| Method | Description |
+|---|---|
+| `get(key)` | Retrieve a value. Returns `None` on miss or error |
+| `set(key, value, ttl)` | Store a value. Returns `True` on success |
+| `delete(key)` | Delete a key. Returns `True` on success |
+| `get_or_set(key, factory, ttl)` | Get from cache, or compute via async factory on miss |
+| `invalidate(*keys)` | Delete multiple keys. Returns count of successful deletions |
+
+All methods swallow exceptions and log debug messages, making the cache fully resilient.
+
+---
+
+## Tenant Config Cache
+
+`swx_core/services/cache/tenant_config_cache.py` provides a three-tier configuration cache for tenant/team/org settings:
+
+| Layer | Location | Speed | Shared? |
+|---|---|---|---|
+| L1 | Per-process in-memory dict | Sub-ms | No |
+| L2 | Redis | Sub-5ms | Yes |
+| L3 | Database via `SettingsService` | Sub-30ms | Yes |
+
+### L1 Consistency
+
+Redis pub/sub broadcasts `invalidate:<key>` messages to all workers so they drop their L1 entry. This is eventually consistent — a brief stale read is possible between DB write and pub/sub delivery.
+
+### Usage
+
+```python
+from swx_core.services.cache.tenant_config_cache import tenant_config
+
+# Read-through: L1 → L2 → L3
+value = await tenant_config.get(session, "billing.plan", default="free")
+
+# Invalidate all levels + broadcast
+await tenant_config.invalidate("billing.plan")
+```
+
+### Startup Integration
+
+Subscribe to invalidation broadcasts at application startup:
+
+```python
+# In lifespan startup:
+await tenant_config.subscribe_invalidations()
+```
+
+Module-level singleton: `tenant_config` — import and use from anywhere.
 
 ---
 

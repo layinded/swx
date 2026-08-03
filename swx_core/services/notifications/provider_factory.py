@@ -84,10 +84,10 @@ async def send_via_email(session: AsyncSession, notification: dict[str, Any], pr
         breaker = _breaker(f"notification:email:{provider_config.name}")
         try:
             result = await _send_with_provider(sender, provider_config, notification, breaker)
-            breaker.record_success()
+            await breaker.record_success()
             return provider_config, result
         except Exception as exc:  # noqa: BLE001
-            breaker.record_failure()
+            await breaker.record_failure()
             errors.append(f"{provider_config.name}: {exc}")
     raise RuntimeError("; ".join(errors) or "No email providers configured")
 
@@ -102,9 +102,9 @@ async def send_via_sms(session: AsyncSession, notification: dict[str, Any]) -> t
         breaker = _breaker(f"notification:sms:{provider_config.name}")
         try:
             result = await _send_with_provider(sender, provider_config, notification, breaker)
-            breaker.record_success()
+            await breaker.record_success()
             return provider_config, result
         except Exception as exc:  # noqa: BLE001
-            breaker.record_failure()
+            await breaker.record_failure()
             errors.append(f"{provider_config.name}: {exc}")
     raise RuntimeError("; ".join(errors) or "No sms providers configured")

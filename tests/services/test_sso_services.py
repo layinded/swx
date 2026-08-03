@@ -110,6 +110,93 @@ class TestSSOProviderService:
         assert sso_provider_service._mask_secret(None) is None
 
 
+class TestSSOProviderEncryption:
+    """Tests for SSO provider secret/certificate encryption helpers."""
+
+    def test_encrypt_field_round_trip(self) -> None:
+        """_encrypt_field then _decrypt_field returns the original plaintext."""
+        import base64
+        from swx_core.services.sso.sso_provider_service import _encrypt_field, _decrypt_field
+
+        key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+        with patch.dict(os.environ, {"SWX_ENCRYPTION_KEY": key}):
+            import swx_core.security.encryption as enc_mod
+            enc_mod._encryption_service = None
+
+            plaintext = "my-sso-client-secret"
+            ciphertext = _encrypt_field(plaintext)
+            assert ciphertext != plaintext
+            assert _decrypt_field(ciphertext) == plaintext
+
+    def test_encrypt_field_produces_versioned_ciphertext(self) -> None:
+        """Encrypted SSO fields start with a version prefix."""
+        import base64
+        from swx_core.services.sso.sso_provider_service import _encrypt_field
+
+        key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+        with patch.dict(os.environ, {"SWX_ENCRYPTION_KEY": key}):
+            import swx_core.security.encryption as enc_mod
+            enc_mod._encryption_service = None
+
+            ciphertext = _encrypt_field("certificate-data")
+            assert ciphertext.startswith("v")
+
+    def test_decrypt_field_returns_plaintext_unchanged(self) -> None:
+        """_decrypt_field returns non-encrypted values as-is."""
+        from swx_core.services.sso.sso_provider_service import _decrypt_field
+
+        assert _decrypt_field("plain-secret") == "plain-secret"
+        assert _decrypt_field("${ENV_VAR}") == "${ENV_VAR}"
+
+    def test_decrypt_field_handles_none(self) -> None:
+        """_decrypt_field handles None gracefully."""
+        from swx_core.services.sso.sso_provider_service import _decrypt_field
+
+        assert _decrypt_field(None) is None
+
+    def test_decrypt_field_handles_empty_string(self) -> None:
+        """_decrypt_field handles empty string gracefully."""
+        from swx_core.services.sso.sso_provider_service import _decrypt_field
+
+        assert _decrypt_field("") == ""
+
+    def test_encrypt_field_fallback_without_key(self) -> None:
+        """_encrypt_field returns plaintext when encryption key is not configured."""
+        from swx_core.services.sso.sso_provider_service import _encrypt_field
+
+        with patch.dict(os.environ, {}, clear=True):
+            import swx_core.security.encryption as enc_mod
+            enc_mod._encryption_service = None
+
+            result = _encrypt_field("fallback-secret")
+            assert result == "fallback-secret"
+
+    def test_encrypt_field_handles_none(self) -> None:
+        """_encrypt_field handles None gracefully."""
+        from swx_core.services.sso.sso_provider_service import _encrypt_field
+
+        assert _encrypt_field(None) is None
+
+    def test_to_public_masks_decrypted_fields(self) -> None:
+        """_to_public decrypts stored fields and masks them."""
+        import base64
+        from swx_core.services.sso.sso_provider_service import _to_public
+        from swx_core.security.encryption import encrypt_value
+
+        key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+        with patch.dict(os.environ, {"SWX_ENCRYPTION_KEY": key}):
+            import swx_core.security.encryption as enc_mod
+            enc_mod._encryption_service = None
+
+            encrypted_secret = encrypt_value("client-secret-123")
+            encrypted_cert = encrypt_value("cert-data-456")
+
+            provider = provider_object(client_secret=encrypted_secret, certificate=encrypted_cert)
+            result = _to_public(provider)
+            assert result.client_secret == "***"
+            assert result.certificate == "***"
+
+
 class TestSSOSessionService:
     async def test_initiate_sso_emits_event(self):
         session = AsyncMock()

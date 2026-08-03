@@ -1,6 +1,6 @@
 # LLM Provider Service
-**Version:** 1.0.0  
-**Last Updated:** 2026-07-28
+**Version:** 2.0.0  
+**Last Updated:** 2026-08-03
 ---
 ## Table of Contents
 1. [Overview](#overview)
@@ -8,13 +8,15 @@
 3. [Database Models](#database-models)
 4. [Credential Resolution](#credential-resolution)
 5. [Provider Chain](#provider-chain)
-6. [Resilience Layer](#resilience-layer)
-7. [API Endpoints](#api-endpoints)
-8. [Configuration](#configuration)
-9. [Default Providers](#default-providers)
-10. [Events](#events)
-11. [Usage Examples](#usage-examples)
-12. [Adding Custom Providers](#adding-custom-providers)
+6. [Provider Catalog](#provider-catalog)
+7. [Resilience Layer](#resilience-layer)
+8. [Fallback Chain](#fallback-chain)
+9. [API Endpoints](#api-endpoints)
+10. [Configuration](#configuration)
+11. [Default Providers](#default-providers)
+12. [Events](#events)
+13. [Usage Examples](#usage-examples)
+14. [Adding Custom Providers](#adding-custom-providers)
 ---
 ## Overview
 The LLM Provider Service gives SwX-Core a database-driven way to call large language models through one service layer. It exists so applications can route requests across multiple providers, fall back when one fails, track usage cost and latency, and apply resilience controls without hardcoding one SDK into feature code.
@@ -97,6 +99,90 @@ CLOSED -> OPEN -> HALF_OPEN -> CLOSED
 - `retry_with_backoff()` retries up to `LLM_MAX_RETRIES`, using exponential backoff with jitter
 - `call_with_timeout()` wraps provider calls with `asyncio.wait_for()` and raises `LLMTimeoutError` on timeout
 - `stream()` uses the circuit breaker, but not the retry or timeout helpers
+---
+## Provider Catalog
+
+The **Provider Catalog** (`swx_core/services/llm/provider_catalog.py`) resolves the list of available LLM providers from a three-tier cache:
+
+1. **L1 — Redis cache** (1-hour TTL, key `llm:provider_catalog`)
+2. **L2 — SystemConfig DB** (key `llm.provider_catalog` under `GENERAL` category)
+3. **L3 — Static defaults** (`LLM_PROVIDER_DEFAULTS`)
+
+### Usage
+
+```python
+from swx_core.services.llm.provider_catalog import get_provider_catalog, invalidate_catalog_cache
+
+# Read the catalog (auto-caches for 1 hour)
+catalog = await get_provider_catalog(session)
+# Returns: list[dict] with provider configs
+
+# Invalidate after admin updates the catalog
+await invalidate_catalog_cache()
+```
+
+### Database-Driven Catalog
+
+Store a custom catalog as JSON in `SystemConfig`:
+
+```sql
+INSERT INTO swx_system_config (category, key, value, is_active)
+VALUES ('GENERAL', 'llm.provider_catalog', '[
+  {"provider": "openai", "model_name": "gpt-4o", "priority": 10},
+  {"provider": "anthropic", "model_name": "claude-3-5-sonnet-latest", "priority": 20}
+]', true);
+```
+
+The catalog is read at startup and cached for 1 hour. Call `invalidate_catalog_cache()` after admin changes.
+---
+## Fallback Chain
+
+The **Fallback Chain** (`swx_core/services/llm/fallback_service.py`) tries LLM providers in priority order, falling back to the next provider on failure. It integrates with the `CircuitBreakerRegistry` to skip providers with open circuits.
+
+### Error Classification
+
+| Error Type | Behavior |
+|---|---|
+| `CircuitOpenError` | Skip provider, try next |
+| `LLMTimeoutError` | Record circuit failure, try next |
+| 4xx client error | Stop chain immediately (bad request) |
+| 5xx / other server error | Record circuit failure, try next |
+| All providers exhausted | Return `FallbackResult(success=False)` |
+
+### FallbackResult
+
+```python
+@dataclass
+class FallbackResult:
+    success: bool                    # Whether a provider succeeded
+    response: LLMResponse | None     # The response (if success)
+    stream: AsyncGenerator | None    # Stream handle (if streaming)
+    provider_used: str | None        # Provider name that succeeded
+    model_used: str | None           # Model name that succeeded
+    attempts: list[dict]             # Log of every attempt
+    error: str | None                # Final error message
+```
+
+### Usage
+
+```python
+from swx_core.services.llm.fallback_service import FallbackChain
+from swx_core.contracts.llm import LLMRequest
+
+chain = FallbackChain(max_attempts=5)
+
+# Generate with automatic fallback
+result = await chain.generate(session, LLMRequest(prompt="Hello"), phase="chat")
+if result.success:
+    print(f"Used {result.provider_used}/{result.model_used}")
+
+# Stream with automatic fallback
+async for event in chain.stream(session, LLMRequest(prompt="Hello"), phase="chat"):
+    if event.event_type == "text_delta":
+        print(event.data, end="")
+```
+
+See [Fallback Chain](FALLBACK_CHAIN.md) for full documentation.
 ---
 ## API Endpoints
 ### Admin Endpoints
