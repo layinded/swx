@@ -34,22 +34,20 @@ reusable_oauth2 = OAuth2PasswordBearer(tokenUrl=f"{settings.ROUTE_PREFIX}/access
 TokenDep = Annotated[str, Depends(reusable_oauth2)]  # Type alias for token dependency
 
 
-def get_current_user(session: SessionDep, token: TokenDep, request: Request) -> User:  # noqa: F811
-    """
-    DEPRECATED: Use swx_core.auth.user.dependencies.get_current_user instead.
-    
+async def get_current_user(session: SessionDep, token: TokenDep, request: Request) -> User:  # noqa: F811
+    """DEPRECATED: Use swx_core.auth.user.dependencies.get_current_user instead.
+
     This function does not validate token audience and is being phased out.
-    """
-    """
+
     Retrieves and validates the currently authenticated user based on the provided JWT token.
 
     Args:
-        session (SessionDep): The database session.
-        token (TokenDep): The JWT token from the request header.
-        request (Request): The HTTP request object.
+        session: The database session.
+        token: The JWT token from the request header.
+        request: The HTTP request object.
 
     Returns:
-        User: The authenticated user instance.
+        The authenticated user instance.
 
     Raises:
         HTTPException (401): If the token is invalid or expired.
@@ -70,9 +68,8 @@ def get_current_user(session: SessionDep, token: TokenDep, request: Request) -> 
             detail=translate(request, "could_not_validate_credentials"),
         )
 
-    # Query the user from the database
     statement = select(User).where(User.email == token_data.sub)
-    user = session.exec(statement).first()
+    user = (await session.execute(statement)).scalars().first()
 
     if not user:
         raise HTTPException(

@@ -111,3 +111,9 @@ SyncSessionDep = Annotated[Session, Depends(get_db)]
 # Convenience aliases for backward compatibility
 # These match the pattern used throughout the framework
 get_session = get_async_db  # Alias for common usage pattern
+
+# Backward-compat alias: older swx-core consumers (and some internal modules)
+# imported ``async_session`` as a context-manager session factory.
+# The canonical name is ``AsyncSessionLocal``, but we re-export under
+# the old name so existing code keeps working.
+async_session = AsyncSessionLocal

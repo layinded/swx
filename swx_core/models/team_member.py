@@ -87,8 +87,8 @@ class TeamMember(TeamMemberBase, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
     )
     
-    user: "User" = Relationship()  # type: ignore
-    team_role: "TeamRole" = Relationship()  # type: ignore
+    user: "User" = Relationship(sa_relationship_kwargs={"lazy": "selectin"})  # type: ignore
+    team_role: "TeamRole" = Relationship(sa_relationship_kwargs={"lazy": "selectin"})  # type: ignore
 
 
 class TeamMemberCreate(SQLModel):

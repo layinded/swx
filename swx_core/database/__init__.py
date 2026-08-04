@@ -21,6 +21,7 @@ from swx_core.database.db import (
     # Session factories
     AsyncSessionLocal,
     SessionLocal,
+    async_session,
     # Dependency generators
     get_async_db,
     get_db,
@@ -38,6 +39,7 @@ __all__ = [
     # Session factories
     "AsyncSessionLocal",
     "SessionLocal",
+    "async_session",
     # Dependency generators
     "get_async_db",
     "get_db",

@@ -15,7 +15,7 @@ Usage:
 """
 
 import sys
-from typing import NamedTuple, Optional, Dict, Any
+from typing import NamedTuple, Dict, Any
 
 
 class VersionInfo(NamedTuple):
@@ -30,8 +30,8 @@ class VersionInfo(NamedTuple):
 
 # Version components
 VERSION_MAJOR = 2
-VERSION_MINOR = 17
-VERSION_PATCH = 0
+VERSION_MINOR = 19
+VERSION_PATCH = 5
 VERSION_RELEASE = "final"  # alpha, beta, candidate, final
 VERSION_SERIAL = 0
 
@@ -86,7 +86,7 @@ def is_prerelease() -> bool:
 
 
 # Version comparison helpers
-def parse_version(version_str: str) -> tuple:
+def parse_version(version_str: str) -> tuple[int, ...]:
     """
     Parse a version string into a comparable tuple.
 

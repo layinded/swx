@@ -83,7 +83,7 @@ class Device(DeviceBase, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
     )
 
-    user: "User" = Relationship()  # type: ignore
+    user: "User" = Relationship(sa_relationship_kwargs={"lazy": "selectin"})  # type: ignore
 
 
 class DeviceCreate(SQLModel):

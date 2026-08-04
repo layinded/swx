@@ -16,57 +16,37 @@ from swx_core.models.user import User
 
 
 class TeamPermissionChecker:
-    """
-    Check team-scoped permissions for users.
-    
+    """Check team-scoped permissions for users.
+
     Uses TeamRole.permissions dict to determine if a user
     has specific permissions within a team context.
     """
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
-    
+
     async def has_permission(
         self,
         user_id: UUID,
         team_id: UUID,
         permission: str,
     ) -> bool:
-        """
-        Check if user has a specific permission in a team.
-        
-        Args:
-            user_id: The user to check.
-            team_id: The team context.
-            permission: Permission key (e.g., "can_edit", "can_invite").
-        
-        Returns:
-            True if user has the permission, False otherwise.
-        """
+        """Check if user has a specific permission in a team."""
         member = await self._get_team_member_with_role(team_id, user_id)
         if not member:
             return False
-        
+
         if await self._is_superuser(user_id):
             return True
-        
+
         team_role = member.team_role if hasattr(member, 'team_role') else None
         if not team_role:
             return False
-        
+
         return team_role.permissions.get(permission, False)
-    
+
     async def get_permissions(self, user_id: UUID, team_id: UUID) -> dict:
-        """
-        Get all permissions for a user in a team.
-        
-        Args:
-            user_id: The user to check.
-            team_id: The team context.
-        
-        Returns:
-            Dict of permission keys to boolean values.
-        """
+        """Get all permissions for a user in a team."""
         default_permissions = {
             "can_edit": False,
             "can_delete": False,
@@ -75,85 +55,76 @@ class TeamPermissionChecker:
             "can_change_roles": False,
             "can_manage_billing": False,
         }
-        
+
         member = await self._get_team_member_with_role(team_id, user_id)
         if not member:
             return default_permissions
-        
+
         if await self._is_superuser(user_id):
             return {k: True for k in default_permissions}
-        
+
         team_role = member.team_role if hasattr(member, 'team_role') else None
         if not team_role:
             return default_permissions
-        
+
         return {**default_permissions, **team_role.permissions}
-    
+
     async def get_team_role(self, user_id: UUID, team_id: UUID) -> Optional[TeamRole]:
-        """
-        Get the team role for a user in a team.
-        
-        Args:
-            user_id: The user to check.
-            team_id: The team context.
-        
-        Returns:
-            TeamRole if user is a member, None otherwise.
-        """
+        """Get the team role for a user in a team."""
         member = await self._get_team_member_with_role(team_id, user_id)
         if not member:
             return None
-        
+
         return member.team_role if hasattr(member, 'team_role') else None
-    
+
     async def is_team_member(self, user_id: UUID, team_id: UUID) -> bool:
         """Check if user is a member of the team."""
         member = await self._get_team_member(team_id, user_id)
         return member is not None
-    
+
     async def is_team_owner(self, user_id: UUID, team_id: UUID) -> bool:
         """Check if user is the owner of the team."""
         member = await self._get_team_member_with_role(team_id, user_id)
         if not member:
             return False
-        
+
         team_role = member.team_role if hasattr(member, 'team_role') else None
         return team_role is not None and team_role.key == "owner"
-    
+
     # Private helper methods
-    
+
     async def _get_team_member(
         self, team_id: UUID, user_id: UUID
     ) -> Optional[TeamMember]:
-        result = await self.session.exec(
+        result = await self.session.execute(
             select(TeamMember).where(
                 TeamMember.team_id == team_id,
                 TeamMember.user_id == user_id,
             )
         )
         return result.scalar_one_or_none()
-    
+
     async def _get_team_member_with_role(
         self, team_id: UUID, user_id: UUID
     ) -> Optional[TeamMember]:
         """Get team member with team_role relationship loaded."""
-        result = await self.session.exec(
+        result = await self.session.execute(
             select(TeamMember)
             .where(TeamMember.team_id == team_id, TeamMember.user_id == user_id)
         )
         member = result.scalar_one_or_none()
-        
+
         if member:
-            team_role_result = await self.session.exec(
+            team_role_result = await self.session.execute(
                 select(TeamRole).where(TeamRole.id == member.team_role_id)
             )
             member.team_role = team_role_result.scalar_one_or_none()
-        
+
         return member
-    
+
     async def _is_superuser(self, user_id: UUID) -> bool:
         """Check if user is a superuser (bypasses team permissions)."""
-        result = await self.session.exec(
+        result = await self.session.execute(
             select(User).where(User.id == user_id)
         )
         user = result.scalar_one_or_none()

@@ -2,6 +2,161 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.5] - 2026-08-04
+
+### Fixed — MissingGreenlet crash on registration, dead code removal, lazy-loading fixes
+
+#### P0 — `MissingGreenlet` crash on `/api/auth/register` (from v2.19.4)
+
+`create_personal_team` hook updates `User.tenant_id` via a bulk `UPDATE` statement in a separate session, triggering `onupdate=func.now()` on `updated_at` in the DB. The in-memory `user` object never picks up the new `updated_at` value, so FastAPI's response serialization triggers a lazy-load on `AsyncSession` → `MissingGreenlet` → 500.
+
+**Fix:** Added `await session.refresh(user)` after post-register hooks in `auth_service.py` to reload all DB-generated columns.
+
+| File | Change |
+|---|---|
+| `swx_core/services/auth_service.py` | Added `await session.refresh(user)` after hook block |
+
+---
+
+#### P1 — Silent exception swallowing in `auto_accept_invitation` hook
+
+`except (ValueError, Exception): pass` catches **all** exceptions (including programming errors) and silently discards them. `ValueError` from invalid UUID format is expected; other exceptions should be logged.
+
+**Fix:** Split into `except ValueError:` (logged warning) and `except Exception:` (logged with traceback).
+
+| File | Change |
+|---|---|
+| `swx_core/hooks/invitation_auto_accept.py` | Split bare `except` into typed handlers with logging |
+
+---
+
+#### P2 — `Relationship()` without `lazy=` causes `MissingGreenlet` on attribute access
+
+Three model fields used bare `Relationship()` which defaults to `lazy="select"` (lazy loading). On `AsyncSession`, accessing these attributes outside the session context crashes with `MissingGreenlet`.
+
+**Fix:** Added `lazy="selectin"` to eagerly load these relationships within the same query.
+
+| File | Change |
+|---|---|
+| `swx_core/models/device.py` | `user: "User" = Relationship()` → `Relationship(lazy="selectin")` |
+| `swx_core/models/team_member.py` | `user` and `team_role` → `Relationship(lazy="selectin")` |
+
+---
+
+#### Removed — Dead code
+
+| File | Change |
+|---|---|
+| `swx_core/repositories/token_repository.py` | Deleted — not imported anywhere, superseded by `refresh_token_service.py` |
+
+---
+
+## [2.19.4] - 2026-08-04
+
+### Fixed — MissingGreenlet crash on registration (hotfix)
+
+#### P0 — `create_personal_team` post-register hook crashes with `MissingGreenlet`
+
+Same root cause as v2.19.5 P0 but without the `session.refresh()` fix. This version was superseded by v2.19.5 within minutes.
+
+---
+
+## [2.19.3] - 2026-08-04
+
+### Fixed — `session.exec()` on AsyncSession (6 instances), CSRF token length, code-clarity
+
+#### P0 — `session.exec()` on `AsyncSession` — crashes every call site
+
+`AsyncSession` has no `.exec()` method (that's SQLModel's `Session`). Six call sites used it, causing `AttributeError` at runtime.
+
+| File | Change |
+|---|---|
+| `swx_core/core/default_hooks.py` | `await session.exec()` → `await session.execute()` |
+| `swx_core/services/team_permission_checker.py` | 4× `await self.session.exec()` → `await self.session.execute()` |
+| `swx_core/security/dependencies.py` | `session.exec()` → `(await session.execute()).scalars().first()` |
+
+#### P1 — `get_current_user` was sync but uses `AsyncSession`
+
+`get_current_user` in `security/dependencies.py` was a sync function receiving `AsyncSession` via `SessionDep`. Calling `.execute()` on `AsyncSession` requires `await`. Made the function `async`.
+
+| File | Change |
+|---|---|
+| `swx_core/security/dependencies.py` | `def get_current_user` → `async def get_current_user` |
+
+#### P2 — CSRF token generation produces 10,800-byte tokens
+
+`_get_or_create_csrf_token()` used `config.cookie_max_age // 8` (= 10,800) as the token byte length instead of `CSRF_TOKEN_LENGTH` (= 32).
+
+| File | Change |
+|---|---|
+| `swx_core/middleware/csrf_middleware.py` | `secrets.token_urlsafe(config.cookie_max_age // 8)` → `secrets.token_urlsafe(CSRF_TOKEN_LENGTH)` |
+
+#### Code-clarity
+
+| File | Change |
+|---|---|
+| `swx_core/security/dependencies.py` | Merged duplicate docstrings, removed redundant comment |
+| `swx_core/version.py` | Removed unused `Optional` import, fixed bare `tuple` → `tuple[int, ...]` |
+
+---
+
+## [2.19.2] - 2026-08-03
+
+### Fixed — CSRF token length bug (hotfix)
+
+`_get_or_create_csrf_token()` used `cookie_max_age // 8` (10,800 bytes) instead of `CSRF_TOKEN_LENGTH` (32 bytes). Same fix as v2.19.3 P2, released separately for urgency.
+
+---
+
+## [2.19.1] - 2026-08-03
+
+### Fixed — Backward-compatibility breaks from v2.19.0
+
+#### P0 — `ImportError: cannot import name 'async_session'` kills audit subsystem
+
+`audit_event_queue.py` and `security.py` imported `async_session` from `swx_core.database.db`, but the symbol was removed in v2.19.0. Added backward-compat alias.
+
+| File | Change |
+|---|---|
+| `swx_core/database/db.py` | Added `async_session = AsyncSessionLocal` alias |
+| `swx_core/database/__init__.py` | Added `async_session` to exports |
+
+#### P1 — `ImportError: cannot import name 'CSRF_HEADER_NAME'`
+
+`CSRF_HEADER_NAME`, `CSRF_TOKEN_LENGTH`, and `CSRF_COOKIE_NAME` were module-level constants removed in v2.19.0's CSRF rewrite. Restored for backward compatibility.
+
+| File | Change |
+|---|---|
+| `swx_core/middleware/csrf_middleware.py` | Restored `CSRF_HEADER_NAME`, `CSRF_TOKEN_LENGTH`, `CSRF_COOKIE_NAME` as module-level constants |
+
+#### P2 — Stale `__version__` attribute (2.17.0 instead of 2.19.0)
+
+`swx_core/version.py` had `VERSION_MINOR = 17, VERSION_PATCH = 0` while `pyproject.toml` said `2.19.0`.
+
+| File | Change |
+|---|---|
+| `swx_core/version.py` | Updated version to match `pyproject.toml` |
+
+#### P3 — `stream_controller` return type mismatch
+
+`llm_controller.stream_controller` had `AsyncGenerator[str, None]` but `llm_service.stream()` yields `SSEEvent`.
+
+| File | Change |
+|---|---|
+| `swx_core/controllers/llm_controller.py` | Fixed return type to `AsyncGenerator[SSEEvent, None]`, renamed `chunk` → `event` |
+
+---
+
+## [2.19.0] - 2026-08-03
+
+### Added — 40 upstream implementation tickets
+
+(See UPSTREAM_IMPLEMENTATION_PLAN.md for full details.)
+
+New modules: fallback chain, region routing, auth rate limiting, onboarding, provider catalog, cache service, tenant config cache, audit retention, audit event queue, compliance report, prompt injection, encryption, security headers, CSRF, service token guard, combined auth guard, lazy import, error hierarchy.
+
+---
+
 ## [2.18.0] - 2026-07-30
 
 ### Added — System Config Value Type: FLOAT + Wrapped-Scalar Unwrapping

@@ -3,7 +3,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from swx_core.contracts.llm import ValidateProviderResult
+from swx_core.contracts.llm import SSEEvent, ValidateProviderResult
 from swx_core.models.llm_provider_config import LLMProviderConfigCreate, LLMProviderConfigPublic, LLMProviderConfigUpdate
 from swx_core.services.llm import llm_service
 
@@ -32,9 +32,9 @@ async def generate_controller(session: AsyncSession, prompt: str, phase: str, sy
     return await llm_service.generate(session, prompt, phase, system_prompt, json_mode, account_id, **kwargs)
 
 
-async def stream_controller(session: AsyncSession, prompt: str, phase: str, system_prompt: str | None = None, account_id: UUID | None = None, **kwargs: Any) -> AsyncGenerator[str, None]:
-    async for chunk in llm_service.stream(session, prompt, phase, system_prompt, account_id, **kwargs):
-        yield chunk
+async def stream_controller(session: AsyncSession, prompt: str, phase: str, system_prompt: str | None = None, account_id: UUID | None = None, **kwargs: Any) -> AsyncGenerator[SSEEvent, None]:
+    async for event in llm_service.stream(session, prompt, phase, system_prompt, account_id, **kwargs):
+        yield event
 
 
 async def health_controller(session: AsyncSession) -> dict[str, bool]:

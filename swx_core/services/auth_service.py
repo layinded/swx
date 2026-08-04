@@ -337,6 +337,11 @@ async def register_user_service(
         except Exception as hook_error:
             from swx_core.middleware.logging_middleware import logger
             logger.warning(f"Post-registration hook failed for user {user.id}: {hook_error}")
+
+    # Reload user from DB to pick up any changes made by hooks in separate
+    # sessions (e.g. updated_at bumped by onupdate=func.now() during
+    # cross-session UPDATEs like create_personal_team).
+    await session.refresh(user)
     
     # Emit user.created event with context
     from swx_core.events.dispatcher import event_bus, Event

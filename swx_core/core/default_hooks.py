@@ -104,7 +104,7 @@ async def create_personal_team(user: User, _context: dict) -> User:
         session.add(team)
         await session.flush()
 
-        result = await session.exec(select(TeamRole).where(TeamRole.key == "owner"))
+        result = await session.execute(select(TeamRole).where(TeamRole.key == "owner"))
         owner_role = result.scalar_one_or_none()
 
         if owner_role:

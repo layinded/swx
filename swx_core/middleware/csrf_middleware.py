@@ -25,6 +25,10 @@ from starlette.responses import Response
 from swx_core.config.settings import settings
 from swx_core.middleware.logging_middleware import logger
 
+CSRF_TOKEN_LENGTH: int = 32
+CSRF_HEADER_NAME: str = "X-CSRF-Token"
+CSRF_COOKIE_NAME: str = "csrf_token"
+
 
 @dataclass
 class CSRFConfig:
@@ -156,7 +160,7 @@ def _get_cookie_value(cookie_header: str, name: str) -> str | None:
 
 def _get_or_create_csrf_token(combined_cookie: str, config: CSRFConfig) -> str:
     existing = _get_cookie_value(combined_cookie, config.cookie_name)
-    return existing if existing else secrets.token_urlsafe(config.cookie_max_age // 8)
+    return existing if existing else secrets.token_urlsafe(CSRF_TOKEN_LENGTH)
 
 
 def _add_set_cookie(headers: list[tuple[bytes, bytes]], token: str, config: CSRFConfig) -> list[tuple[bytes, bytes]]:
