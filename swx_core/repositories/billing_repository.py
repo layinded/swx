@@ -12,12 +12,7 @@ from swx_core.models.billing import (
     Subscription,
     SubscriptionStatus,
     Plan,
-)
-
-_ACTIVE_STATUSES = (
-    SubscriptionStatus.ACTIVE,
-    SubscriptionStatus.TRIALING,
-    SubscriptionStatus.PAST_DUE,
+    ACTIVE_STATUSES,
 )
 
 
@@ -39,7 +34,7 @@ async def get_active_subscription(
     stmt = select(Subscription).where(
         and_(
             Subscription.account_id == account_id,  # pyright: ignore[reportArgumentType]
-            Subscription.status.in_(_ACTIVE_STATUSES),  # pyright: ignore[reportAttributeAccessIssue]
+            Subscription.status.in_(ACTIVE_STATUSES),  # pyright: ignore[reportAttributeAccessIssue]
         )
     )
     return (await session.execute(stmt)).scalar_one_or_none()

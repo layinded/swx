@@ -2,6 +2,92 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.7] - 2026-08-04
+
+### Fixed — `sync_stripe_subscription` duplicate active subscriptions, checkout-session no-op, 10 edge-case bugs
+
+#### P0 — `sync_stripe_subscription` creates duplicate ACTIVE subscriptions (from bug report)
+
+`sync_stripe_subscription` inserted a new `Subscription` row when a Stripe webhook fired for a subscription with no local match (by `stripe_subscription_id`). It did **not** deactivate existing active subscriptions for the same billing account before inserting, producing multiple `ACTIVE` rows. This crashed `GET /billing/subscription` because `BillingController.get_subscription` uses `scalar_one_or_none()` → `MultipleResultsFound`.
+
+The sibling method `create_subscription` already implemented the correct deactivation pattern. `sync_stripe_subscription` now does the same before insert, using a shared `_deactivate_active_subscriptions()` helper.
+
+| File | Change |
+|---|---|
+| `swx_core/services/billing/subscription_service.py` | Added `_deactivate_active_subscriptions()` helper; called before insert in `sync_stripe_subscription` and `create_subscription` |
+
+---
+
+#### P1 — `checkout.session.completed` webhook sync was a silent no-op
+
+The webhook handler called `sync_stripe_subscription(event_data)` for `checkout.session.completed` events. A Stripe Checkout Session object does **not** contain `current_period_start` or `current_period_end` fields — those exist only on the Subscription object. The method silently returned without syncing anything, while the handler reported "subscription synchronized" to Stripe.
+
+**Fix:** When period fields are missing but a `subscription` field (string ID) is present, `_sync_from_checkout_session()` fetches the full subscription object from Stripe via the provider and retries the sync. Recursion depth guard prevents infinite loops.
+
+| File | Change |
+|---|---|
+| `swx_core/services/billing/subscription_service.py` | Added `_sync_from_checkout_session()` method with recursion depth guard |
+
+---
+
+#### Edge cases fixed (12 total)
+
+| # | Severity | Edge Case | Fix |
+|---|---|---|---|
+| 1 | High | Update branch missing `ended_at` when status becomes CANCELED | Set `ended_at` on cancellation in update branch |
+| 2 | High | Insert branch creates ghost CANCELED/EXPIRED rows for never-synced subs | Skip insert when `status in TERMINAL_STATUSES` |
+| 3 | High | Update branch missing `canceled_at` when `cancel_at_period_end=True` | Set `canceled_at` on `cancel_at_period_end` in update branch |
+| 4 | Medium | `_sync_from_checkout_session` unguarded recursion | Added `depth` parameter, abort at `depth >= 2` |
+| 5 | High | `_deactivate_active_subscriptions` didn't cancel `PAST_DUE` subs (entitlement resolver treats PAST_DUE as active) | Added `PAST_DUE` to `ACTIVE_STATUSES` canonical constant |
+| 6 | High | Deactivation event fired before commit — listeners saw uncommitted data | Helper returns canceled IDs; callers emit event after commit |
+| 7 | High | `create_subscription` event ordering — deactivation event before creation event, both before commit | Deactivation event now fires after commit, before creation event |
+| 8 | Medium | Update branch overwrote `ended_at` on every CANCELED webhook resend | Only set `ended_at` if `subscription.ended_at is None` |
+| 9 | Low | `_from_stripe_timestamp` accepted `bool` (bool is subclass of int) | Added `_is_numeric_timestamp()` TypeGuard, excludes bool |
+| 10 | Medium | `cancel_subscription` not idempotent — double-call emitted duplicate events | Added `already_canceled` check, skip if already canceled at period end |
+| 11 | Medium | Insert branch missing `canceled_at` when `cancel_at_period_end=True` | Added `canceled_at` to insert constructor |
+| 12 | Medium | `_get_stripe_price_id` returned Plan ID from legacy `plan` field, not Price ID | Removed legacy `plan` field path; only `items.data[0].price.id` used |
+
+---
+
+#### Code clarity
+
+| Change |
+|---|
+| Extracted `_commit_or_rollback()` helper — 5 duplicate try/commit/except/rollback blocks eliminated |
+| Extracted `_update_existing_subscription()` and `_create_subscription_from_stripe()` from `sync_stripe_subscription` |
+| `sync_stripe_subscription` reduced from 120 lines to 41 lines (pure orchestration) |
+| Extracted `_is_numeric_timestamp()` with `TypeGuard[int | float]` for type-safe timestamp validation |
+| Added `ACTIVE_STATUSES` and `TERMINAL_STATUSES` canonical constants to `billing.py` |
+| `billing_repository.py` now imports canonical `ACTIVE_STATUSES` instead of private `_ACTIVE_STATUSES` |
+
+---
+
+#### Events added
+
+`subscription_service.py` previously emitted **zero** events. Now emits:
+
+| Method | Event | Payload |
+|---|---|---|
+| `_deactivate_active_subscriptions` (via callers) | `subscription.deactivated` | `account_id`, `canceled_subscription_ids[]` |
+| `create_subscription` | `subscription.created` | `subscription_id`, `account_id`, `plan_key`, `status` |
+| `cancel_subscription` | `subscription.canceled` | `subscription_id`, `immediate`, `cancel_at_period_end` |
+| `sync_stripe_subscription` (update) | `subscription.updated` | `subscription_id`, `stripe_subscription_id`, `status`, `source` |
+| `sync_stripe_subscription` (insert) | `subscription.created` | `subscription_id`, `account_id`, `stripe_subscription_id`, `status`, `source` |
+
+All events fire **after** successful commit, never before.
+
+---
+
+### Changed
+
+| File | Change |
+|---|---|
+| `swx_core/models/billing.py` | Added `ACTIVE_STATUSES`, `TERMINAL_STATUSES` constants, `__all__` export list |
+| `swx_core/repositories/billing_repository.py` | Replaced private `_ACTIVE_STATUSES` with canonical import |
+| `swx_core/services/billing/subscription_service.py` | All fixes, edge cases, events, code clarity |
+
+---
+
 ## [2.19.5] - 2026-08-04
 
 ### Fixed — MissingGreenlet crash on registration, dead code removal, lazy-loading fixes

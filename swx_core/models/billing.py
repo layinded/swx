@@ -44,6 +44,32 @@ class SubscriptionStatus(str, Enum):
     UNPAID = "unpaid"
     EXPIRED = "expired"
 
+
+ACTIVE_STATUSES: tuple[SubscriptionStatus, ...] = (
+    SubscriptionStatus.ACTIVE,
+    SubscriptionStatus.TRIALING,
+    SubscriptionStatus.PAST_DUE,
+)
+
+TERMINAL_STATUSES: tuple[SubscriptionStatus, ...] = (
+    SubscriptionStatus.CANCELED,
+    SubscriptionStatus.EXPIRED,
+)
+
+__all__ = [
+    "BillingAccountType",
+    "BillingInterval",
+    "BILLING_INTERVAL_DAYS",
+    "FeatureType",
+    "SubscriptionStatus",
+    "ACTIVE_STATUSES",
+    "TERMINAL_STATUSES",
+    "BillingAccount",
+    "Subscription",
+    "Plan",
+    "UsageRecord",
+]
+
 class BillingAccount(Base, table=True):
     """
     Represents a billed entity (User, Team, or Org).
