@@ -34,6 +34,7 @@ from swx_core.config.social_settings import social_settings
 from swx_core.controllers.auth_controller import login_social_user_controller
 from swx_core.database.db import SessionDep
 from swx_core.repositories.user_repository import get_user_by_email
+from swx_core.core.hooks import registration_hooks
 from swx_core.services.auth_service import register_user_service
 from swx_core.models.user import UserCreate
 from swx_core.utils.language_helper import translate
@@ -314,6 +315,8 @@ async def google_auth_callback(request: Request, session: SessionDep):
                 auth_provider="google",
                 provider_id=provider_id,
                 event_context={"social_provider": "google"},
+                pre_register_hook=registration_hooks.pre_register,
+                post_register_hook=registration_hooks.post_register,
             )
 
         response = await complete_oauth_login(session, existing_user.email, "google", is_new_user, request)
@@ -415,6 +418,8 @@ async def facebook_auth_callback(request: Request, session: SessionDep):
                 auth_provider="facebook",
                 provider_id=provider_id,
                 event_context={"social_provider": "facebook"},
+                pre_register_hook=registration_hooks.pre_register,
+                post_register_hook=registration_hooks.post_register,
             )
 
         response = await complete_oauth_login(session, existing_user.email, "facebook", is_new_user, request)
@@ -522,6 +527,8 @@ async def provider_auth_callback(request: Request, session: SessionDep, provider
                 auth_provider=provider,
                 provider_id=provider_id,
                 event_context={"social_provider": provider},
+                pre_register_hook=registration_hooks.pre_register,
+                post_register_hook=registration_hooks.post_register,
             )
 
         response = await complete_oauth_login(session, existing_user.email, provider, is_new_user, request)

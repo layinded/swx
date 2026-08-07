@@ -14,9 +14,11 @@ from swx_core.cli.commands.security import security
 # AI-Aware Layer imports
 from swx_core.ai_exports.cli import register_ai_commands
 
+from swx_core.version import __version__ as swx_version
+
 
 @click.group()
-@click.version_option(version="2.0.0", prog_name="swx")
+@click.version_option(version=swx_version, prog_name="swx")
 def main():
     """SwX CLI - Production-grade FastAPI framework management.
     

@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.8] - 2026-08-07
+
+### Fixed — OAuth registration bypasses default hooks (role assignment, billing account, personal team)
+
+All three OAuth callback handlers (`google_auth_callback`, `facebook_auth_callback`, `provider_auth_callback`) in `oauth_route.py` called `register_user_service()` directly without passing `pre_register_hook` and `post_register_hook`. This meant users registered via social login never ran the default registration hooks registered by `_register_default_hooks()` in `bootstrap.py`:
+
+- `create_personal_team` — no personal team created
+- `assign_default_role` — no default role assigned
+- `create_billing_account` — no billing account created
+
+Meanwhile, email registration via `register_controller` correctly wired these hooks. The fix adds `registration_hooks.pre_register` and `registration_hooks.post_register` to all three OAuth call sites, ensuring consistent behavior across all registration paths.
+
+| File | Change |
+|---|---|
+| `swx_core/routes/access/oauth_route.py` | Added `from swx_core.core.hooks import registration_hooks`; passed `pre_register_hook` and `post_register_hook` in all three OAuth callbacks |
+
+---
+
 ## [2.19.7] - 2026-08-04
 
 ### Fixed — `sync_stripe_subscription` duplicate active subscriptions, checkout-session no-op, 10 edge-case bugs

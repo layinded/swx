@@ -1,7 +1,7 @@
 # Registration Hooks & Extension Points
 
-**Version:** 2.7.27
-**Last Updated:** 2026-06-30
+**Version:** 2.19.8
+**Last Updated:** 2026-08-07
 
 ---
 
@@ -261,6 +261,28 @@ To disable any hook, set the corresponding environment variable to `false`:
 AUTO_ASSIGN_DEFAULT_ROLE=false
 AUTO_CREATE_BILLING_ACCOUNT=false
 AUTO_CREATE_PERSONAL_TEAM=false
+```
+
+### OAuth / Social Login Hooks (v2.19.8)
+
+> **Bug fix:** Prior to v2.19.8, OAuth callbacks (Google, Facebook, generic provider) called `register_user_service()` directly **without** passing `pre_register_hook` or `post_register_hook`. This meant social-login users never received the default hooks — no personal team, no default role, no billing account. This is now fixed: all three OAuth callbacks pass `registration_hooks.pre_register` and `registration_hooks.post_register`, matching the email-registration path through `register_controller`.
+
+If you have custom OAuth routes that call `register_user_service()` directly, make sure to pass the hooks:
+
+```python
+from swx_core.core.hooks import registration_hooks
+from swx_core.services.auth_service import register_user_service
+
+user = await register_user_service(
+    session=session,
+    user_in=user_in,
+    request=request,
+    auth_provider="google",
+    provider_id=provider_id,
+    event_context={"social_provider": "google"},
+    pre_register_hook=registration_hooks.pre_register,
+    post_register_hook=registration_hooks.post_register,
+)
 ```
 
 ### Custom Hooks Alongside Defaults
