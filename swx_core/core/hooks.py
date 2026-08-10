@@ -5,6 +5,10 @@ Allows apps to register pre/post registration hooks that are automatically
 called by the auth route endpoint. Hooks are registered at app startup
 and applied to every registration request.
 
+Post-register hooks receive the parent database session so side effects
+(create team, assign role, billing account) share the same transaction.
+This avoids separate-session bugs like MissingGreenlet and lazy-load errors.
+
 Usage:
     from swx_core.core.hooks import registration_hooks
 
@@ -16,16 +20,17 @@ Usage:
         user_in.tenant_id = context.get("tenant_id")
         return user_in
 
-    async def my_setup_hook(user: User, context: dict) -> User:
-        await create_organization(user.id, context.get("org_name"))
+    async def my_setup_hook(user: User, session: AsyncSession, context: dict) -> User:
+        await create_organization(user.id, context.get("org_name"), session=session)
         return user
 """
 
 from typing import Callable, Awaitable, Any, List
+from sqlalchemy.ext.asyncio import AsyncSession
 from swx_core.models.user import User, UserCreate
 
 PreRegisterHook = Callable[[UserCreate, dict[str, Any]], Awaitable[UserCreate]]
-PostRegisterHook = Callable[[User, dict[str, Any]], Awaitable[User | None]]
+PostRegisterHook = Callable[[User, AsyncSession, dict[str, Any]], Awaitable[User | None]]
 
 
 class RegistrationHookRegistry:
@@ -55,11 +60,11 @@ class RegistrationHookRegistry:
 
         hooks = list(self._post_hooks)
 
-        async def combined_post_hook(user: User, context: dict[str, Any]) -> User | None:
+        async def combined_post_hook(user: User, session: AsyncSession, context: dict[str, Any]) -> User | None:
             result: User | None = user
             for h in hooks:
                 try:
-                    result = await h(user, context)
+                    result = await h(user, session, context)
                 except Exception:
                     from swx_core.middleware.logging_middleware import logger
                     logger.exception(f"Post-register hook {h.__name__} failed")

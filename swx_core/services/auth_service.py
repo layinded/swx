@@ -220,7 +220,7 @@ async def register_user_service(
     request: Request,
     event_context: dict[str, Any] | None = None,
     pre_register_hook: Callable[[UserCreate, dict[str, Any]], Awaitable[UserCreate]] | None = None,
-    post_register_hook: Callable[[User, dict[str, Any]], Awaitable[User | None]] | None = None,
+    post_register_hook: Callable[[User, AsyncSession, dict[str, Any]], Awaitable[User | None]] | None = None,
     auth_provider: str = "local",
     provider_id: str | None = None,
 ) -> User:
@@ -241,11 +241,13 @@ async def register_user_service(
                     user_in.tenant_id = ctx.get("tenant_id")
                     return user_in
         post_register_hook (Callable | None): Async function called AFTER user creation.
-            Receives (user, event_context) and can return modified User or None.
+            Receives (user, session, event_context) and can return modified User or None.
+            The session is the parent database session — use it for side effects so they
+            share the same transaction as the user creation.
             Use for: organization setup, tenant creation, welcome emails, audit logging.
             Example:
-                async def my_post_hook(user: User, ctx: dict) -> User:
-                    await create_organization(user.id, ctx.get("org_name"))
+                async def my_post_hook(user: User, session: AsyncSession, ctx: dict) -> User:
+                    await create_organization(user.id, ctx.get("org_name"), session=session)
                     return user
         auth_provider (str): The authentication provider (e.g., "local", "google", "facebook").
             Defaults to "local" for traditional email/password registration.
@@ -269,9 +271,9 @@ async def register_user_service(
         5. return user
 
     Example:
-        async def setup_tenant(user: User, ctx: dict) -> User:
-            org = await create_organization(user.id, ctx.get("organization_name"))
-            await assign_user_to_org(user.id, org.id)
+        async def setup_tenant(user: User, session: AsyncSession, ctx: dict) -> User:
+            org = await create_organization(user.id, ctx.get("organization_name"), session=session)
+            await assign_user_to_org(user.id, org.id, session=session)
             return user
 
         user = await register_user_service(
@@ -331,16 +333,15 @@ async def register_user_service(
     # mask a successful user creation with a 400 error.
     if post_register_hook:
         try:
-            result = await post_register_hook(user, context)
+            result = await post_register_hook(user, session, context)
             if result is not None:
                 user = result
         except Exception as hook_error:
             from swx_core.middleware.logging_middleware import logger
             logger.warning(f"Post-registration hook failed for user {user.id}: {hook_error}")
 
-    # Reload user from DB to pick up any changes made by hooks in separate
-    # sessions (e.g. updated_at bumped by onupdate=func.now() during
-    # cross-session UPDATEs like create_personal_team).
+    # Reload user from DB to pick up any changes made by hooks
+    # (e.g. tenant_id set by create_personal_team).
     await session.refresh(user)
     
     # Emit user.created event with context

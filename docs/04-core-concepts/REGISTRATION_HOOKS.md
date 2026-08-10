@@ -1,7 +1,7 @@
 # Registration Hooks & Extension Points
 
-**Version:** 2.19.8
-**Last Updated:** 2026-08-07
+**Version:** 2.19.9
+**Last Updated:** 2026-08-10
 
 ---
 
@@ -28,7 +28,7 @@ async def register_user_service(
     request: Request,
     event_context: dict[str, Any] | None = None,
     pre_register_hook: Callable[[UserCreate, dict], Awaitable[UserCreate]] | None = None,
-    post_register_hook: Callable[[User, dict], Awaitable[User | None]] | None = None,
+    post_register_hook: Callable[[User, AsyncSession, dict], Awaitable[User | None]] | None = None,
 ) -> User
 ```
 
@@ -43,6 +43,7 @@ Called **before** user creation. Use for:
 **Example: Auto-assign tenant:**
 
 ```python
+from sqlalchemy.ext.asyncio import AsyncSession
 from swx_core.models.user import UserCreate
 from swx_core.services.auth_service import register_user_service
 
@@ -84,16 +85,16 @@ Called **after** user creation. Use for:
 **Example: Create organization:**
 
 ```python
-async def setup_organization(user: User, context: dict) -> User:
+async def setup_organization(user: User, session: AsyncSession, context: dict) -> User:
     from my_app.services.organization import create_organization
     
     org_name = context.get("organization_name", f"{user.full_name}'s Organization")
     org = await create_organization(
         owner_id=user.id,
         name=org_name,
+        session=session,
     )
     
-    # Optionally update user with org reference
     user.organization_id = org.id
     return user
 
@@ -110,7 +111,7 @@ user = await register_user_service(
 **Example: Send welcome email:**
 
 ```python
-async def send_welcome(user: User, context: dict) -> None:
+async def send_welcome(user: User, session: AsyncSession, context: dict) -> None:
     from my_app.services.email import send_welcome_email
     await send_welcome_email(user.email, user.full_name)
     return None  # Return None to not modify user
@@ -292,7 +293,7 @@ You can register additional hooks alongside the defaults using `add_post_registe
 ```python
 from swx_core.core.hooks import registration_hooks
 
-async def send_welcome_email(user: User, context: dict) -> User:
+async def send_welcome_email(user: User, session: AsyncSession, context: dict) -> User:
     await send_email(user.email, "Welcome!", "...")
     return user
 
@@ -377,8 +378,8 @@ async def assign_tenant(user_in: UserCreate, context: dict) -> UserCreate:
     user_in.tenant_id = tenant_id
     return user_in
 
-async def setup_tenant_resources(user: User, context: dict) -> None:
-    await create_tenant_defaults(user.tenant_id)
+async def setup_tenant_resources(user: User, session: AsyncSession, context: dict) -> None:
+    await create_tenant_defaults(user.tenant_id, session=session)
     await provision_tenant_storage(user.tenant_id)
 
 user = await register_user_service(
@@ -405,8 +406,8 @@ async def validate_invitation(user_in: UserCreate, context: dict) -> UserCreate:
     user_in.role = invitation.role
     return user_in
 
-async def mark_invitation_used(user: User, context: dict) -> None:
-    await mark_invitation_as_used(context.get("invitation_code"), user.id)
+async def mark_invitation_used(user: User, session: AsyncSession, context: dict) -> None:
+    await mark_invitation_as_used(context.get("invitation_code"), user.id, session=session)
 ```
 
 ### Enterprise SSO Registration
@@ -418,9 +419,9 @@ async def sync_from_idp(user_in: UserCreate, context: dict) -> UserCreate:
     user_in.auth_provider = "sso"
     return user_in
 
-async def sync_groups(user: User, context: dict) -> User:
+async def sync_groups(user: User, session: AsyncSession, context: dict) -> User:
     sso_groups = context.get("sso_groups", [])
-    await sync_user_groups(user.id, sso_groups)
+    await sync_user_groups(user.id, sso_groups, session=session)
     return user
 ```
 

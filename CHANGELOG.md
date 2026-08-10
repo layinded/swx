@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.9] - 2026-08-10
+
+### Fixed — Post-register hooks used separate sessions, causing silent failures (create_personal_team never ran)
+
+All three default post-register hooks (`assign_default_role`, `create_billing_account`, `create_personal_team`) opened their own `AsyncSessionLocal()` session instead of using the parent registration session. This caused two bugs:
+
+1. **Lazy-load / MissingGreenlet errors** — Hooks accessed `user.full_name`, `user.email`, etc. on the parent session's `user` object from within a separate session context, triggering `DetachedInstanceError` or `MissingGreenlet` exceptions that were silently swallowed by the `combined_post_hook` wrapper.
+2. **Non-atomic registration** — If a hook failed, the user was still created but without a team/role/billing account (half-baked user).
+
+The fix changes the `PostRegisterHook` signature from `(user, context)` to `(user, session, context)`. Hooks now receive the parent `AsyncSession` and share the same transaction. If any hook fails, the entire registration rolls back — no more half-baked users.
+
+**Breaking change for custom post-register hooks:** Any custom hooks registered via `add_post_register()` must add an `AsyncSession` parameter as the second argument:
+
+```python
+# Before (v2.19.8 and earlier)
+async def my_hook(user: User, context: dict) -> User: ...
+
+# After (v2.19.9+)
+async def my_hook(user: User, session: AsyncSession, context: dict) -> User: ...
+```
+
+Also removes the redundant bulk `UPDATE` in `create_personal_team` (setting `tenant_id` via `update(UserModel)` in a separate session). Now that the hook uses the parent session, `user.tenant_id = team.id` is sufficient — it persists on the caller's commit.
+
+| File | Change |
+|---|---|
+| `swx_core/core/hooks.py` | `PostRegisterHook` type now includes `AsyncSession` parameter; `combined_post_hook` forwards session |
+| `swx_core/core/default_hooks.py` | All three hooks rewritten to use parent session; removed `AsyncSessionLocal()` and `session.commit()` calls; `create_personal_team` no longer uses bulk `UPDATE` |
+| `swx_core/services/auth_service.py` | `post_register_hook` signature updated; call site now passes `session` |
+| `docs/04-core-concepts/REGISTRATION_HOOKS.md` | Updated all examples to new `(user, session, context)` signature |
+
+---
+
 ## [2.19.8] - 2026-08-07
 
 ### Fixed — OAuth registration bypasses default hooks (role assignment, billing account, personal team)
