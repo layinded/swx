@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.19.15  
+**Version:** 2.19.16  
 **Last Updated:** 2026-08-11
 
 ---
@@ -29,6 +29,30 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.19.16 (2026-08-11)
+
+**Entitlement Resolver — scalar_one_or_none() crash fix & code-clarity refactor**
+
+#### Fixed
+
+1. **P0 — `get_remaining_quota()` crashes with `MultipleResultsFound`** — `scalar_one_or_none()` on a multi-row `UsageRecord` query raised an exception when more than one record existed. Replaced with `func.coalesce(func.sum(UsageRecord.quantity), 0)` aggregation scoped to the subscription period.
+
+#### Changed
+
+2. **Extracted `_get_account_and_subscription()` private helper** — Eliminates duplicated 20-line account+subscription query block from `get_entitlement()` and `get_remaining_quota()`.
+
+3. **Eliminated 6 redundant DB queries in `get_remaining_quota()`** — Previously called `get_entitlement()` which re-queried account+subscription. Now inlines the entitlement lookup, reducing total queries from 9 to 3.
+
+4. **Replaced magic number `999999999`** with named constant `UNLIMITED_QUOTA = 999_999_999`.
+
+5. **Extracted `_ACTIVE_STATUSES` frozenset** — `[SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE]` was duplicated; now a module-level constant.
+
+6. **Removed unused imports** — `Union`, `Dict`, `Any`, `Plan` were imported but never used.
+
+7. **f-string → lazy logging** — `logger.warning(f"...")` → `logger.warning("...", feature_key)`.
+
+---
 
 ### Version 2.17.0 (2026-07-30)
 

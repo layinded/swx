@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.16] - 2026-08-11
+
+### Fixed — Entitlement resolver: scalar_one_or_none() crash on multi-row query, redundant DB queries, unused imports
+
+`get_remaining_quota()` called `scalar_one_or_none()` on a query that can return
+multiple `UsageRecord` rows (one per feature per billing period). When more than
+one record existed, SQLAlchemy raised `MultipleResultsFound`. Replaced with
+`func.coalesce(func.sum(UsageRecord.quantity), 0)` to aggregate correctly.
+
+Additional improvements during code-clarity review:
+
+| Change | Detail |
+|---|---|
+| Extracted `_get_account_and_subscription()` | Eliminates duplicated 20-line account+subscription query block that appeared in both `get_entitlement()` and `get_remaining_quota()` |
+| Eliminated redundant DB queries in `get_remaining_quota()` | Previously called `get_entitlement()` which re-queried account+subscription (6 extra queries). Now inlines the entitlement lookup, reducing queries from 9 to 3 |
+| Replaced magic number `999999999` | Named constant `UNLIMITED_QUOTA = 999_999_999` |
+| Extracted `_ACTIVE_STATUSES` frozenset | `[SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE]` was duplicated; now a module-level constant |
+| Removed unused imports | `Union`, `Dict`, `Any`, `Plan` were imported but never used |
+| f-string → lazy logging | `logger.warning(f"...")` → `logger.warning("...", feature_key)` |
+
+---
+
 ## [2.19.15] - 2026-08-11
 
 ### Fixed — Defensive session.add() for model mutations in hooks, invitations, settings, onboarding
