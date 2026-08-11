@@ -230,6 +230,12 @@ class Subscription(Base, table=True):
     
     stripe_subscription_id: Optional[str] = Field(default=None, unique=True, index=True)
     
+    trial_ends_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+        description="When the trial period ends. Null means no trial or trial expired.",
+    )
+    
     subscription_metadata: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)

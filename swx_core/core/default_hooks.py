@@ -8,6 +8,7 @@ Registered automatically by bootstrap_app() when enabled via settings:
 - AUTO_ASSIGN_DEFAULT_ROLE (default: True) — assigns DEFAULT_USER_ROLE
 - AUTO_CREATE_BILLING_ACCOUNT (default: True) — creates a USER billing account
 - AUTO_CREATE_PERSONAL_TEAM (default: True) — creates a personal team and sets tenant_id
+- TRIAL_DAYS (default: 30) — when > 0 and BILLING_ENABLED, creates a TEAM trial subscription
 
 To disable, set the environment variable to "false" or "0".
 
@@ -125,5 +126,24 @@ async def create_personal_team(user: User, session: AsyncSession, _context: dict
     user.tenant_id = team.id
     session.add(user)
     logger.info(f"Created personal team {team.id} for user {user_id}")
+
+    # Create TEAM billing account with trial subscription
+    if settings.BILLING_ENABLED and settings.TRIAL_DAYS > 0:
+        from swx_core.services.billing.subscription_service import SubscriptionService
+
+        subscription_service = SubscriptionService(session)
+        team_account = await subscription_service.get_or_create_account(
+            owner_id=team.id,
+            account_type=BillingAccountType.TEAM,
+        )
+        try:
+            await subscription_service.create_trial_subscription(
+                account_id=team_account.id,
+                plan_key=settings.DEFAULT_PLAN_KEY,
+                trial_days=settings.TRIAL_DAYS,
+            )
+            logger.info("Created TEAM trial subscription for team %s (%d days)", team.id, settings.TRIAL_DAYS)
+        except Exception as e:
+            logger.warning("Could not create team trial subscription for team %s: %s", team.id, e)
 
     return user

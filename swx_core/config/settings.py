@@ -22,7 +22,7 @@ Configuration Sections:
 import secrets
 from typing import ClassVar
 from typing import Literal
-from pydantic import Field, field_validator, computed_field
+from pydantic import Field, field_validator, computed_field, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -541,6 +541,7 @@ class Settings(BaseSettings):
     SWX_SERVICE_TOKEN: str | None = Field(
         default=None,
         description="Shared secret for service-to-service auth via X-Service-Token header",
+        validation_alias=AliasChoices("SWX_SERVICE_TOKEN", "SERVICE_TOKEN", "GATEWAY_SERVICE_TOKEN"),
     )
     SWX_SERVICE_TOKEN_SCOPES: str | None = Field(
         default=None,
@@ -584,6 +585,14 @@ class Settings(BaseSettings):
     DEFAULT_PLAN_KEY: str = Field(
         default="free",
         description="Plan key for new user billing subscriptions (requires BILLING_ENABLED=True)",
+    )
+    TRIAL_DAYS: int = Field(
+        default=30,
+        description="Trial duration in days for new accounts (0 disables trial)",
+    )
+    TRIAL_PLAN_KEY: str = Field(
+        default="enterprise",
+        description="Plan key whose entitlements are applied during the trial period",
     )
     AUTO_CREATE_BILLING_ACCOUNT: bool = Field(
         default=True,

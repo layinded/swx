@@ -1,7 +1,7 @@
 # Billing & Entitlements
 
-**Version:** 2.7.22  
-**Last Updated:** 2026-06-29
+**Version:** 2.20.0  
+**Last Updated:** 2026-08-11
 
 ---
 
@@ -144,8 +144,12 @@ class Subscription(SQLModel, table=True):
     status: SubscriptionStatus  # ACTIVE, TRIALING, PAST_DUE, etc.
     current_period_start: datetime
     current_period_end: datetime
+    trial_ends_at: Optional[datetime]  # When the trial period ends (v2.20.0)
     stripe_subscription_id: Optional[str]
+    subscription_metadata: Dict[str, Any]
 ```
+
+As of v2.20.0, `trial_ends_at` is a first-class column on `Subscription`. During an active trial (`trial_ends_at > now`), the entitlement resolver and plan resolver use the `TRIAL_PLAN_KEY` plan's entitlements instead of the subscription's base plan. This means a user on a "free" plan in trial receives enterprise-tier features automatically.
 
 ### 6. UsageRecord
 
@@ -236,11 +240,72 @@ has_access = await resolver.has(
 )
 
 # Get remaining quota
-remaining = await resolver.get_quota(
+remaining = await resolver.get_remaining_quota(
     owner_id=team.id,
     account_type=BillingAccountType.TEAM,
     feature_key="api.calls"
 )
+```
+
+### Trial-Aware Entitlement Resolution (v2.20.0)
+
+When a subscription has `trial_ends_at` set and the trial has not expired, the entitlement resolver automatically resolves entitlements from the `TRIAL_PLAN_KEY` plan (default: `"enterprise"`) instead of the subscription's base plan.
+
+**How it works:**
+
+1. `_get_account_and_subscription()` finds subscriptions with `status IN (ACTIVE, TRIALING, PAST_DUE)` **or** an unexpired `trial_ends_at`
+2. `_resolve_effective_plan_id()` checks if the trial is active:
+   - **Active trial** → looks up the `TRIAL_PLAN_KEY` plan and returns its `plan_id`
+   - **No trial / expired trial** → returns `subscription.plan_id`
+3. `get_entitlement()` and `get_remaining_quota()` use the effective plan ID to fetch entitlements
+
+This means a user on a "free" plan with an active trial automatically receives enterprise-tier entitlements — no custom `trial_service.py` needed.
+
+### PlanResolver (v2.20.0)
+
+The `PlanResolver` resolves the effective plan tier for a user or team, accounting for trial periods:
+
+```python
+from swx_core.services.billing.plan_resolver import PlanResolver
+
+resolver = PlanResolver(session)
+
+# Resolve for a team (checks TEAM first, falls back to USER)
+tier = await resolver.resolve_plan_tier(team_id=team.id, user_id=user.id)
+# Returns: "enterprise", "pro", or "free"
+
+# During an active trial, returns TRIAL_PLAN_KEY (default: "enterprise")
+# After trial expires, returns the actual plan tier
+```
+
+**Resolution order:**
+1. If `team_id` is provided → look up TEAM subscription
+2. If no TEAM subscription and `user_id` provided → look up USER subscription
+3. If an active trial is found → return `TRIAL_PLAN_KEY`
+4. Otherwise classify the plan key as `"enterprise"`, `"pro"`, or `"free"`
+
+### Creating Trial Subscriptions
+
+```python
+from swx_core.services.billing.subscription_service import SubscriptionService
+from swx_core.config.settings import settings
+
+service = SubscriptionService(session)
+
+# Create a trial subscription (used by create_personal_team hook)
+subscription = await service.create_trial_subscription(
+    account_id=team_account.id,
+    plan_key=settings.DEFAULT_PLAN_KEY,  # "free"
+    trial_days=settings.TRIAL_DAYS,       # default: 30
+)
+# subscription.status == SubscriptionStatus.TRIALING
+# subscription.trial_ends_at == now + 30 days
+```
+
+**Configuration (`.env`):**
+```bash
+TRIAL_DAYS=30              # Trial duration in days (0 disables trial)
+TRIAL_PLAN_KEY=enterprise  # Plan key whose entitlements apply during trial
 ```
 
 ### Feature Registry

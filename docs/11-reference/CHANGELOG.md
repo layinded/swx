@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.19.16  
+**Version:** 2.20.0  
 **Last Updated:** 2026-08-11
 
 ---

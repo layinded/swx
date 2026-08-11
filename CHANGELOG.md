@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.20.0] - 2026-08-11
+
+### Added — Trial billing, service auth CSRF bypass, and plan resolution
+
+This release makes trial a first-class billing concept, fixes the TEAM trial gap that caused `QuotaExceededError` for new users, unifies service token env vars, and adds framework-level CSRF bypass for `X-Service-Token`.
+
+**Trial as a first-class concept (RFC: Trial Billing & Service Auth)**
+
+| Change | Detail |
+|---|---|
+| `Subscription.trial_ends_at` column | New nullable `DateTime(timezone=True)` column on `swx_billing_subscription`. Replaces ad-hoc JSON metadata `subscription_metadata.trial_ends_at`. Data migration backfills from existing JSON. |
+| `SubscriptionService.create_trial_subscription()` | New method that creates a subscription in `TRIALING` status with `trial_ends_at` set to `now + trial_days`. Uses `_commit_or_rollback` for consistent error handling. |
+| `EntitlementResolver._resolve_effective_plan_id()` | New method that resolves the plan ID governing entitlements. During an active trial, returns the `TRIAL_PLAN_KEY` plan's ID instead of the subscription's base plan ID. This is the critical fix — without it, trial users on a "free" plan received free-tier entitlements instead of enterprise entitlements. |
+| `EntitlementResolver` trial-aware subscription lookup | `_get_account_and_subscription()` now matches subscriptions with `status IN (ACTIVE, TRIALING, PAST_DUE)` OR an unexpired `trial_ends_at`, so trial subscriptions are found even before status is formally `TRIALING`. |
+| `PlanResolver` service | New `swx_core/services/billing/plan_resolver.py` — resolves effective plan tier (enterprise/pro/free) with trial awareness. TEAM-first, USER-fallback resolution order. |
+| `create_personal_team` hook creates TEAM trial | When `BILLING_ENABLED` and `TRIAL_DAYS > 0`, the registration hook now creates a TEAM billing account with a trial subscription. This fixes the root cause where quota checks at the TEAM level found no subscription. |
+| `TRIAL_DAYS` setting | Default: `30`. Number of days for new account trials. Set to `0` to disable. |
+| `TRIAL_PLAN_KEY` setting | Default: `"enterprise"`. Plan key whose entitlements apply during the trial period. |
+| Alembic migration `g9c3d6f0e2a5` | Adds `trial_ends_at` column + backfills from `subscription_metadata->>'trial_ends_at'`. Downgrade preserves data back to JSON. |
+
+**Service auth CSRF bypass**
+
+| Change | Detail |
+|---|---|
+| `X-Service-Token` CSRF bypass | CSRF middleware now skips validation when `X-Service-Token` header is present, eliminating the need for per-app internal route CSRF exemptions. |
+| `SWX_SERVICE_TOKEN` alias choices | `SERVICE_TOKEN` and `GATEWAY_SERVICE_TOKEN` now map to `SWX_SERVICE_TOKEN` via `AliasChoices`. Apps using either env var name work without code changes. |
+
+---
+
 ## [2.19.16] - 2026-08-11
 
 ### Fixed — Entitlement resolver: scalar_one_or_none() crash on multi-row query, redundant DB queries, unused imports

@@ -13,9 +13,11 @@ from sqlmodel import select, and_
 
 from swx_core.utils.time import utc_now
 
+from swx_core.config.settings import settings
 from swx_core.models.billing import (
     BillingAccount,
     BillingAccountType,
+    Plan,
     Subscription,
     SubscriptionStatus,
     PlanEntitlement,
@@ -25,8 +27,8 @@ from swx_core.models.billing import (
 from swx_core.services.billing.feature_registry import FeatureRegistry, FeatureType
 from swx_core.middleware.logging_middleware import logger
 
-# Subscriptions in these statuses grant access (PAST_DUE = grace period)
-_ACTIVE_STATUSES = frozenset({SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE})
+# Subscriptions in these statuses grant access (PAST_DUE = grace period, TRIALING = trial)
+_ACTIVE_STATUSES = frozenset({SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE, SubscriptionStatus.TRIALING})
 
 # Sentinel for unlimited quota (plan value of -1)
 UNLIMITED_QUOTA = 999_999_999
@@ -45,7 +47,13 @@ class EntitlementResolver:
         owner_id: uuid.UUID,
         account_type: BillingAccountType,
     ) -> Tuple[Optional[BillingAccount], Optional[Subscription]]:
-        """Look up billing account and active subscription. Returns (account, subscription)."""
+        """Look up billing account and active subscription. Returns (account, subscription).
+        
+        When a subscription has trial_ends_at set and the trial has not expired,
+        the subscription is considered active regardless of its status field.
+        This bridges the gap for newly registered users whose TEAM subscription
+        carries trial entitlements before they convert to a paid plan.
+        """
         stmt = select(BillingAccount).where(
             and_(
                 BillingAccount.owner_id == owner_id,
@@ -57,14 +65,20 @@ class EntitlementResolver:
         if not account:
             return None, None
 
-        # ACTIVE and PAST_DUE (grace period) subscriptions allow access
-        # Bug #21: Also verify current_period_end >= now() to prevent expired subscriptions
         now = utc_now()
         stmt = select(Subscription).where(
             and_(
                 Subscription.account_id == account.id,
-                Subscription.status.in_(_ACTIVE_STATUSES),  # pyright: ignore[reportAttributeAccessIssue]
-                Subscription.current_period_end >= now,  # pyright: ignore[reportOptionalOperand]
+                Subscription.current_period_end >= now,
+            )
+        ).where(
+            # Active status OR unexpired trial
+            (  # pyright: ignore[reportOperatorIssue]
+                Subscription.status.in_(_ACTIVE_STATUSES)  # pyright: ignore[reportAttributeAccessIssue]
+            ) | (
+                Subscription.trial_ends_at != None  # noqa: E711  # pyright: ignore[reportUnusedExpression]
+            ) & (
+                Subscription.trial_ends_at > now  # pyright: ignore[reportUnusedExpression]
             )
         )
         result = await self.session.execute(stmt)
@@ -97,27 +111,44 @@ class EntitlementResolver:
 
         return False
 
+    async def _resolve_effective_plan_id(
+        self,
+        subscription: Subscription,
+    ) -> uuid.UUID:
+        """Return the plan ID that governs entitlements for this subscription.
+
+        During an active trial, the trial plan's entitlements apply instead of
+        the subscription's base plan.  This is what makes a "free" plan user
+        receive "enterprise" entitlements for the trial period.
+        """
+        if subscription.trial_ends_at and subscription.trial_ends_at > utc_now():
+            trial_plan_key = settings.TRIAL_PLAN_KEY
+            stmt = select(Plan).where(Plan.key == trial_plan_key)
+            result = await self.session.execute(stmt)
+            plan = result.scalar_one_or_none()
+            if plan:
+                return plan.id
+
+        return subscription.plan_id
+
     async def get_entitlement(
         self,
         owner_id: uuid.UUID,
         account_type: BillingAccountType,
         feature_key: str,
     ) -> Optional[str]:
-        """
-        Fetch the entitlement value for a feature.
-        """
         account, subscription = await self._get_account_and_subscription(owner_id, account_type)
         if not account or not subscription:
-            # Fail closed: no account/subscription means no entitlement
             return None
 
-        # Fetch plan entitlement
+        effective_plan_id = await self._resolve_effective_plan_id(subscription)
+
         stmt = (
             select(PlanEntitlement.value)
             .join(Feature)
             .where(
                 and_(
-                    PlanEntitlement.plan_id == subscription.plan_id,
+                    PlanEntitlement.plan_id == effective_plan_id,
                     Feature.key == feature_key,
                 )
             )
@@ -131,20 +162,18 @@ class EntitlementResolver:
         account_type: BillingAccountType,
         feature_key: str,
     ) -> int:
-        """
-        Calculate remaining quota for a feature.
-        """
         account, subscription = await self._get_account_and_subscription(owner_id, account_type)
         if not account or not subscription:
             return 0
 
-        # Fetch entitlement value directly (avoids re-querying account+subscription)
+        effective_plan_id = await self._resolve_effective_plan_id(subscription)
+
         stmt = (
             select(PlanEntitlement.value)
             .join(Feature)
             .where(
                 and_(
-                    PlanEntitlement.plan_id == subscription.plan_id,
+                    PlanEntitlement.plan_id == effective_plan_id,
                     Feature.key == feature_key,
                 )
             )
@@ -160,10 +189,9 @@ class EntitlementResolver:
         except ValueError:
             return 0
 
-        if limit == -1:  # Infinite
+        if limit == -1:
             return UNLIMITED_QUOTA
 
-        # Sum all usage records for this account+feature in the current billing period
         stmt = (
             select(func.coalesce(func.sum(UsageRecord.quantity), 0))
             .join(Feature)

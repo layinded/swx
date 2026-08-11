@@ -169,6 +169,25 @@ class SubscriptionService:
         })
         return subscription
 
+    async def create_trial_subscription(
+        self,
+        account_id: uuid.UUID,
+        plan_key: str,
+        trial_days: int = 30,
+    ) -> Subscription:
+        """Create a subscription with an active trial period.
+
+        The subscription starts in TRIALING status with ``trial_ends_at`` set
+        to *now + trial_days*.  Consumers (quota, entitlement, plan-resolver)
+        check ``trial_ends_at`` to grant the trial plan's entitlements.
+        """
+        subscription = await self.create_subscription(account_id=account_id, plan_key=plan_key)
+        subscription.trial_ends_at = utc_now() + timedelta(days=trial_days)
+        subscription.status = SubscriptionStatus.TRIALING
+        await self._commit_or_rollback(subscription, f"Failed to create trial subscription for account {account_id}")
+        logger.info("Created trial subscription for account %s (plan=%s, trial_days=%d)", account_id, plan_key, trial_days)
+        return subscription
+
     async def cancel_subscription(self, subscription_id: uuid.UUID, immediate: bool = False):
         """Cancel a subscription (idempotent — skips if already canceled)."""
         subscription = await self.session.get(Subscription, subscription_id)

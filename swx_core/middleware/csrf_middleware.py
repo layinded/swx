@@ -11,7 +11,7 @@ Security:
 - Compatible with SameSite cookies
 - Auto-sets CSRF cookie on login/refresh paths
 - Auto-deletes CSRF cookie on logout paths
-- Skips validation when Bearer or API-key auth is present
+- Skips validation when Bearer, API-key, or X-Service-Token auth is present
 - Lazy-sets CSRF cookie if auth cookies exist but CSRF cookie is missing
 """
 
@@ -77,7 +77,8 @@ class CSRFMiddleware:
 
         has_bearer = b"authorization" in headers and headers[b"authorization"].lower().startswith(b"bearer ")
         has_api_key = b"x-api-key" in headers
-        skip_validation = has_bearer or has_api_key
+        has_service_token = b"x-service-token" in headers
+        skip_validation = has_bearer or has_api_key or has_service_token
 
         is_login = _matches_path(path, self.config.login_paths)
         is_logout = _matches_path(path, self.config.logout_paths)

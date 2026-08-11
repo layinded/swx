@@ -1,7 +1,7 @@
 # CSRF Protection
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-08-03
+**Version:** 2.20.0  
+**Last Updated:** 2026-08-11
 
 ---
 
@@ -23,7 +23,7 @@ Key features:
 
 - **Double Submit Cookie** — validates `csrf_token` cookie against `X-CSRF-Token` header
 - **Cookie lifecycle management** — auto-sets on login/refresh, auto-deletes on logout
-- **Bearer/API-key bypass** — skips validation when `Authorization: Bearer` or `X-Api-Key` is present
+- **Bearer/API-key/Service-token bypass** — skips validation when `Authorization: Bearer`, `X-Api-Key`, or `X-Service-Token` is present
 - **Lazy cookie set** — sets CSRF cookie if auth cookies exist but CSRF cookie is missing
 - **Path exemptions** — health checks, OpenAPI docs, and other utility paths are exempt
 - **Pure ASGI** — no `BaseHTTPMiddleware`, preserves SSE streaming
@@ -35,7 +35,7 @@ Key features:
 ```
 Request → CSRFMiddleware
   │
-  ├─ Bearer or API-key auth? → Skip validation, set cookie if needed
+  ├─ Bearer, API-key, or Service-token auth? → Skip validation, set cookie if needed
   │
   ├─ GET/HEAD/OPTIONS? → Skip validation, set cookie if needed
   │
@@ -51,6 +51,27 @@ Request → CSRFMiddleware
   │   └─ Mismatch? → 403
   │
   └─ Otherwise → Pass through
+```
+
+### Service Token Bypass (v2.20.0)
+
+Requests that include the `X-Service-Token` header automatically bypass CSRF validation. This eliminates the need for per-app `exempt_prefixes` entries for internal service routes (e.g., `/api/v1/internal`, `/api/v1/webhooks`). The service token is validated separately by `service_token_guard.py`.
+
+**Before (manual exemptions required):**
+```python
+CSRFConfig(
+    exempt_prefixes=[
+        "/api/v1/webhooks",
+        "/api/v1/internal",
+        "/api/v1/detection/detect/internal",
+    ]
+)
+```
+
+**After (automatic bypass):**
+```python
+# No exempt_prefixes needed for internal routes
+# X-Service-Token presence is sufficient
 ```
 
 ---

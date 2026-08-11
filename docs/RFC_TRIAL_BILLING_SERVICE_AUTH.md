@@ -66,118 +66,75 @@ exempt_prefixes=[
 
 The framework's `service_token_guard.py` reads `settings.SWX_SERVICE_TOKEN`. Apps that create their own service token guards read `settings.SERVICE_TOKEN` and `settings.GATEWAY_SERVICE_TOKEN` — different names, same purpose. The app-level guard falls back to `os.getenv()` which doesn't work because pydantic-settings loads `.env` into the settings object, not into `os.environ`.
 
-## Proposed Changes
+## Implementation
 
-### A. Framework: Auto-create TEAM billing account with trial during registration
+### A. Auto-create TEAM billing account with trial during registration
 
 **File:** `swx_core/core/default_hooks.py`
 
-`create_personal_team` should also create a TEAM billing account with a subscription that includes trial metadata, mirroring what `create_billing_account` does for the USER account.
+`create_personal_team` now creates a TEAM billing account with a trial subscription when `BILLING_ENABLED` and `TRIAL_DAYS > 0`:
 
 ```python
-async def create_personal_team(user: User, session: AsyncSession, _context: dict) -> User:
-    # ... existing team creation code ...
-
-    # Create TEAM billing account with trial subscription
+if settings.BILLING_ENABLED and settings.TRIAL_DAYS > 0:
     subscription_service = SubscriptionService(session)
     team_account = await subscription_service.get_or_create_account(
         owner_id=team.id,
         account_type=BillingAccountType.TEAM,
     )
-    try:
-        subscription = await subscription_service.create_subscription(
-            account_id=team_account.id,
-            plan_key=settings.DEFAULT_PLAN_KEY,
-        )
-        if settings.TRIAL_DAYS > 0:
-            trial_ends_at = utc_now() + timedelta(days=settings.TRIAL_DAYS)
-            subscription.subscription_metadata = {
-                **(subscription.subscription_metadata or {}),
-                "trial_ends_at": trial_ends_at.isoformat(),
-            }
-            session.add(subscription)
-            await session.flush()
-    except Exception as e:
-        logger.warning(f"Could not create team subscription: {e}")
-
-    return user
+    await subscription_service.create_trial_subscription(
+        account_id=team_account.id,
+        plan_key=settings.DEFAULT_PLAN_KEY,
+        trial_days=settings.TRIAL_DAYS,
+    )
 ```
 
-**New settings:**
+### B. Make trial a first-class subscription concept
+
+**`swx_core/models/billing.py`** — Added `trial_ends_at` column to `Subscription`:
 
 ```python
-TRIAL_DAYS: int = Field(default=30, description="Trial duration in days for new accounts")
-TRIAL_PLAN_KEY: str = Field(default="enterprise", description="Plan key applied during trial")
+trial_ends_at: Optional[datetime] = Field(
+    default=None,
+    sa_column=Column(DateTime(timezone=True), nullable=True),
+)
 ```
 
-### B. Framework: Make trial a first-class subscription concept
-
-**File:** `swx_core/models/billing.py`
-
-Add `trial_ends_at` as a proper column on `Subscription` instead of relying on JSON metadata:
-
-```python
-class Subscription(Base, table=True):
-    # ... existing fields ...
-    trial_ends_at: datetime | None = Field(default=None, nullable=True)
-```
-
-**File:** `swx_core/services/billing/subscription_service.py`
-
-Add a `create_trial_subscription` method:
+**`swx_core/services/billing/subscription_service.py`** — Added `create_trial_subscription()`:
 
 ```python
 async def create_trial_subscription(
-    self,
-    account_id: UUID,
-    plan_key: str,
-    trial_days: int = 30,
+    self, account_id: UUID, plan_key: str, trial_days: int = 30,
 ) -> Subscription:
     subscription = await self.create_subscription(account_id=account_id, plan_key=plan_key)
     subscription.trial_ends_at = utc_now() + timedelta(days=trial_days)
+    subscription.status = SubscriptionStatus.TRIALING
+    await self._commit_or_rollback(subscription, ...)
     return subscription
 ```
 
-**File:** `swx_core/services/billing/quota_service.py`
+Uses `_commit_or_rollback` (not bare `flush`) for consistency with all other mutation methods and proper error handling.
 
-Add trial detection to quota calculation:
+**`swx_core/services/billing/entitlement_resolver.py`** — Trial-aware entitlement resolution:
 
-```python
-async def _get_remaining_quota(self, owner_id, account_type, feature_key) -> int:
-    # ... existing limit lookup ...
-    if limit == -1:
-        return 999_999_999
+- `_get_account_and_subscription()` now matches subscriptions with `status in ACTIVE_STATUSES` OR an unexpired `trial_ends_at`, so trial subscriptions are found even before status is formally `TRIALING`.
+- `_resolve_effective_plan_id()` resolves the plan ID that governs entitlements. During an active trial, it returns the `TRIAL_PLAN_KEY` plan's ID instead of the subscription's base plan ID. This is the key fix — without it, a user on a "free" plan in trial would get free-tier entitlements instead of enterprise entitlements.
+- `get_entitlement()` and `get_remaining_quota()` now use `_resolve_effective_plan_id()` instead of `subscription.plan_id` directly.
+- `_ACTIVE_STATUSES` expanded to include `SubscriptionStatus.TRIALING`.
 
-    # If trial is active, use trial plan's entitlements
-    if subscription and subscription.trial_ends_at:
-        if subscription.trial_ends_at > utc_now():
-            trial_limit = await self._get_trial_entitlement(feature_key)
-            if trial_limit == -1:
-                return 999_999_999
-            limit = max(limit, trial_limit)
-
-    # ... existing usage calculation ...
-```
-
-### C. Framework: Auto-exempt service token routes from CSRF
+### C. Auto-exempt service token routes from CSRF
 
 **File:** `swx_core/middleware/csrf_middleware.py`
 
-Add `X-Service-Token` to the CSRF bypass check:
-
 ```python
-has_api_key = b"x-api-key" in headers
 has_service_token = b"x-service-token" in headers
 skip_validation = has_bearer or has_api_key or has_service_token
 ```
 
 This eliminates the need for every app to manually add internal route prefixes to CSRF exempt lists.
 
-### D. Framework: Unify service token settings
+### D. Unify service token settings
 
 **File:** `swx_core/config/settings.py`
-
-Add `SERVICE_TOKEN` and `GATEWAY_SERVICE_TOKEN` as aliases that map to `SWX_SERVICE_TOKEN`:
 
 ```python
 SWX_SERVICE_TOKEN: str | None = Field(
@@ -187,46 +144,41 @@ SWX_SERVICE_TOKEN: str | None = Field(
 )
 ```
 
-This way apps that set `SERVICE_TOKEN` or `GATEWAY_SERVICE_TOKEN` in their `.env` files automatically work with the framework's service token guard.
+Also added:
 
-### E. Framework: Built-in plan tier resolution with trial support
+```python
+TRIAL_DAYS: int = Field(default=30, description="Trial duration in days for new accounts")
+TRIAL_PLAN_KEY: str = Field(default="enterprise", description="Plan key whose entitlements apply during trial")
+```
+
+### E. Built-in plan tier resolution with trial support
 
 **File:** `swx_core/services/billing/plan_resolver.py` (new)
 
 ```python
 class PlanResolver:
     async def resolve_plan_tier(
-        self,
-        session: AsyncSession,
-        team_id: UUID | None = None,
-        user_id: UUID | None = None,
+        self, team_id: UUID | None = None, user_id: UUID | None = None,
     ) -> str:
-        subscription = await self._find_subscription(session, team_id, user_id)
-        if not subscription:
-            return "free"
-
-        plan = await session.get(Plan, subscription.plan_id)
-        if not plan:
-            return "free"
-
-        if subscription.trial_ends_at and subscription.trial_ends_at > utc_now():
-            return settings.TRIAL_PLAN_KEY
-
-        plan_key = str(plan.key or plan.name or "").lower()
-        if "enterprise" in plan_key:
-            return "enterprise"
-        if "pro" in plan_key:
-            return "pro"
-        return "free"
+        # 1. Check TEAM subscription first
+        # 2. Fall back to USER subscription
+        # 3. If trial is active → return TRIAL_PLAN_KEY
+        # 4. Otherwise classify the plan key as enterprise/pro/free
 ```
 
-This replaces the app-level `_resolve_plan_tier` that uses `cast(Any, ...)` workarounds and silently catches exceptions.
+Resolution order: TEAM → USER → trial check → plan key classification. Returns one of `"enterprise"`, `"pro"`, or `"free"`.
+
+### F. Data migration for existing JSON metadata
+
+**File:** `migrations/versions/g9c3d6f0e2a5_add_trial_ends_at_to_subscription.py`
+
+- Adds `trial_ends_at` column (nullable, backwards compatible)
+- Backfills from existing `subscription_metadata->>'trial_ends_at'` JSON data
+- Downgrade preserves data back into JSON metadata before dropping the column
 
 ## Migration Path
 
-1. **v2.20.0**: Add `trial_ends_at` column to `Subscription` model (nullable, backwards compatible). Add `TRIAL_DAYS` and `TRIAL_PLAN_KEY` settings. Add `X-Service-Token` CSRF bypass. Add `SERVICE_TOKEN`/`GATEWAY_SERVICE_TOKEN` alias choices.
-2. **v2.21.0**: Update `create_personal_team` hook to create TEAM subscription with trial. Add `PlanResolver` service. Add `create_trial_subscription` method.
-3. **v2.22.0**: Update `quota_service` to check trial entitlements. Deprecate JSON metadata-based trial detection. Apps can remove custom `trial_service.py` and `BillingSetupService`.
+1. **v2.20.0** (this release): All changes above deployed together. The `trial_ends_at` column is nullable so existing rows are unaffected. The data migration backfills from JSON metadata. Apps can begin removing custom `trial_service.py` and `BillingSetupService`.
 
 ## Impact
 
@@ -234,3 +186,8 @@ This replaces the app-level `_resolve_plan_tier` that uses `cast(Any, ...)` work
 - **New users:** Automatically get TEAM billing account + trial subscription on registration, no manual database inserts needed
 - **Gateway:** Works out of the box for trial users — no quota errors, correct `plan_tier: "enterprise"` resolution
 - **Service auth:** `X-Service-Token` bypasses CSRF framework-wide, no per-route exemptions needed
+- **Entitlements:** Trial users receive enterprise-tier entitlements during trial, not free-tier ones — this was the critical bug that the original RFC identified but the initial implementation missed in `get_entitlement()` and `get_remaining_quota()`
+
+## Stripe Billing Portal
+
+The Stripe billing portal is already handled by `BillingProvider.create_portal_session()` / `StripeProvider.create_portal_session()`. Portal URLs are created on demand — there is no persistent `portal_url` in the database. Trial subscriptions created by `create_trial_subscription` are framework-managed (no `stripe_subscription_id`). The portal only becomes relevant after a user converts from trial to paid via Stripe checkout, and that flow is unchanged.

@@ -1,7 +1,7 @@
 # Registration Hooks & Extension Points
 
-**Version:** 2.19.9
-**Last Updated:** 2026-08-10
+**Version:** 2.20.0
+**Last Updated:** 2026-08-11
 
 ---
 
@@ -239,19 +239,29 @@ BILLING_ENABLED=true
 
 When `AUTO_CREATE_PERSONAL_TEAM=True` (default), each new user gets a personal team with `tenant_id` set automatically. This ensures users always have a valid `tenant_id` for multi-tenant operations.
 
+As of v2.20.0, this hook also creates a TEAM billing account with a trial subscription when `BILLING_ENABLED=True` and `TRIAL_DAYS > 0`. This fixes the issue where quota enforcement and plan tier resolution checked at the TEAM level but found no subscription, causing `QuotaExceededError` for new trial users.
+
 **Configuration (`.env`):**
 ```bash
 AUTO_CREATE_PERSONAL_TEAM=true
+BILLING_ENABLED=true
+TRIAL_DAYS=30
+TRIAL_PLAN_KEY=enterprise
+DEFAULT_PLAN_KEY=free
 ```
 
 **What happens on registration:**
 1. Creates a `Team` with `name="{user}'s Team"` and `owner_id=user.id`
 2. Adds user as team member with `owner` role
 3. Sets `user.tenant_id = team.id`
+4. Creates a TEAM `BillingAccount` via `SubscriptionService.get_or_create_account()`
+5. Creates a trial subscription via `SubscriptionService.create_trial_subscription()` with status `TRIALING` and `trial_ends_at = now + TRIAL_DAYS`
 
-**Disable personal team creation:**
+**Disable trial (still creates team, no billing):**
 ```bash
-AUTO_CREATE_PERSONAL_TEAM=false
+BILLING_ENABLED=false
+# or
+TRIAL_DAYS=0
 ```
 
 ### Disabling Default Hooks
