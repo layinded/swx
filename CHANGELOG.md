@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.11] - 2026-08-11
+
+### Fixed — Template migration also had swx_user (singular) FK reference
+
+The project scaffold template `e8c1f3d5a9b2_add_onboarding_step_table.py` used
+`ForeignKeyConstraint(["user_id"], ["swx_user.id"])` (singular) instead of
+`["swx_users.id"]` (plural). This caused `NoReferencedTableError` for projects
+generated via `swx new` that then ran `metadata.create_all()`.
+
+Also confirmed via full FK audit: all 62 ForeignKey references in swx_core/models/
+are correct (use `swx_users` plural). No other singular/plural mismatches exist.
+
+| File | Change |
+|---|---|
+| `swx_core/template/project/migrations/versions/e8c1f3d5a9b2_add_onboarding_step_table.py` | `["swx_user.id"]` → `["swx_users.id"]` |
+
+---
+
 ## [2.19.10] - 2026-08-11
 
 ### Fixed — FK table name mismatch: `swx_onboarding_step.user_id` referenced `swx_user.id` (singular) instead of `swx_users.id` (plural)

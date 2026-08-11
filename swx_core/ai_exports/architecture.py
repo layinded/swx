@@ -38,7 +38,7 @@ except ImportError:
 try:
     from swx_core.version import __version__
 except ImportError:
-    __version__ = "2.19.10"
+    __version__ = "2.19.11"
 
 
 class ArchitectureIntrospector:

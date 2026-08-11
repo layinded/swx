@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.ForeignKeyConstraint(["user_id"], ["swx_user.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["swx_users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_swx_onboarding_step_user_key", "swx_onboarding_step", ["user_id", "step_key"], unique=True)
