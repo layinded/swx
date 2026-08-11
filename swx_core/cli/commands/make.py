@@ -7,6 +7,8 @@ import time
 import click
 from click.core import Context
 
+from swx_core.config.settings import settings
+
 # Import the Base for models registration.
 from swx_core.utils.helper import (
     resolve_base_path,
@@ -640,9 +642,9 @@ def migration(model_name, existing, new):
     message = f"Migration for model {model_name}"
 
     if existing:
-        command = ["alembic", "revision", "--autogenerate", "-m", message]
+        command = ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, "revision", "--autogenerate", "-m", message]
     elif new:
-        command = ["alembic", "revision", "-m", message]
+        command = ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, "revision", "-m", message]
 
     click.echo(f"Running command: {' '.join(command)}")
     result = subprocess.run(command, capture_output=True, text=True)
@@ -787,10 +789,11 @@ def resource(resource_name, module, columns, migration, existing, base):
         )
         time.sleep(2)  # Ensure DB models are detected before migration
         migration_message = f"Generated CRUD for {resource_name}"
+        config_flag = f'-c "{settings.ALEMBIC_CONFIG_PATH}"'
         command = (
-            f'alembic revision --autogenerate -m "{migration_message}"'
+            f'alembic {config_flag} revision --autogenerate -m "{migration_message}"'
             if os.name == "nt"
-            else f"alembic revision --autogenerate -m '{migration_message}'"
+            else f"alembic {config_flag} revision --autogenerate -m '{migration_message}'"
         )
         click.echo(f"DEBUG: Running migration command: {command}")
         os.system(command)

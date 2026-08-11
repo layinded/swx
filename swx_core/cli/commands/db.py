@@ -2,6 +2,13 @@ import click
 import subprocess
 import shutil
 
+from swx_core.config.settings import settings
+
+
+def _alembic_cmd(*args: str) -> list[str]:
+    """Build an alembic command with the configured config path."""
+    return ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, *args]
+
 
 @click.group()
 def db():
@@ -50,7 +57,7 @@ def migrate():
         return
 
     try:
-        subprocess.run(["alembic", "upgrade", "head"], check=True)
+        subprocess.run(_alembic_cmd("upgrade", "head"), check=True)
         click.secho("✅ Migrations applied successfully!", fg="green")
     except subprocess.CalledProcessError:
         click.secho("❌ Error: Migration process failed!", fg="red")
@@ -68,7 +75,7 @@ def downgrade():
         return
 
     try:
-        subprocess.run(["alembic", "downgrade", "-1"], check=True)
+        subprocess.run(_alembic_cmd("downgrade", "-1"), check=True)
         click.secho("✅ Last migration rolled back successfully!", fg="yellow")
     except subprocess.CalledProcessError:
         click.secho("❌ Error: Downgrade process failed!", fg="red")
@@ -89,7 +96,7 @@ def revision(message):
         return
 
     try:
-        subprocess.run(["alembic", "revision", "--autogenerate", "-m", message], check=True)
+        subprocess.run(_alembic_cmd("revision", "--autogenerate", "-m", message), check=True)
         click.secho(f"✅ Migration revision created: {message}", fg="green")
     except subprocess.CalledProcessError:
         click.secho("❌ Error: Migration revision failed!", fg="red")

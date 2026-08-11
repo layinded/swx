@@ -25,6 +25,8 @@ from typing import Optional, List, Dict, Any
 
 import click
 
+from swx_core.config.settings import settings
+
 # ===================== CONSTANTS =====================
 
 MAINTENANCE_FILE = "storage/framework/maintenance"
@@ -226,7 +228,7 @@ def _setup_database():
             return
         
         result = subprocess.run(
-            ["alembic", "upgrade", "head"],
+            ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, "upgrade", "head"],
             capture_output=True,
             text=True
         )
@@ -963,7 +965,7 @@ def upgrade(version: Optional[str], no_migrate: bool, no_deps: bool):
         
         if shutil.which("alembic"):
             result = subprocess.run(
-                ["alembic", "upgrade", "head"],
+                ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, "upgrade", "head"],
                 capture_output=True,
                 text=True
             )

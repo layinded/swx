@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.13] - 2026-08-11
+
+### Fixed — Alembic config path not passed to subprocess calls
+
+All Alembic subprocess invocations (`alembic upgrade head`, `alembic downgrade`, `alembic revision`) across the codebase called the `alembic` CLI without specifying a config path. In container environments where `alembic.ini` is not in the CWD (e.g. `/app/migrations/alembic.ini`), this produces `No 'script_location' key found in configuration`, causing:
+
+- `db_setup.run_alembic_migrations()` fails silently — migrations never run
+- Superuser seeding is skipped (it runs after migrations)
+- `swx db migrate`, `swx db downgrade`, `swx db revision` all fail in containers
+- `swx setup` and `swx upgrade` silently skip migrations
+
+Added `ALEMBIC_CONFIG_PATH` setting (default: `"alembic.ini"`) and passed `-c <path>` to every `alembic` subprocess call.
+
+| File | Change |
+|---|---|
+| `swx_core/config/settings.py` | Added `ALEMBIC_CONFIG_PATH` setting (default `"alembic.ini"`) |
+| `swx_core/database/db_setup.py` | Added `_alembic_cmd()` helper; `run_alembic_migrations()` now passes `-c` |
+| `swx_core/cli/commands/db.py` | Added `_alembic_cmd()` helper; all 3 commands pass `-c` |
+| `swx_core/cli/commands/framework.py` | `_setup_database()` and `upgrade()` now pass `-c` |
+| `swx_core/cli/commands/make.py` | `migration()` and scaffold migration now pass `-c` |
+
+**Container deployment**: Set `ALEMBIC_CONFIG_PATH=/app/alembic.ini` in your `.env` or environment.
+
+---
+
 ## [2.19.12] - 2026-08-11
 
 ### Fixed — Circular FK (swx_users ↔ swx_team) and broken JSONB server_default

@@ -71,24 +71,21 @@ async def check_db_ready() -> None:
         raise e
 
 
+def _alembic_cmd(*args: str) -> list[str]:
+    """Build an alembic command with the configured config path."""
+    return ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, *args]
+
+
 def run_alembic_migrations() -> None:
     """
     Runs Alembic migrations to set up the database schema.
     """
     logger.info("Running Alembic migrations...")
     try:
-        # Alembic is sync, and this runs once during startup.
-        # We run it in a way that it doesn't block the loop if called correctly,
-        # but setup_database will be awaited.
-        subprocess.run(["alembic", "upgrade", "head"], check=True)
+        subprocess.run(_alembic_cmd("upgrade", "head"), check=True)
         logger.info("Alembic migrations applied successfully.")
     except subprocess.CalledProcessError as e:
         logger.error(f"Alembic migration failed: {e}")
-        # Use sync wrapper for emit if possible, but alert_engine.emit is async.
-        # Since this is a sync function, we can't await. 
-        # But we can use loop.run_until_complete if we really need to.
-        # Or we can just log it here and let the lifespan handle it if it fails there.
-        # However, run_alembic_migrations is called from setup_database which IS async.
         raise
 
 

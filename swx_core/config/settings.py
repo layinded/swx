@@ -221,6 +221,16 @@ class Settings(BaseSettings):
         default=5, description="Max overflow connections beyond sync pool_size"
     )
 
+    # Alembic Configuration
+    ALEMBIC_CONFIG_PATH: str = Field(
+        default="alembic.ini",
+        description=(
+            "Path to alembic.ini. Defaults to 'alembic.ini' (CWD-relative). "
+            "Set to an absolute path in containers where CWD differs from the "
+            "migrations directory, e.g. '/app/alembic.ini'."
+        ),
+    )
+
     @property
     def ASYNC_SQLALCHEMY_DATABASE_URI(self) -> str:
         if self.ASYNC_DATABASE_URL:
