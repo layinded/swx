@@ -123,6 +123,7 @@ async def create_personal_team(user: User, session: AsyncSession, _context: dict
         )
 
     user.tenant_id = team.id
+    session.add(user)
     logger.info(f"Created personal team {team.id} for user {user_id}")
 
     return user

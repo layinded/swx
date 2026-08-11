@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.14] - 2026-08-11
+
+### Fixed — tenant_id not persisted after create_personal_team hook
+
+`create_personal_team` in `default_hooks.py` set `user.tenant_id = team.id` on the
+Python object but didn't call `session.add(user)`. SQLAlchemy doesn't track mutations
+on objects that have been expunged from the session or aren't marked dirty, so
+`tenant_id` stayed NULL in the database even though the team was created successfully.
+
+Added `session.add(user)` after the mutation so SQLAlchemy includes the UPDATE in
+the current transaction's flush.
+
+| File | Change |
+|---|---|
+| `swx_core/core/default_hooks.py` | Added `session.add(user)` after `user.tenant_id = team.id` |
+
+---
+
 ## [2.19.13] - 2026-08-11
 
 ### Fixed — Alembic config path not passed to subprocess calls
