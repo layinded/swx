@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from pydantic import EmailStr
-from sqlalchemy import Column, DateTime, ForeignKey, String, text
+from sqlalchemy import Column, DateTime, String, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
@@ -43,7 +43,6 @@ class UserBase(Base):
         default=None,
         sa_column=Column(
             PG_UUID(as_uuid=True),
-            ForeignKey("swx_team.id", ondelete="SET NULL"),
             index=True,
             nullable=True,
         ),

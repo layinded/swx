@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Integer, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.schema import ForeignKey
 from sqlmodel import Field, SQLModel
@@ -32,11 +32,11 @@ class ApiKeyBase(Base):
     key_prefix: str = Field(max_length=8, index=True)
     hashed_key: str = Field(max_length=64, unique=True, index=True)
     user_id: uuid.UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_users.id"), nullable=False, index=True))
-    is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default="true"))
+    is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default=text("true")))
     expires_at: Optional[datetime] = Field(default=None)
     last_used_at: Optional[datetime] = Field(default=None)
     rate_limit_override: Optional[int] = Field(default=None, sa_column=Column(Integer, nullable=True))
-    metadata_: dict[str, object] = Field(default_factory=dict, sa_column=Column(JSONB, server_default="'{}'::jsonb", nullable=False))
+    metadata_: dict[str, object] = Field(default_factory=dict, sa_column=Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False))
 
 
 class ApiKey(ApiKeyBase, table=True):
@@ -51,7 +51,7 @@ class ApiKeyScopeBase(Base):
     api_key_id: uuid.UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_api_key.id"), nullable=False, index=True))
     resource: str = Field(max_length=50, index=True)
     action: str = Field(max_length=50, index=True)
-    is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default="true"))
+    is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default=text("true")))
 
 
 class ApiKeyScope(ApiKeyScopeBase, table=True):

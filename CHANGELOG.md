@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.12] - 2026-08-11
+
+### Fixed — Circular FK (swx_users ↔ swx_team) and broken JSONB server_default
+
+**Circular FK:** `swx_users.tenant_id` referenced `swx_team.id` via ForeignKey, while `swx_team.owner_id` referenced `swx_users.id`. This circular dependency prevented `metadata.create_all()` from creating either table — both FKs are unsatisfiable during DDL because neither table exists yet.
+
+The fix removes the ForeignKey from `UserBase.tenant_id` while keeping the column as an indexed UUID. The relationship is already enforced at the application level via `create_personal_team`, and `swx_team.owner_id → swx_users.id` remains intact as the authoritative FK direction.
+
+**Broken JSONB default:** `ApiKeyScopeBase.metadata_` and `ApiKeyScopeBase.is_active` had bare-string `server_default` values (`"'{}'::jsonb"` and `"true"`). SQLAlchemy treats plain-string server_defaults as literals to be SQL-quoted, producing triple-quoted output (`'''{}''::jsonb'`) that PostgreSQL rejects for JSONB columns. Fixed by wrapping with `text()`: `server_default=text("'{}'::jsonb")` and `server_default=text("true")`, which tells SQLAlchemy these are SQL expressions, not literal strings.
+
+| File | Change |
+|---|---|
+| `swx_core/models/user.py` | Removed `ForeignKey("swx_team.id", ondelete="SET NULL")` from `tenant_id`; removed unused `ForeignKey` import |
+| `swx_core/models/api_key_scope.py` | Changed `server_default="'{}'::jsonb"` → `text("'{}'::jsonb")` and `server_default="true"` → `text("true")`; added `text` import |
+
+---
+
 ## [2.19.11] - 2026-08-11
 
 ### Fixed — Template migration also had swx_user (singular) FK reference
