@@ -29,7 +29,7 @@ def upgrade() -> None:
     op.create_table(
         "swx_onboarding_step",
         sa.Column("id", PG_UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("user_id", PG_UUID(as_uuid=True), sa.ForeignKey("swx_user.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column("user_id", PG_UUID(as_uuid=True), sa.ForeignKey("swx_users.id", ondelete="CASCADE"), nullable=False, index=True),
         sa.Column("step_key", sa.String(length=100), nullable=False),
         sa.Column("status", sa.String(length=20), nullable=False, server_default="pending"),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),

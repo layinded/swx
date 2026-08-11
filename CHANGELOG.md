@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.10] - 2026-08-11
+
+### Fixed — FK table name mismatch: `swx_onboarding_step.user_id` referenced `swx_user.id` (singular) instead of `swx_users.id` (plural)
+
+`OnboardingStep.user_id` declared `ForeignKey('swx_user.id')` but the User model's
+`__tablename__` is `swx_users` (plural). This caused SQLAlchemy's
+`metadata.create_all()` to raise `NoReferencedTableError`, blocking 32 of 66
+SWX tables from being created (including `swx_team`, `swx_organization`,
+`swx_conversation`, `swx_llm_provider_config`, `swx_notification`, and 28 others).
+
+The same incorrect reference existed in the Alembic migration
+`v2_19_0_add_onboarding_step.py`.
+
+| File | Change |
+|---|---|
+| `swx_core/models/onboarding.py` | `ForeignKey("swx_user.id")` → `ForeignKey("swx_users.id")` |
+| `swx_core/database/migrations/v2_19_0_add_onboarding_step.py` | `sa.ForeignKey("swx_user.id")` → `sa.ForeignKey("swx_users.id")` |
+
+---
+
 ## [2.19.9] - 2026-08-10
 
 ### Fixed — Post-register hooks used separate sessions, causing silent failures (create_personal_team never ran)

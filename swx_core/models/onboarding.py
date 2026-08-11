@@ -40,7 +40,7 @@ class OnboardingStep(OnboardingStepBase, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: uuid.UUID = Field(
-        sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_user.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_users.id", ondelete="CASCADE"), nullable=False, index=True),
     )
     created_at: datetime = Field(
         default_factory=utc_now,
