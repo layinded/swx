@@ -246,6 +246,7 @@ async def update_setting_service(
         new_value=config.value,
         updated_by=updated_by,
     )
+    session.add(config)
     session.add(history)
     
     await session.commit()

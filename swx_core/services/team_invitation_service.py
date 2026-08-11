@@ -123,6 +123,7 @@ class TeamInvitationService:
         
         if invitation.expires_at < utc_now():
             invitation.status = InvitationStatus.EXPIRED
+            self.session.add(invitation)
             await self.session.commit()
             raise HTTPException(400, "Invitation has expired")
         
@@ -137,6 +138,7 @@ class TeamInvitationService:
         if existing_member:
             invitation.status = InvitationStatus.ACCEPTED
             invitation.accepted_at = utc_now()
+            self.session.add(invitation)
             await self.session.commit()
             return await self._get_team(invitation.team_id)
         
@@ -149,6 +151,7 @@ class TeamInvitationService:
         
         invitation.status = InvitationStatus.ACCEPTED
         invitation.accepted_at = utc_now()
+        self.session.add(invitation)
         await self.session.commit()
         
         logger.info(f"User {user_id} accepted invitation to team {invitation.team_id}")
@@ -171,6 +174,7 @@ class TeamInvitationService:
         
         invitation.status = InvitationStatus.REJECTED
         invitation.rejected_at = utc_now()
+        self.session.add(invitation)
         await self.session.commit()
         
         logger.info(f"Invitation {invitation.id} rejected")
@@ -188,6 +192,7 @@ class TeamInvitationService:
         await self._validate_revoke_permission(revoker_id, invitation)
         
         invitation.status = InvitationStatus.REVOKED
+        self.session.add(invitation)
         await self.session.commit()
         
         logger.info(f"Invitation {invitation_id} revoked by {revoker_id}")

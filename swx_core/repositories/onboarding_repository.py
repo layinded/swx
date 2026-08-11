@@ -63,6 +63,7 @@ async def complete_step(session: AsyncSession, user_id: UUID, step_key: str) -> 
         return None
     step.status = OnboardingStepStatus.COMPLETED.value
     step.completed_at = utc_now()
+    session.add(step)
     await session.commit()
     await session.refresh(step)
     return step
@@ -78,6 +79,7 @@ async def skip_step(session: AsyncSession, user_id: UUID, step_key: str) -> Onbo
     if step is None:
         return None
     step.status = OnboardingStepStatus.SKIPPED.value
+    session.add(step)
     await session.commit()
     await session.refresh(step)
     return step

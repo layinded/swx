@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.19.15] - 2026-08-11
+
+### Fixed — Defensive session.add() for model mutations in hooks, invitations, settings, onboarding
+
+The `create_personal_team` hook set `user.tenant_id = team.id` without calling
+`session.add(user)`, so SQLAlchemy didn't track the change and `tenant_id` stayed
+NULL in the database. This was the root-cause bug reported.
+
+Audit of the same pattern across the codebase found three more files with the same
+risk — model objects mutated after a `session.commit()` or `session.flush()` without
+explicit `session.add()` to re-register them as dirty:
+
+| File | Mutation | Fix |
+|---|---|---|
+| `swx_core/core/default_hooks.py` | `user.tenant_id = team.id` | Added `session.add(user)` after line 125 |
+| `swx_core/services/team_invitation_service.py` | 5 status transitions | Added `self.session.add(invitation)` after each mutation |
+| `swx_core/services/settings_crud_service.py` | Config value/description/active updates | Added `session.add(config)` before `session.add(history)` |
+| `swx_core/repositories/onboarding_repository.py` | `complete_step` and `skip_step` | Added `session.add(step)` before `session.commit()` |
+
+---
+
 ## [2.19.14] - 2026-08-11
 
 ### Fixed — tenant_id not persisted after create_personal_team hook
