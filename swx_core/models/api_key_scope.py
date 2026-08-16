@@ -33,8 +33,14 @@ class ApiKeyBase(Base):
     hashed_key: str = Field(max_length=64, unique=True, index=True)
     user_id: uuid.UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_users.id"), nullable=False, index=True))
     is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default=text("true")))
-    expires_at: Optional[datetime] = Field(default=None)
-    last_used_at: Optional[datetime] = Field(default=None)
+    expires_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    last_used_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     rate_limit_override: Optional[int] = Field(default=None, sa_column=Column(Integer, nullable=True))
     metadata_: dict[str, object] = Field(default_factory=dict, sa_column=Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False))
 

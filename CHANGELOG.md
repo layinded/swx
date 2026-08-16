@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.20.1] - 2026-08-17
+
+### Fixed — API key timezone bug: offset-naive vs offset-aware datetime (SWX-005)
+
+`utc_now()` returns `datetime.now(timezone.utc)` (timezone-aware), but
+`swx_api_key.expires_at`, `swx_api_key.last_used_at`, and
+`swx_onboarding_step.completed_at` were defined as `TIMESTAMP WITHOUT TIME ZONE`.
+asyncpg refuses to insert timezone-aware values into timezone-naive columns,
+causing a 500 error on API key creation.
+
+**Root cause:** `Optional[datetime] = Field(default=None)` without an explicit
+`sa_column=Column(DateTime(timezone=True))` defaults to `TIMESTAMP WITHOUT TIME ZONE`
+in PostgreSQL, while `utc_now()` produces timezone-aware datetimes.
+
+**Fix:** Added explicit `sa_column=Column(DateTime(timezone=True), nullable=True)` to
+all three columns so they are `TIMESTAMPTZ`.
+
+| File | Change |
+|---|---|
+| `swx_core/models/api_key_scope.py` | `expires_at` and `last_used_at` → `DateTime(timezone=True)` |
+| `swx_core/models/onboarding.py` | `completed_at` → `DateTime(timezone=True)` |
+| `migrations/versions/h0a1b2c3d4e5_...py` | Alembic migration: ALTER COLUMN to TIMESTAMPTZ with `USING ... AT TIME ZONE 'UTC'` |
+
+---
+
 ## [2.20.0] - 2026-08-11
 
 ### Added — Trial billing, service auth CSRF bypass, and plan resolution

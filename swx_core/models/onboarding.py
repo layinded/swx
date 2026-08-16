@@ -28,7 +28,10 @@ class OnboardingStepStatus(str, Enum):
 class OnboardingStepBase(Base):
     step_key: str = Field(max_length=100, index=True)
     status: str = Field(default=OnboardingStepStatus.PENDING.value, max_length=20)
-    completed_at: Optional[datetime] = Field(default=None)
+    completed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
 
 
 class OnboardingStep(OnboardingStepBase, table=True):
