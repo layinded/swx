@@ -104,8 +104,9 @@ async def validate_api_key(session: AsyncSession, raw_key: str) -> Optional[ApiK
         return None
     if key.expires_at and key.expires_at < utc_now():
         return None
+    result = ApiKeyPublic.model_validate(key)
     await repo.update_last_used(session, key.id)
-    return ApiKeyPublic.model_validate(key)
+    return result
 
 async def list_user_api_keys(session: AsyncSession, user_id: UUID, skip: int = 0, limit: int = 100) -> list[ApiKeyPublic]:
     keys = await repo.list_api_keys(session, user_id=user_id, is_active=None, skip=skip, limit=limit)

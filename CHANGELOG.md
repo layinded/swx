@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.20.2] - 2026-08-17
+
+### Fixed — API key validation crashes with MissingGreenlet (SWX-007)
+
+`validate_api_key()` called `update_last_used()` (which does `session.commit()`,
+expiring all ORM objects) before `ApiKeyPublic.model_validate(key)`. When
+Pydantic tried to access attributes on the expired `key` object, the lazy
+load triggered `MissingGreenlet` because async attribute refresh requires an
+active greenlet context.
+
+Fix: build the `ApiKeyPublic` result before `update_last_used()` so all
+attributes are accessed while the ORM object is still bound to the session.
+
+| File | Change |
+|---|---|
+| `swx_core/services/auth/api_key_service.py` | Moved `model_validate` before `update_last_used` |
+
+---
+
 ## [2.20.1] - 2026-08-17
 
 ### Fixed — API key timezone bug: offset-naive vs offset-aware datetime (SWX-005)
