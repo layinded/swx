@@ -195,6 +195,23 @@ class Settings(BaseSettings):
         default=None, description="Override async database URL (takes precedence)"
     )
 
+    # Test-Friendly Database Configuration
+    TESTING: bool = Field(
+        default=False,
+        description="Enable test mode: lazy engine init, TEST_DATABASE_URL support, reset_engine()",
+    )
+    TEST_DATABASE_URL: str | None = Field(
+        default=None,
+        description="Override DATABASE_URL in test mode (takes precedence over DATABASE_URL)",
+    )
+    DB_POOL_CLASS: str = Field(
+        default="QueuePool",
+        description=(
+            "SQLAlchemy pool class name: QueuePool (default), NullPool (no pooling, ideal for tests), "
+            "SingletonThreadPool (SQLite). Set to NullPool for pytest-asyncio compatibility."
+        ),
+    )
+
     # Database Pool Configuration
     DB_POOL_SIZE: int = Field(
         default=20, description="Base connection pool size for async engine"

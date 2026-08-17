@@ -1,7 +1,7 @@
 # Async Model & Performance
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.21.0  
+**Last Updated:** 2026-08-17
 
 ---
 
@@ -326,14 +326,22 @@ return user
 
 **Tune connection pool:**
 ```python
-# In database setup
-engine = create_async_engine(
-    DATABASE_URL,
-    pool_size=20,  # Number of connections
-    max_overflow=10,  # Additional connections
-    pool_pre_ping=True,  # Verify connections
-)
+from swx_core.database.db import get_async_engine
+
+# Engine is lazily created on first access
+engine = get_async_engine()
+
+# For tests, use NullPool to avoid event loop binding issues:
+# Set DB_POOL_CLASS=NullPool in .env.test
+# Or: TESTING=true DB_POOL_CLASS=NullPool
 ```
+
+Pool settings are configured via environment variables:
+- `DB_POOL_SIZE` (default: 20) — Base connection pool size
+- `DB_MAX_OVERFLOW` (default: 10) — Max overflow connections
+- `DB_POOL_CLASS` (default: `QueuePool`) — `NullPool` for tests
+
+See [Testing Guide](../09-testing/TESTING_GUIDE.md) for test-friendly database configuration.
 
 ---
 

@@ -172,6 +172,15 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
 ```
 
+**Test Configuration (for pytest-asyncio):**
+```env
+TESTING=true
+DB_POOL_CLASS=NullPool
+TEST_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/swx_test
+```
+
+See [Testing Guide](../09-testing/TESTING_GUIDE.md) for the full test-friendly database configuration.
+
 ### Generate Secrets
 
 **Generate secure secrets:**

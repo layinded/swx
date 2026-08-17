@@ -2,6 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.21.0] - 2026-08-17
+
+### Added — Test-friendly database configuration (SWX-008)
+
+SWX's `async_engine` was created at module import time, binding it to the
+first event loop and making test isolation nearly impossible. This release
+introduces lazy engine initialization, configurable pool class, test database
+URL override, and a pytest fixture for transaction-rollback-per-test isolation.
+
+**New settings:**
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `TESTING` | `False` | Enable test mode (lazy init, TEST_DATABASE_URL) |
+| `TEST_DATABASE_URL` | `None` | Override DATABASE_URL in test mode |
+| `DB_POOL_CLASS` | `"QueuePool"` | SQLAlchemy pool class name (`NullPool` for tests) |
+
+**New public API in `swx_core.database.db`:**
+
+| Symbol | Purpose |
+|---|---|
+| `get_async_engine()` | Lazy-init async engine (creates on first call) |
+| `get_engine()` | Lazy-init sync engine (creates on first call) |
+| `reset_engine()` | Dispose engines and clear cached refs (test teardown) |
+| `async_engine` | Lazy proxy — backward-compatible drop-in for the old module-level engine |
+| `engine` | Lazy proxy — backward-compatible drop-in for the old sync engine |
+
+**New pytest fixtures in `swx_core.testing.fixtures`:**
+
+| Fixture | Scope | Purpose |
+|---|---|---|
+| `db_session` | per-test | Transaction-rollback async session for perfect test isolation |
+| `_reset_engine_fixture` | session (autouse) | Disposes engines after test session ends |
+
+**Usage in `conftest.py`:**
+
+```python
+pytest_plugins = ["swx_core.testing.fixtures"]
+```
+
+Or with env-based config:
+
+```python
+@pytest.fixture(autouse=True)
+def test_env(monkeypatch):
+    monkeypatch.setenv("TESTING", "true")
+    monkeypatch.setenv("DB_POOL_CLASS", "NullPool")
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql+asyncpg://.../myapp_test")
+```
+
+**Backward compatibility:** All existing imports (`from swx_core.database.db import async_engine`,
+`AsyncSessionLocal`, `engine`, etc.) continue to work unchanged. The lazy proxy
+delegates attribute access to the real engine, which is created on first use.
+
+| File | Change |
+|---|---|
+| `swx_core/config/settings.py` | Added `TESTING`, `TEST_DATABASE_URL`, `DB_POOL_CLASS` settings |
+| `swx_core/database/db.py` | Lazy engine init via `get_async_engine()`/`get_engine()`; `reset_engine()`; `_LazyAsyncEngine`/`_LazySyncEngine` proxies; `NullPool` support; `TEST_DATABASE_URL` override |
+| `swx_core/database/__init__.py` | Export `get_async_engine`, `get_engine`, `reset_engine` |
+| `swx_core/providers/database_provider.py` | Use `get_async_engine()` instead of inline `create_async_engine` |
+| `swx_core/testing/__init__.py` | New package |
+| `swx_core/testing/fixtures.py` | New: `db_session` rollback fixture, `_reset_engine_fixture` session teardown |
+
+---
+
 ## [2.20.2] - 2026-08-17
 
 ### Fixed — API key validation crashes with MissingGreenlet (SWX-007)
