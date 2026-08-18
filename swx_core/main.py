@@ -177,13 +177,21 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         JSONResponse: A JSON response with validation error details.
     """
     logger.warning(f"Validation error at {request.url.path}: {exc.errors()}")
-    
+
     from fastapi.encoders import jsonable_encoder
+
+    safe_body = None
+    if hasattr(exc, 'body'):
+        try:
+            safe_body = jsonable_encoder(exc.body)
+        except (TypeError, ValueError):
+            safe_body = None
+
     return JSONResponse(
         status_code=422,
         content={
             "detail": exc.errors(),
-            "body": exc.body if hasattr(exc, 'body') else None,
+            "body": safe_body,
         },
     )
 

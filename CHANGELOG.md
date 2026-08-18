@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.21.1] - 2026-08-18
+
+### Fixed — Validation error handler crashes on FormData requests (SWX-009)
+
+`validation_exception_handler` in `main.py` serialized `exc.body` directly
+into the JSON response. When the request content type was
+`application/x-www-form-urlencoded`, FastAPI stores the parsed body as a
+`starlette.datastructures.FormData` object — which is not JSON-serializable.
+This turned 422 validation errors into 500 internal server errors, breaking
+all form-data auth endpoints (`POST /api/auth/`, OAuth2 login, etc.).
+
+Fix: wrap `exc.body` in `jsonable_encoder()` with a `TypeError`/`ValueError`
+fallback that sets `body` to `None` for non-serializable types like `FormData`.
+
+| File | Change |
+|---|---|
+| `swx_core/main.py` | Safe `exc.body` serialization in `validation_exception_handler` |
+
+---
+
 ## [2.21.0] - 2026-08-17
 
 ### Added — Test-friendly database configuration (SWX-008)
