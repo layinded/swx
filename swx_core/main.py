@@ -22,12 +22,11 @@ Exception Handling:
 
 """
 
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from swx_core.background_task import start_cache_refresh
@@ -166,42 +165,37 @@ async def http_exception_handler(request: Request, exc):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """
-    Handles request validation errors and logs structured error messages.
-
-    Args:
-        request (Request): The incoming request object.
-        exc (RequestValidationError): The validation error exception.
-
-    Returns:
-        JSONResponse: A JSON response with validation error details.
-    """
+    """Return 422 with sanitized error details, surviving non-serializable body types (FormData, UploadFile, bytes)."""
     logger.warning("Validation error at %s: %s", request.url.path, exc.errors())
 
     from fastapi.encoders import jsonable_encoder
+    from swx_core.utils.json import dumps as swx_dumps
 
     safe_body = None
     if hasattr(exc, 'body'):
         try:
             safe_body = jsonable_encoder(exc.body)
-        except (TypeError, ValueError):
+        except Exception:
             safe_body = None
 
     try:
         safe_detail = jsonable_encoder(exc.errors())
-    except (TypeError, ValueError):
+    except Exception:
         safe_detail = [
             {"type": e.get("type"), "msg": e.get("msg"), "loc": e.get("loc")}
             for e in exc.errors()
         ]
 
-    return JSONResponse(
-        status_code=422,
-        content={
-            "detail": safe_detail,
-            "body": safe_body,
-        },
-    )
+    try:
+        serialized = swx_dumps({"detail": safe_detail, "body": safe_body})
+        return Response(content=serialized, status_code=422, media_type="application/json")
+    except Exception:
+        logger.exception("Failed to serialize validation error response")
+        minimal_detail = [
+            {"type": e.get("type"), "msg": e.get("msg"), "loc": e.get("loc")}
+            for e in exc.errors()
+        ]
+        return JSONResponse(status_code=422, content={"detail": minimal_detail, "body": None})
 
 
 @app.exception_handler(SwXError)

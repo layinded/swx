@@ -6,12 +6,10 @@ Caching decorators and utilities.
 
 from __future__ import annotations
 
-import functools
 import json
 import hashlib
 import asyncio
-from typing import TYPE_CHECKING, TypeVar, Callable, Optional, Any, Dict, Union
-from datetime import timedelta
+from typing import TYPE_CHECKING, Callable, Optional, Any, Dict
 from functools import wraps
 
 from swx_core.utils.json import dumps as swx_dumps, loads as swx_loads
@@ -28,9 +26,6 @@ except ImportError:
     _redis_available = False
 
 from swx_core.middleware.logging_middleware import logger
-
-
-T = TypeVar("T")
 
 
 class CacheBackend:

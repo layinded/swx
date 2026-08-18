@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.21.4] - 2026-08-18
+
+### Fixed — SWX-009 validation handler now uses SwxJSONEncoder for final serialization (root cause)
+
+The v2.21.1–2.21.3 fixes wrapped `exc.body` and `exc.errors()` in
+`jsonable_encoder()` but the response was still constructed via
+`JSONResponse`, which calls `json.dumps()` with the standard encoder.
+If `jsonable_encoder` returns a dict containing objects the standard
+encoder can't handle (e.g., nested `UploadFile` attributes), the 500
+crash persists.
+
+**Root cause**: `JSONResponse` uses `json.JSONEncoder`, not `SwxJSONEncoder`.
+
+**Fix**: The handler now serializes the response through `swx_dumps()`
+(which uses `SwxJSONEncoder`) and returns a `Response` with the
+pre-serialized JSON body. The fallback path uses `JSONResponse` with
+only primitive string values extracted from `exc.errors()`, guaranteeing
+no serialization crash.
+
+Additional code-clarity improvements:
+- Removed dead `import os` from `main.py`
+- Removed unused `import functools`, `Union`, `timedelta`, and `TypeVar("T")` from `cache.py`
+- Simplified handler docstring to one-line summary
+
+---
+
 ## [2.21.3] - 2026-08-18
 
 ### Fixed — Code clarity and type safety across JSON/cache/auth modules
