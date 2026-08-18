@@ -4,22 +4,28 @@ Caching Utilities
 Caching decorators and utilities.
 """
 
+from __future__ import annotations
+
 import functools
 import json
 import hashlib
 import asyncio
-from typing import TypeVar, Callable, Optional, Any, Dict, Union
+from typing import TYPE_CHECKING, TypeVar, Callable, Optional, Any, Dict, Union
 from datetime import timedelta
 from functools import wraps
 
 from swx_core.utils.json import dumps as swx_dumps, loads as swx_loads
 
-try:
+if TYPE_CHECKING:
     import redis.asyncio as redis
 
-    REDIS_AVAILABLE = True
+try:
+    import redis.asyncio as _redis_mod  # type: ignore[import-untyped]
+
+    _redis_available = True
 except ImportError:
-    REDIS_AVAILABLE = False
+    _redis_mod = None  # type: ignore[assignment]
+    _redis_available = False
 
 from swx_core.middleware.logging_middleware import logger
 
@@ -34,7 +40,7 @@ class CacheBackend:
         """Get value from cache."""
         raise NotImplementedError
 
-    async def set(self, key: str, value: Any, ttl: int = None) -> None:
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         """Set value in cache."""
         raise NotImplementedError
 
@@ -63,7 +69,7 @@ class MemoryCache(CacheBackend):
         async with self._lock:
             return self._cache.get(key)
 
-    async def set(self, key: str, value: Any, ttl: int = None) -> None:
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         async with self._lock:
             if len(self._cache) >= self._max_size and key not in self._cache:
                 # Remove oldest item
@@ -87,7 +93,7 @@ class RedisCache(CacheBackend):
     """Redis cache backend."""
 
     def __init__(self, redis_url: str | None = None, prefix: str = "swx:"):
-        if not REDIS_AVAILABLE:
+        if not _redis_available:
             raise ImportError("Redis is not installed. Install with: pip install redis")
 
         if redis_url is None:
@@ -97,11 +103,12 @@ class RedisCache(CacheBackend):
 
         self._redis_url = redis_url
         self._prefix = prefix
-        self._client: Optional[redis.Redis] = None
+        self._client: Optional["redis.Redis"] = None
 
-    async def _get_client(self) -> redis.Redis:
+    async def _get_client(self) -> "redis.Redis":
         if self._client is None:
-            self._client = redis.from_url(self._redis_url)
+            assert _redis_mod is not None  # guarded by __init__ check
+            self._client = _redis_mod.from_url(self._redis_url)
         return self._client
 
     def _make_key(self, key: str) -> str:
@@ -117,7 +124,7 @@ class RedisCache(CacheBackend):
         except (json.JSONDecodeError, TypeError):
             return value
 
-    async def set(self, key: str, value: Any, ttl: int = None) -> None:
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         client = await self._get_client()
         serialized = swx_dumps(value) if not isinstance(value, (str, bytes)) else value
         if ttl:
@@ -162,7 +169,7 @@ def init_redis_cache(redis_url: str | None = None, prefix: str = "swx:") -> None
 
     global _cache
 
-    if not settings.REDIS_ENABLED or not REDIS_AVAILABLE:
+    if not settings.REDIS_ENABLED or not _redis_available:
         _cache = MemoryCache()
         return
 
@@ -182,7 +189,7 @@ def cache_key(*args, **kwargs) -> str:
 def cached(
     ttl: int = 3600,
     key_prefix: str = "",
-    key_builder: Optional[Callable] = None,
+    key_builder: Optional[Callable[..., str]] = None,
 ):
     """
     Decorator to cache function results.
@@ -198,7 +205,7 @@ def cached(
         key_builder: Custom key builder function
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args, **kwargs):
             cache = get_cache()
@@ -212,7 +219,7 @@ def cached(
             # Try to get from cache
             cached_value = await cache.get(key)
             if cached_value is not None:
-                logger.debug(f"Cache hit for key: {key}")
+                logger.debug("Cache hit for key: %s", key)
                 return cached_value
 
             # Execute function
@@ -220,7 +227,7 @@ def cached(
 
             # Cache result
             await cache.set(key, result, ttl=ttl)
-            logger.debug(f"Cached result for key: {key}")
+            logger.debug("Cached result for key: %s", key)
 
             return result
 
@@ -242,7 +249,7 @@ def cache_result(
             return await repository.find_all()
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args, **kwargs):
             cache = get_cache()
@@ -275,7 +282,7 @@ def invalidate_cache(key_pattern: str):
             return await repository.update(user_id, data)
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args, **kwargs):
             # Execute function
@@ -336,7 +343,7 @@ class CachedProperty:
         return result
 
 
-def memoize(func: Callable) -> Callable:
+def memoize(func: Callable[..., Any]) -> Callable[..., Any]:
     """
     Simple memoization decorator.
 

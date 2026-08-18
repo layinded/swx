@@ -160,7 +160,7 @@ async def http_exception_handler(request: Request, exc):
     Returns:
         JSONResponse: A JSON response with error details.
     """
-    logger.error(f"HTTP ERROR: {exc.detail} - Path: {request.url.path}")
+    logger.error("HTTP ERROR: %s - Path: %s", exc.detail, request.url.path)
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
 
 
@@ -176,7 +176,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     Returns:
         JSONResponse: A JSON response with validation error details.
     """
-    logger.warning(f"Validation error at {request.url.path}: {exc.errors()}")
+    logger.warning("Validation error at %s: %s", request.url.path, exc.errors())
 
     from fastapi.encoders import jsonable_encoder
 
@@ -187,11 +187,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         except (TypeError, ValueError):
             safe_body = None
 
-    safe_detail = exc.errors()
     try:
-        jsonable_encoder(safe_detail)
+        safe_detail = jsonable_encoder(exc.errors())
     except (TypeError, ValueError):
-        safe_detail = [{"type": e.get("type"), "msg": e.get("msg"), "loc": e.get("loc")} for e in exc.errors()]
+        safe_detail = [
+            {"type": e.get("type"), "msg": e.get("msg"), "loc": e.get("loc")}
+            for e in exc.errors()
+        ]
 
     return JSONResponse(
         status_code=422,
@@ -205,7 +207,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(SwXError)
 async def swx_error_handler(request: Request, exc: SwXError):
     """Handle SwXError subclasses and return structured JSON error responses."""
-    logger.warning(f"SwXError at {request.url.path}: [{exc.code}] {exc.message}")
+    logger.warning("SwXError at %s: [%s] %s", request.url.path, exc.code, exc.message)
     return JSONResponse(status_code=exc.status_code, content=exc.to_dict())
 
 
@@ -222,7 +224,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
         JSONResponse: A generic internal server error response.
     """
     request_id = getattr(request.state, "request_id", "unknown")
-    logger.critical(f"Unhandled exception at {request.url.path}: {type(exc).__name__} (request_id={request_id})")
+    logger.critical("Unhandled exception at %s: %s (request_id=%s)", request.url.path, type(exc).__name__, request_id)
     return JSONResponse(
         status_code=500,
         content={"error": "Internal Server Error", "request_id": request_id},

@@ -9,14 +9,12 @@ Key format: {env}:{app}:{scope}:{resource}:{identifier}:{version}
 Backward compatible: USER_CACHE_ENABLED=False (default) = no caching.
 """
 
-import json
 import time
 import logging
 from typing import Optional, Dict, Any, List
-
-from swx_core.utils.json import dumps as swx_dumps
 from uuid import UUID
-from datetime import datetime
+
+from swx_core.utils.json import dumps as swx_dumps, loads as swx_loads
 
 from swx_core.config.settings import settings
 
@@ -96,20 +94,12 @@ class AuthCache:
         return None
 
     def _serialize_user(self, user_dict: Dict[str, Any]) -> str:
-        safe = {}
-        for key, value in user_dict.items():
-            if key == "hashed_password":
-                continue
-            if isinstance(value, UUID):
-                safe[key] = str(value)
-            elif isinstance(value, datetime):
-                safe[key] = value.isoformat()
-            else:
-                safe[key] = value
+        """Serialize user dict to JSON, stripping hashed_password."""
+        safe = {k: v for k, v in user_dict.items() if k != "hashed_password"}
         return swx_dumps(safe)
 
     def _deserialize_user(self, raw: str) -> Dict[str, Any]:
-        return json.loads(raw)
+        return swx_loads(raw)
 
     async def get_profile(self, identifier: str) -> Optional[Dict[str, Any]]:
         key = _build_key(self._scope, "profile", identifier)
@@ -184,7 +174,7 @@ class AuthCache:
             raw = await redis.get(key)
             if raw is None:
                 return None
-            data = json.loads(raw) if isinstance(raw, str) else raw
+            data = swx_loads(raw) if isinstance(raw, str) else raw
             self._l1.set(key, data, settings.USER_PERMISSIONS_CACHE_TTL)
             return data
         except Exception as exc:
@@ -295,7 +285,7 @@ async def get_cached_roles(user_id: str) -> Optional[List[Dict[str, Any]]]:
         raw = await redis.get(key)
         if raw is None:
             return None
-        data = json.loads(raw) if isinstance(raw, str) else raw
+        data = swx_loads(raw) if isinstance(raw, str) else raw
         _role_cache._l1.set(key, data, settings.USER_CACHE_TTL)
         return data
     except Exception as exc:

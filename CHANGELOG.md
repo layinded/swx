@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.21.3] - 2026-08-18
+
+### Fixed — Code clarity and type safety across JSON/cache/auth modules
+
+Applied code-clarity cleanup and resolved all LSP type errors across the four
+files touched by SWX-009.
+
+| File | Change |
+|---|---|
+| `swx_core/main.py` | Replaced f-string logger calls with lazy `%s` formatting; simplified `safe_detail` logic (try/except directly assigns instead of assigning then validating separately) |
+| `swx_core/utils/json.py` | Added `from __future__ import annotations`; typed `SwxJSONEncoder.default(o)` as `object → Union[str, list[Any]]` with `# type: ignore[override]`; added docstring explaining fallback behavior |
+| `swx_core/utils/cache.py` | Fixed `_REDIS_AVAILABLE` → `_redis_available` (constant redefinition); `from __future__ import annotations` + `TYPE_CHECKING` guard for `redis.asyncio`; `ttl: int = None` → `Optional[int]`; `Callable` → `Callable[..., Any]`; lazy `%s` logger calls; `assert` guard for `_redis_mod` in `_get_client` |
+| `swx_core/auth/auth_cache.py` | Simplified `_serialize_user` — manual UUID/datetime conversion removed (central `SwxJSONEncoder` handles it); replaced all `json.loads` with `swx_loads`; removed unused `import json` and `from datetime import datetime` |
+
+---
+
 ## [2.21.2] - 2026-08-18
 
 ### Fixed — Validation error handler crashes on FormData (SWX-009)
