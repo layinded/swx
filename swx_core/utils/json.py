@@ -1,4 +1,4 @@
-"""Centralized JSON serialization with UUID and datetime support."""
+"""Centralized JSON serialization with UUID, datetime, and safe fallback support."""
 
 import json
 from datetime import date, datetime
@@ -12,7 +12,11 @@ class SwxJSONEncoder(json.JSONEncoder):
             return str(o)
         if isinstance(o, (datetime, date)):
             return o.isoformat()
-        return super().default(o)
+        if isinstance(o, bytes):
+            return o.decode("utf-8", errors="replace")
+        if isinstance(o, set):
+            return list(o)
+        return str(o)
 
 
 def dumps(obj: Any, **kwargs: Any) -> str:

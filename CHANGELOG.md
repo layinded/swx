@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.21.2] - 2026-08-18
+
+### Fixed — Validation error handler crashes on FormData (SWX-009)
+
+`validation_exception_handler` in `main.py` serialized `exc.body` directly
+into `JSONResponse`. When the request content type was
+`application/x-www-form-urlencoded`, `exc.body` was a `FormData` object which
+is not JSON-serializable, turning 422 validation errors into 500 internal
+server errors. This broke all form-data auth endpoints (login, OAuth2).
+
+Fix: wrap `exc.body` in `jsonable_encoder()` with `TypeError`/`ValueError`
+fallback, and guard `exc.errors()` output similarly (Pydantic v2 error `input`
+values can also be non-serializable for multipart/form-data requests).
+
+### Hardened — Central JSON serializer handles non-serializable types
+
+`SwxJSONEncoder` now falls back to `str()` for `bytes`, `set`, and any other
+non-JSON-native types instead of raising `TypeError`. This hardens all
+callers — cache, auth_cache, webhook signer/dispatcher, and CLI exports —
+against `FormData`, `UploadFile`, `bytes`, `Decimal`, and similar types.
+
+`utils/cache.py` and `auth/auth_cache.py` now use `swx_core.utils.json.dumps`
+instead of raw `json.dumps`, gaining UUID/datetime/bytes handling and the
+safe fallback automatically.
+
+| File | Change |
+|---|---|
+| `swx_core/main.py` | Guard `exc.body` and `exc.errors()` in validation handler |
+| `swx_core/utils/json.py` | `SwxJSONEncoder` falls back to `str()` for non-serializable types |
+| `swx_core/utils/cache.py` | Use `swx_dumps`/`swx_loads` instead of raw `json.dumps`/`json.loads` |
+| `swx_core/auth/auth_cache.py` | Use `swx_dumps` instead of raw `json.dumps` |
+
+---
+
 ## [2.21.1] - 2026-08-18
 
 ### Fixed — Validation error handler crashes on FormData requests (SWX-009)

@@ -187,10 +187,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         except (TypeError, ValueError):
             safe_body = None
 
+    safe_detail = exc.errors()
+    try:
+        jsonable_encoder(safe_detail)
+    except (TypeError, ValueError):
+        safe_detail = [{"type": e.get("type"), "msg": e.get("msg"), "loc": e.get("loc")} for e in exc.errors()]
+
     return JSONResponse(
         status_code=422,
         content={
-            "detail": exc.errors(),
+            "detail": safe_detail,
             "body": safe_body,
         },
     )

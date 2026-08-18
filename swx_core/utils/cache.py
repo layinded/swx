@@ -12,6 +12,8 @@ from typing import TypeVar, Callable, Optional, Any, Dict, Union
 from datetime import timedelta
 from functools import wraps
 
+from swx_core.utils.json import dumps as swx_dumps, loads as swx_loads
+
 try:
     import redis.asyncio as redis
 
@@ -111,13 +113,13 @@ class RedisCache(CacheBackend):
         if value is None:
             return None
         try:
-            return json.loads(value)
-        except json.JSONDecodeError:
+            return swx_loads(value)
+        except (json.JSONDecodeError, TypeError):
             return value
 
     async def set(self, key: str, value: Any, ttl: int = None) -> None:
         client = await self._get_client()
-        serialized = json.dumps(value) if not isinstance(value, (str, bytes)) else value
+        serialized = swx_dumps(value) if not isinstance(value, (str, bytes)) else value
         if ttl:
             await client.setex(self._make_key(key), ttl, serialized)
         else:

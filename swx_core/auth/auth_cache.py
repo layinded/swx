@@ -13,6 +13,8 @@ import json
 import time
 import logging
 from typing import Optional, Dict, Any, List
+
+from swx_core.utils.json import dumps as swx_dumps
 from uuid import UUID
 from datetime import datetime
 
@@ -104,7 +106,7 @@ class AuthCache:
                 safe[key] = value.isoformat()
             else:
                 safe[key] = value
-        return json.dumps(safe)
+        return swx_dumps(safe)
 
     def _deserialize_user(self, raw: str) -> Dict[str, Any]:
         return json.loads(raw)
@@ -198,7 +200,7 @@ class AuthCache:
         if redis is None:
             return
         try:
-            serialized = json.dumps(permissions)
+            serialized = swx_dumps(permissions)
             await redis.setex(key, perm_ttl, serialized)
         except Exception as exc:
             logger.warning("Auth cache L2 permissions set failed for %s: %s", key, exc)
@@ -310,7 +312,7 @@ async def set_cached_roles(user_id: str, roles: List[Dict[str, Any]]) -> None:
     if redis is None:
         return
     try:
-        serialized = json.dumps(roles)
+        serialized = swx_dumps(roles)
         await redis.setex(key, settings.USER_CACHE_TTL, serialized)
     except Exception as exc:
         logger.warning("Role cache L2 set failed for %s: %s", key, exc)
