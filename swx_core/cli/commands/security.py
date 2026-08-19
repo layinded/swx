@@ -46,7 +46,7 @@ async def _encrypt_secrets(dry_run: bool = False) -> dict[str, int]:
     # --- 1. Webhook secrets (swx_webhook_endpoint.secret) ---
     from swx_core.models.webhook_endpoint import WebhookEndpoint
     async with async_session() as session:
-        stmt = select(WebhookEndpoint.id, WebhookEndpoint.secret).where(WebhookEndpoint.secret.isnot(None))
+        stmt = select(WebhookEndpoint.id, WebhookEndpoint.secret).where(WebhookEndpoint.secret.isnot(None))  # pyright: ignore[reportCallIssue,reportArgumentType,reportAttributeAccessIssue,reportOptionalMemberAccess]
         rows = (await session.execute(stmt)).all()
         count = 0
         for row_id, secret in rows:
@@ -62,8 +62,8 @@ async def _encrypt_secrets(dry_run: bool = False) -> dict[str, int]:
     # --- 2. SSO provider client_secret + certificate (swx_sso_provider) ---
     from swx_core.models.sso_provider import SSOProvider
     async with async_session() as session:
-        stmt = select(SSOProvider.id, SSOProvider.client_secret, SSOProvider.certificate).where(
-            SSOProvider.client_secret.isnot(None) | SSOProvider.certificate.isnot(None)
+        stmt = select(SSOProvider.id, SSOProvider.client_secret, SSOProvider.certificate).where(  # pyright: ignore[reportCallIssue,reportArgumentType]
+            SSOProvider.client_secret.isnot(None) | SSOProvider.certificate.isnot(None)  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
         )
         rows = (await session.execute(stmt)).all()
         count = 0
@@ -84,7 +84,7 @@ async def _encrypt_secrets(dry_run: bool = False) -> dict[str, int]:
     # --- 3. Refresh tokens (swx_refresh_token.token) ---
     from swx_core.models.refresh_token import RefreshToken
     async with async_session() as session:
-        stmt = select(RefreshToken.id, RefreshToken.token).where(RefreshToken.token.isnot(None))
+        stmt = select(RefreshToken.id, RefreshToken.token).where(RefreshToken.token.isnot(None))  # pyright: ignore[reportCallIssue,reportArgumentType,reportAttributeAccessIssue]
         rows = (await session.execute(stmt)).all()
         count = 0
         for row_id, token_value in rows:
@@ -100,7 +100,7 @@ async def _encrypt_secrets(dry_run: bool = False) -> dict[str, int]:
     # --- 4. LLM provider encrypted_api_key (swx_llm_provider_config) ---
     from swx_core.models.llm_provider_config import LLMProviderConfig
     async with async_session() as session:
-        stmt = select(LLMProviderConfig.id, LLMProviderConfig.encrypted_api_key).where(LLMProviderConfig.encrypted_api_key.isnot(None))
+        stmt = select(LLMProviderConfig.id, LLMProviderConfig.encrypted_api_key).where(LLMProviderConfig.encrypted_api_key.isnot(None))  # pyright: ignore[reportCallIssue,reportArgumentType,reportAttributeAccessIssue,reportOptionalMemberAccess]
         rows = (await session.execute(stmt)).all()
         count = 0
         for row_id, api_key in rows:

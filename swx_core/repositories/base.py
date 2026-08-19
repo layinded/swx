@@ -16,12 +16,13 @@ Usage:
 """
 
 import uuid
-from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
+from typing import TypeVar, Generic, Type, Optional, List, Dict, Any, Sequence
 from contextlib import asynccontextmanager
 from swx_core.utils.time import utc_now
 
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.expression import BinaryExpression
 
 from swx_core.database.db import AsyncSessionLocal
@@ -121,6 +122,7 @@ class BaseRepository(Generic[ModelType]):
         limit: int = 100,
         order_by: str = "created_at",
         descending: bool = True,
+        eager_loads: Optional[Sequence[str]] = None,
     ) -> List[ModelType]:
         """
         Find all records with pagination.
@@ -130,6 +132,8 @@ class BaseRepository(Generic[ModelType]):
             limit: Maximum number of records to return
             order_by: Field to order by
             descending: Sort descending if True
+            eager_loads: Optional list of relationship names to eager-load
+                         (e.g., ["user", "team_role"]) to avoid N+1 queries.
 
         Returns:
             List of model instances
@@ -146,6 +150,12 @@ class BaseRepository(Generic[ModelType]):
 
             # Build query
             query = select(self.model)
+
+            # Apply eager loading to prevent N+1 queries
+            if eager_loads:
+                for rel_name in eager_loads:
+                    if hasattr(self.model, rel_name):
+                        query = query.options(selectinload(getattr(self.model, rel_name)))
 
             # Filter soft-deleted records
             if hasattr(self.model, "is_deleted"):
@@ -169,6 +179,7 @@ class BaseRepository(Generic[ModelType]):
         limit: int = 100,
         order_by: str = "created_at",
         descending: bool = True,
+        eager_loads: Optional[Sequence[str]] = None,
         **filters: Dict[str, Any],
     ) -> List[ModelType]:
         """
@@ -179,6 +190,7 @@ class BaseRepository(Generic[ModelType]):
             limit: Maximum number of records to return
             order_by: Field to order by
             descending: Sort descending if True
+            eager_loads: Optional list of relationship names to eager-load
             **filters: Field-value pairs to filter by
 
         Returns:
@@ -186,6 +198,12 @@ class BaseRepository(Generic[ModelType]):
         """
         async with self._session_context() as session:
             query = select(self.model)
+
+            # Apply eager loading to prevent N+1 queries
+            if eager_loads:
+                for rel_name in eager_loads:
+                    if hasattr(self.model, rel_name):
+                        query = query.options(selectinload(getattr(self.model, rel_name)))
 
             # Apply filters
             for field, value in filters.items():
@@ -215,7 +233,7 @@ class BaseRepository(Generic[ModelType]):
             result = await session.execute(query)
             return list(result.scalars().all())
 
-    async def find_one_by(**filters: Dict[str, Any]) -> Optional[ModelType]:
+    async def find_one_by(self, **filters: Dict[str, Any]) -> Optional[ModelType]:
         """
         Find a single record by filters.
 
@@ -372,9 +390,14 @@ class BaseRepository(Generic[ModelType]):
 
             await session.commit()
 
-            # Refresh all instances
-            for instance in instances:
-                await session.refresh(instance)
+            # Re-fetch all instances in one query instead of N individual refreshes
+            if instances:
+                ids = [inst.id for inst in instances]
+                result = await session.execute(
+                    select(self.model).where(self.model.id.in_(ids))
+                )
+                refreshed = list(result.scalars().all())
+                return refreshed
 
             return instances
 
@@ -443,10 +466,11 @@ class BaseRepository(Generic[ModelType]):
 
             await session.commit()
 
-            for instance in instances:
-                await session.refresh(instance)
-
-            return instances
+            # Re-fetch all instances in one query instead of N individual refreshes
+            result = await session.execute(
+                select(self.model).where(self.model.id.in_(ids))
+            )
+            return list(result.scalars().all())
 
     async def delete(self, id: uuid.UUID) -> bool:
         """
@@ -656,6 +680,7 @@ class BaseRepository(Generic[ModelType]):
         per_page: int = 20,
         order_by: str = "created_at",
         descending: bool = True,
+        eager_loads: Optional[Sequence[str]] = None,
         **filters: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
@@ -666,6 +691,7 @@ class BaseRepository(Generic[ModelType]):
             per_page: Records per page
             order_by: Field to order by
             descending: Sort descending if True
+            eager_loads: Optional list of relationship names to eager-load
             **filters: Field-value pairs to filter by
 
         Returns:
@@ -679,6 +705,7 @@ class BaseRepository(Generic[ModelType]):
             limit=per_page,
             order_by=order_by,
             descending=descending,
+            eager_loads=eager_loads,
             **filters,
         )
 

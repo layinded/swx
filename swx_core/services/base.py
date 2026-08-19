@@ -13,7 +13,7 @@ Usage:
 """
 
 import uuid
-from typing import TypeVar, Generic, Dict, Any, Optional, List
+from typing import TypeVar, Generic, Dict, Any, Optional, List, Sequence
 
 from swx_core.repositories.base import BaseRepository
 from swx_core.events import event_bus, Event
@@ -104,6 +104,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         limit: int = 100,
         order_by: str = "created_at",
         descending: bool = True,
+        eager_loads: Optional[Sequence[str]] = None,
     ) -> List[ModelType]:
         """
         List all records with pagination.
@@ -113,6 +114,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
             limit: Maximum number of records to return
             order_by: Field to order by
             descending: Sort descending if True
+            eager_loads: Optional list of relationship names to eager-load
             
         Returns:
             List of model instances
@@ -122,12 +124,14 @@ class BaseService(Generic[ModelType, RepositoryType]):
             limit=limit,
             order_by=order_by,
             descending=descending,
+            eager_loads=eager_loads,
         )
     
     async def find_by(
         self,
         skip: int = 0,
         limit: int = 100,
+        eager_loads: Optional[Sequence[str]] = None,
         **filters: Dict[str, Any],
     ) -> List[ModelType]:
         """
@@ -136,12 +140,13 @@ class BaseService(Generic[ModelType, RepositoryType]):
         Args:
             skip: Number of records to skip
             limit: Maximum number of records to return
+            eager_loads: Optional list of relationship names to eager-load
             **filters: Field-value pairs to filter by
             
         Returns:
             List of model instances
         """
-        return await self.repository.find_by(skip=skip, limit=limit, **filters)
+        return await self.repository.find_by(skip=skip, limit=limit, eager_loads=eager_loads, **filters)
     
     async def find_one_by(self, **filters: Dict[str, Any]) -> Optional[ModelType]:
         """
@@ -538,6 +543,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         per_page: int = 20,
         order_by: str = "created_at",
         descending: bool = True,
+        eager_loads: Optional[Sequence[str]] = None,
         **filters: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
@@ -548,6 +554,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
             per_page: Records per page
             order_by: Field to order by
             descending: Sort descending if True
+            eager_loads: Optional list of relationship names to eager-load
             **filters: Field-value pairs to filter by
             
         Returns:
@@ -558,6 +565,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
             per_page=per_page,
             order_by=order_by,
             descending=descending,
+            eager_loads=eager_loads,
             **filters,
         )
     

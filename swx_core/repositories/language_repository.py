@@ -58,6 +58,9 @@ class LanguageRepository:
         """
         Retrieve all language resources for multiple languages in bulk.
 
+        Uses a single IN query instead of N queries per language code,
+        then groups results in memory for O(1) database round-trips.
+
         Args:
             db (AsyncSession): Database session dependency.
             languages (list[str]): List of language codes to retrieve translations for.
@@ -66,11 +69,15 @@ class LanguageRepository:
             dict: A dictionary where the keys are language codes and the values are
                   dictionaries containing translation key-value pairs.
         """
-        translations_dict = {}
-        for lang in languages:
-            translations = await LanguageRepository.retrieve_by_language_code(db, lang)
-            # Build a dictionary: key is the translation key, value is its translation value
-            translations_dict[lang] = {t.key: t.value for t in translations}
+        if not languages:
+            return {}
+        query = select(Language).where(Language.language_code.in_(languages))
+        result = await db.execute(query)
+        rows = result.scalars().all()
+        translations_dict: dict[str, dict[str, str]] = {lang: {} for lang in languages}
+        for row in rows:
+            if row.language_code in translations_dict:
+                translations_dict[row.language_code][row.key] = row.value
         return translations_dict
 
     @staticmethod

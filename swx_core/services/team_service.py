@@ -124,28 +124,32 @@ async def delete_team_service(
     billing_account_ids = list(billing_accounts_result.scalars().all())
 
     if billing_account_ids:
-        for billing_account_id in billing_account_ids:
-            subscriptions_stmt = select(Subscription).where(
-                Subscription.account_id == billing_account_id
-            )
-            subscriptions_result = await session.execute(subscriptions_stmt)
-            subscriptions = list(subscriptions_result.scalars().all())
+        # Bulk delete usage records for all subscriptions in the team's billing accounts
+        from sqlalchemy import delete as sql_delete
 
-            for subscription in subscriptions:
-                usage_records_stmt = select(UsageRecord).where(
-                    UsageRecord.subscription_id == subscription.id
+        subscription_ids_stmt = select(Subscription.id).where(
+            Subscription.account_id.in_(billing_account_ids)  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        subscription_ids_result = await session.execute(subscription_ids_stmt)
+        subscription_ids = list(subscription_ids_result.scalars().all())
+
+        if subscription_ids:
+            await session.execute(
+                sql_delete(UsageRecord).where(
+                    UsageRecord.subscription_id.in_(subscription_ids)  # pyright: ignore[reportAttributeAccessIssue]
                 )
-                usage_records_result = await session.execute(usage_records_stmt)
-                usage_records = list(usage_records_result.scalars().all())
+            )
+            await session.execute(
+                sql_delete(Subscription).where(
+                    Subscription.account_id.in_(billing_account_ids)  # pyright: ignore[reportAttributeAccessIssue]
+                )
+            )
 
-                for usage_record in usage_records:
-                    await session.delete(usage_record)
-
-                await session.delete(subscription)
-
-            billing_account = await session.get(BillingAccount, billing_account_id)
-            if billing_account:
-                await session.delete(billing_account)
+        await session.execute(
+            sql_delete(BillingAccount).where(
+                BillingAccount.id.in_(billing_account_ids)  # pyright: ignore[reportAttributeAccessIssue]
+            )
+        )
          
     await team_repository.delete_team(session, team)
     

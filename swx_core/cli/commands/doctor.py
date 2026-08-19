@@ -13,7 +13,7 @@ import sys
 import json
 import shutil
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 import click
 
@@ -39,7 +39,7 @@ def doctor_command(fix: bool, verbose: bool, json_output: bool):
     - 1: Unhealthy (errors detected)
     - 2: Degraded (warnings detected)
     """
-    results = {
+    results: Dict[str, Any] = {
         "status": "healthy",
         "checks": {},
         "warnings": [],
@@ -145,7 +145,7 @@ def doctor_command(fix: bool, verbose: bool, json_output: bool):
         sys.exit(2)
 
 
-def _print_checks(checks: Dict, results: Dict):
+def _print_checks(checks: Dict[str, Dict[str, Any]], results: Dict[str, Any]):
     """Print check results and update results dict."""
     for check, status in checks.items():
         if status["status"] == "ok":
@@ -161,9 +161,9 @@ def _print_checks(checks: Dict, results: Dict):
             results["errors"].append(f"{check}: {status.get('message', '')}")
 
 
-def _check_environment() -> Dict[str, Dict]:
+def _check_environment() -> Dict[str, Dict[str, Any]]:
     """Check environment configuration."""
-    checks = {}
+    checks: Dict[str, Dict[str, Any]] = {}
 
     # Check .env file
     if os.path.exists(".env"):
@@ -221,9 +221,9 @@ def _check_environment() -> Dict[str, Dict]:
     return checks
 
 
-def _check_database(verbose: bool) -> Dict[str, Dict]:
+def _check_database(verbose: bool) -> Dict[str, Dict[str, Any]]:
     """Check database connectivity."""
-    checks = {}
+    checks: Dict[str, Dict[str, Any]] = {}
 
     try:
         import asyncio
@@ -260,7 +260,7 @@ def _check_database(verbose: bool) -> Dict[str, Dict]:
             if shutil.which("alembic"):
                 checks["Alembic CLI"] = {"status": "ok"}
         else:
-            msg = error[:200] if verbose else "connection failed"
+            msg = (error or "unknown error")[:200] if verbose else "connection failed"
             checks["Connection"] = {"status": "error", "message": msg}
 
     except ImportError as e:
@@ -271,9 +271,9 @@ def _check_database(verbose: bool) -> Dict[str, Dict]:
     return checks
 
 
-def _check_redis(verbose: bool) -> Dict[str, Dict]:
+def _check_redis(verbose: bool) -> Dict[str, Dict[str, Any]]:
     """Check Redis connectivity."""
-    checks = {}
+    checks: Dict[str, Dict[str, Any]] = {}
 
     try:
         import asyncio
@@ -281,7 +281,7 @@ def _check_redis(verbose: bool) -> Dict[str, Dict]:
         try:
             import redis.asyncio as redis
         except ImportError:
-            import aioredis as redis
+            import aioredis as redis  # pyright: ignore[reportMissingImports,reportMissingTypeStubs]  # noqa: F401
 
         try:
             from swx_core.config.settings import settings
@@ -297,7 +297,7 @@ def _check_redis(verbose: bool) -> Dict[str, Dict]:
         async def check_redis():
             try:
                 client = redis.from_url(str(redis_url))
-                await client.ping()
+                await client.ping()  # pyright: ignore[reportGeneralTypeIssues]
                 await client.close()
                 return True, None
             except Exception as e:
@@ -308,7 +308,7 @@ def _check_redis(verbose: bool) -> Dict[str, Dict]:
         if success:
             checks["Connection"] = {"status": "ok"}
         else:
-            msg = error[:200] if verbose else "not reachable"
+            msg = (error or "unknown error")[:200] if verbose else "not reachable"
             checks["Connection"] = {"status": "warning", "message": msg}
 
     except ImportError:
@@ -319,9 +319,9 @@ def _check_redis(verbose: bool) -> Dict[str, Dict]:
     return checks
 
 
-def _check_storage(fix: bool) -> Dict[str, Dict]:
+def _check_storage(fix: bool) -> Dict[str, Dict[str, Any]]:
     """Check storage directories and permissions."""
-    checks = {}
+    checks: Dict[str, Dict[str, Any]] = {}
 
     dirs = [
         "storage",
@@ -362,9 +362,9 @@ def _check_storage(fix: bool) -> Dict[str, Dict]:
     return checks
 
 
-def _check_security(verbose: bool, fix: bool) -> Dict[str, Dict]:
+def _check_security(verbose: bool, fix: bool) -> Dict[str, Dict[str, Any]]:
     """Check security settings."""
-    checks = {}
+    checks: Dict[str, Dict[str, Any]] = {}
 
     try:
         from swx_core.config.settings import settings
@@ -373,6 +373,7 @@ def _check_security(verbose: bool, fix: bool) -> Dict[str, Dict]:
         return checks
 
     # Check SECRET_KEY strength
+    secret: str = ""
     try:
         secret = str(settings.SECRET_KEY)
         if len(secret) < 32:
@@ -460,9 +461,9 @@ def _check_security(verbose: bool, fix: bool) -> Dict[str, Dict]:
     return checks
 
 
-def _check_dependencies() -> Dict[str, Dict]:
+def _check_dependencies() -> Dict[str, Dict[str, Any]]:
     """Check installed dependencies."""
-    checks = {}
+    checks: Dict[str, Dict[str, Any]] = {}
 
     required = [
         ("fastapi", "0.100.0"),

@@ -107,25 +107,20 @@ class TeamPermissionChecker:
     async def _get_team_member_with_role(
         self, team_id: UUID, user_id: UUID
     ) -> Optional[TeamMember]:
-        """Get team member with team_role relationship loaded."""
+        """Get team member with team_role relationship loaded.
+
+        TeamMember.team_role uses lazy="selectin" so the relationship
+        is automatically eager-loaded in the same query.
+        """
         result = await self.session.execute(
-            select(TeamMember)
-            .where(TeamMember.team_id == team_id, TeamMember.user_id == user_id)
+            select(TeamMember).where(TeamMember.team_id == team_id, TeamMember.user_id == user_id)
         )
-        member = result.scalar_one_or_none()
-
-        if member:
-            team_role_result = await self.session.execute(
-                select(TeamRole).where(TeamRole.id == member.team_role_id)
-            )
-            member.team_role = team_role_result.scalar_one_or_none()
-
-        return member
+        return result.scalar_one_or_none()
 
     async def _is_superuser(self, user_id: UUID) -> bool:
         """Check if user is a superuser (bypasses team permissions)."""
         result = await self.session.execute(
-            select(User).where(User.id == user_id)
+            select(User.is_superuser).where(User.id == user_id)
         )
-        user = result.scalar_one_or_none()
-        return user is not None and getattr(user, 'is_superuser', False)
+        is_superuser = result.scalar_one_or_none()
+        return is_superuser is True

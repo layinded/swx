@@ -57,8 +57,6 @@ async def upsert_webhook_subscriptions(session: AsyncSession, endpoint_id: UUID,
         session.add(entity)
         saved.append(entity)
     await session.commit()
-    for item in saved:
-        await session.refresh(item)
     return saved
 
 async def list_webhook_subscriptions(session: AsyncSession, endpoint_id: UUID, *, is_active: bool | None = None) -> list[WebhookEventSubscription]:

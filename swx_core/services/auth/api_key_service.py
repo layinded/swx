@@ -3,7 +3,7 @@ import secrets
 from datetime import timedelta
 from typing import Any, Optional
 from uuid import UUID
-from swx_core.utils.time import utc_now
+from swx_core.utils.time import utc_now, ensure_aware
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -102,9 +102,26 @@ async def validate_api_key(session: AsyncSession, raw_key: str) -> Optional[ApiK
     key = await repo.get_api_key_by_hash(session, hashed)
     if key is None or not key.is_active:
         return None
-    if key.expires_at and key.expires_at < utc_now():
+    # SWX-009: normalize naive datetimes from PostgreSQL to avoid
+    # TypeError when comparing with timezone-aware utc_now() (Python 3.12+)
+    expires_at = ensure_aware(key.expires_at)
+    if expires_at is not None and expires_at < utc_now():
         return None
-    result = ApiKeyPublic.model_validate(key)
+    # SWX-007: build ApiKeyPublic from explicit attributes to avoid
+    # MissingGreenlet from model_validate on a detached ORM object
+    result = ApiKeyPublic(
+        id=key.id,
+        team_id=key.team_id,
+        name=key.name,
+        key_prefix=key.key_prefix,
+        user_id=key.user_id,
+        is_active=key.is_active,
+        expires_at=expires_at,
+        last_used_at=ensure_aware(key.last_used_at),
+        rate_limit_override=key.rate_limit_override,
+        created_at=key.created_at,
+        updated_at=key.updated_at,
+    )
     await repo.update_last_used(session, key.id)
     return result
 

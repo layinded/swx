@@ -1,9 +1,8 @@
 # pyright: reportUnknownMemberType=false
 
 import time
-from datetime import datetime
 from uuid import UUID
-from swx_core.utils.time import utc_now
+from swx_core.utils.time import utc_now, ensure_aware
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,7 +87,8 @@ async def has_consent(session: AsyncSession, user_id: UUID, consent_type_key: st
     consent = await consent_repository.get_latest_user_consent(session, user_id, consent_type.id)
     if not consent:
         return False
-    if consent.expires_at and consent.expires_at <= utc_now():
+    expires_at = ensure_aware(consent.expires_at)
+    if expires_at is not None and expires_at <= utc_now():
         return False
     return consent.status == ConsentStatus.GRANTED.value
 
@@ -99,7 +99,8 @@ async def require_consent(session: AsyncSession, user_id: UUID, consent_type_key
     consent = await consent_repository.get_latest_user_consent(session, user_id, consent_type.id)
     if not consent or consent.status != ConsentStatus.GRANTED.value:
         raise HTTPException(status_code=403, detail=f"Consent '{consent_type_key}' is required")
-    if consent.expires_at and consent.expires_at <= utc_now():
+    expires_at = ensure_aware(consent.expires_at)
+    if expires_at is not None and expires_at <= utc_now():
         raise HTTPException(status_code=403, detail=f"Consent '{consent_type_key}' has expired")
     return consent
 
@@ -108,7 +109,8 @@ async def check_expired_consents(session: AsyncSession) -> int:
     now = utc_now()
     consents = await consent_repository.get_consents_by_status(session, ConsentStatus.GRANTED.value)
     for consent in consents:
-        if consent.expires_at and consent.expires_at <= now:
+        expires_at = ensure_aware(consent.expires_at)
+        if expires_at is not None and expires_at <= now:
             updated = await consent_repository.update_user_consent_status(session, consent.id, ConsentStatus.EXPIRED.value)
             if updated:
                 await typed_event_bus.dispatch("consent.expired", payload={"user_id": str(consent.user_id), "consent_id": str(consent.id), "consent_type_id": str(consent.consent_type_id), "version": consent.version})

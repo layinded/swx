@@ -108,7 +108,7 @@ class AuthGuard(ABC):
     async def create_token(
         self,
         user: Any,
-        audience: str = None,
+        audience: Optional[str] = None,
         **claims
     ) -> str:
         """
@@ -175,7 +175,7 @@ class TokenProvider(ABC):
         pass
     
     @abstractmethod
-    async def revoke(self, token: str, ttl_seconds: int = None) -> bool:
+    async def revoke(self, token: str, ttl_seconds: Optional[int] = None) -> bool:
         """Revoke a token."""
         pass
 

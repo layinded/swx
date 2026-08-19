@@ -136,11 +136,11 @@ async def anonymize_audit_logs_before(session: AsyncSession, cutoff: datetime) -
 
 
 async def delete_data_subject_requests_before(session: AsyncSession, cutoff: datetime) -> int:
-    requests = list((await session.execute(select(DataSubjectRequest).where(DataSubjectRequest.requested_at < cutoff))).scalars().all())
-    for request in requests:
-        await session.delete(request)
+    from sqlalchemy import delete as sql_delete
+    stmt = sql_delete(DataSubjectRequest).where(DataSubjectRequest.requested_at < cutoff)
+    result = await session.execute(stmt)
     await session.commit()
-    return len(requests)
+    return int(result.rowcount or 0)
 
 
 def _assign(model: Any, data: dict[str, Any]) -> Any:

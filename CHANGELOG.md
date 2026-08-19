@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.0] - 2026-08-19
+
+### Fixed — SWX-007: MissingGreenlet on ApiKeyPublic.model_validate; SWX-009: naive-vs-aware datetime comparison causes async hang
+
+**SWX-007** (`validate_api_key`): `ApiKeyPublic.model_validate(key)` triggers
+`MissingGreenlet` because SQLAlchemy attempts lazy attribute access on a
+detached ORM object outside the async session context. The fix constructs
+`ApiKeyPublic` from explicit attributes instead of `model_validate`, which
+also eliminates any risk of lazy-loaded relationship access.
+
+**SWX-009** (async hang / `TypeError` in Python 3.12+): PostgreSQL
+`TIMESTAMP WITHOUT TIME ZONE` columns load as naive datetimes even when
+SQLModel declares `DateTime(timezone=True)`. Comparing a naive value with
+`utc_now()` (timezone-aware) raises `TypeError` in Python 3.12+. Inside an
+async context this `TypeError` doesn't propagate — it deadlocks the event
+loop, causing endpoints to hang indefinitely.
+
+**Fix**: Added `ensure_aware()` to `swx_core.utils.time` — a single helper
+that coerces naive datetimes to UTC-aware and passes aware datetimes through
+unchanged. All `expires_at` comparison sites now use `ensure_aware()` before
+comparing with `utc_now()`.
+
+| File | Change |
+|---|---|
+| `swx_core/utils/time.py` | Added `ensure_aware(dt)` helper |
+| `swx_core/services/auth/api_key_service.py` | Build `ApiKeyPublic` from explicit attrs (SWX-007); `ensure_aware` on `expires_at` and `last_used_at` (SWX-009) |
+| `swx_core/services/team_invitation_service.py` | `ensure_aware` on `invitation.expires_at` |
+| `swx_core/services/sso/sso_session_service.py` | `ensure_aware` on `sso_session.expires_at` |
+| `swx_core/services/consent_service.py` | `ensure_aware` on `consent.expires_at` (3 sites) |
+| `swx_core/services/organization_service.py` | `ensure_aware` on `invitation.expires_at` |
+| `swx_core/security/refresh_token_service.py` | Replaced manual `tzinfo` check with `ensure_aware` |
+| `swx_core/guards/api_key_guard.py` | Replaced manual `tzinfo` check with `ensure_aware` |
+
+Code-clarity improvements:
+- Removed unused `from datetime import datetime` from `consent_service.py`
+- Removed unused `datetime` from `organization_service.py` import
+- Removed unused `timezone` from `refresh_token_service.py` import
+
+### Added — N+1 query optimisations and LSP error fixes (from previous session)
+
+- 14 N+1 query fixes across repositories and services (bulk queries, eager loads, removed redundant refresh loops)
+- 18 files with pre-existing LSP type errors fixed (typed `Dict` annotations, `Optional` for nullable params, `pyright: ignore` for SQLAlchemy column access patterns)
+- `eager_loads` parameter added to `BaseRepository.find_one_by` and `BaseService` passthrough
+- `lazy="selectin"` on `BillingAccount.subscriptions` and `Subscription.account` relationships
+
+---
+
 ## [2.21.4] - 2026-08-18
 
 ### Fixed — SWX-009 validation handler now uses SwxJSONEncoder for final serialization (root cause)

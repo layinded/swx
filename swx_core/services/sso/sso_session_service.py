@@ -1,7 +1,7 @@
 # pyright: reportMissingImports=false, reportAttributeAccessIssue=false
 
 from uuid import UUID
-from swx_core.utils.time import utc_now
+from swx_core.utils.time import utc_now, ensure_aware
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,7 +64,8 @@ async def get_active_sessions(session: AsyncSession, user_id: UUID | None = None
 async def cleanup_expired_sessions(session: AsyncSession) -> list[SSOSessionPublic]:
     expired_sessions: list[SSOSessionPublic] = []
     for sso_session in await sso_repository.list_sessions(session, status="active", limit=500):
-        if sso_session.expires_at is None or sso_session.expires_at > utc_now():
+        expires_at = ensure_aware(sso_session.expires_at)
+        if expires_at is None or expires_at > utc_now():
             continue
         expired = await sso_repository.update_session(session, sso_session.id, {"status": "expired"})
         if expired is not None:

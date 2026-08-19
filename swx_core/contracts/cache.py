@@ -5,7 +5,7 @@ Defines the interface for cache drivers.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, List
+from typing import Any, Callable, Dict, Optional, List
 
 
 class CacheDriver(ABC):
@@ -31,7 +31,7 @@ class CacheDriver(ABC):
         pass
     
     @abstractmethod
-    async def set(self, key: str, value: Any, ttl: int = None) -> bool:
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """
         Set a value in cache.
         
@@ -113,7 +113,7 @@ class CacheDriver(ABC):
         pass
     
     @abstractmethod
-    async def set_many(self, items: Dict[str, Any], ttl: int = None) -> bool:
+    async def set_many(self, items: Dict[str, Any], ttl: Optional[int] = None) -> bool:
         """
         Set multiple values in cache.
         
@@ -163,7 +163,7 @@ class CacheDriver(ABC):
         pass
     
     @abstractmethod
-    async def remember(self, key: str, callback: callable, ttl: int = None) -> Any:
+    async def remember(self, key: str, callback: Callable[..., Any], ttl: Optional[int] = None) -> Any:  # pyright: ignore[reportMissingTypeArgument]
         """
         Get from cache or store callback result.
         

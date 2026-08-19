@@ -21,7 +21,7 @@ import jwt
 from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, delete
-from datetime import timedelta, timezone
+from datetime import timedelta
 from typing import Any, Optional, cast
 
 from swx_core.config.settings import settings
@@ -29,7 +29,7 @@ from swx_core.models.refresh_token import RefreshToken
 from swx_core.auth.core.jwt import create_token, TokenAudience
 from swx_core.security.encryption import encrypt_value, decrypt_value, is_encrypted
 from swx_core.utils.language_helper import translate
-from swx_core.utils.time import utc_now
+from swx_core.utils.time import utc_now, ensure_aware
 
 
 def _encrypt_token(plaintext: str) -> str:
@@ -171,11 +171,8 @@ async def verify_refresh_token(
                 detail=translate(request, "invalid_or_revoked_refresh_token"),
             )
 
-        token_exp = db_token.expires_at
-        if token_exp.tzinfo is None:
-            token_exp = token_exp.replace(tzinfo=timezone.utc)
-
-        if utc_now() > token_exp:
+        token_exp = ensure_aware(db_token.expires_at)
+        if token_exp is not None and utc_now() > token_exp:
             raise HTTPException(
                 status_code=401, detail=translate(request, "refresh_token_expired")
             )

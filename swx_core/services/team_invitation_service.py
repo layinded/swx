@@ -8,7 +8,7 @@ import secrets
 from datetime import timedelta
 from uuid import UUID
 from typing import List
-from swx_core.utils.time import utc_now
+from swx_core.utils.time import utc_now, ensure_aware
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,7 +103,7 @@ class TeamInvitationService:
         
         return invitation
     
-    async def accept_invitation(self, token: str, user_id: UUID) -> Team:
+    async def accept_invitation(self, token: str, user_id: UUID) -> Team | None:
         """
         Accept a team invitation.
         
@@ -121,7 +121,8 @@ class TeamInvitationService:
         if invitation.status != InvitationStatus.PENDING:
             raise HTTPException(400, f"Invitation already {invitation.status.value}")
         
-        if invitation.expires_at < utc_now():
+        invitation_expires = ensure_aware(invitation.expires_at)
+        if invitation_expires is not None and invitation_expires < utc_now():
             invitation.status = InvitationStatus.EXPIRED
             self.session.add(invitation)
             await self.session.commit()
@@ -284,7 +285,8 @@ class TeamInvitationService:
         if not member:
             raise HTTPException(403, "You are not a member of this team")
         
-        team_role = await self._get_team_role(member.team_role_id)
+        # TeamMember.team_role uses lazy="selectin" — already eager-loaded
+        team_role = member.team_role
         if not team_role:
             raise HTTPException(500, "Team role not found")
         
@@ -302,7 +304,8 @@ class TeamInvitationService:
         if not member:
             raise HTTPException(403, "You are not a member of this team")
         
-        team_role = await self._get_team_role(member.team_role_id)
+        # TeamMember.team_role uses lazy="selectin" — already eager-loaded
+        team_role = member.team_role
         if team_role and team_role.key == "owner":
             return
         
@@ -314,7 +317,8 @@ class TeamInvitationService:
         if not member:
             raise HTTPException(403, "You are not a member of this team")
         
-        team_role = await self._get_team_role(member.team_role_id)
+        # TeamMember.team_role uses lazy="selectin" — already eager-loaded
+        team_role = member.team_role
         if not team_role:
             raise HTTPException(500, "Team role not found")
         

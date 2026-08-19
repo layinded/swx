@@ -7,9 +7,9 @@ Implements API key-based authentication for internal services.
 import hashlib
 import secrets
 from typing import Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime
 
-from swx_core.utils.time import utc_now
+from swx_core.utils.time import utc_now, ensure_aware
 from fastapi import Request
 
 from swx_core.guards.base import BaseGuard, AuthenticatedUser
@@ -60,17 +60,15 @@ class APIKeyGuard(BaseGuard):
             )
             return None
         
-        # Check expiration
+        # SWX-009: ensure timezone-safe comparison
         if key_info.get("expires_at"):
             expires_at = key_info["expires_at"]
             if isinstance(expires_at, str):
                 expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
             
             now = utc_now()
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=timezone.utc)
-            
-            if now > expires_at:
+            expires_at = ensure_aware(expires_at)
+            if expires_at is not None and now > expires_at:
                 logger.info(f"Expired API key used: {key_info.get('key_id')}")
                 return None
         

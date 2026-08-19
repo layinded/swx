@@ -92,7 +92,7 @@ class BillingAccount(Base, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
     )
 
-    subscriptions: List["Subscription"] = Relationship(back_populates="account")
+    subscriptions: List["Subscription"] = Relationship(back_populates="account", sa_relationship_kwargs={"lazy": "selectin"})
 
 class Feature(Base, table=True):
     """
@@ -250,7 +250,7 @@ class Subscription(Base, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
     )
 
-    account: BillingAccount = Relationship(back_populates="subscriptions")
+    account: BillingAccount = Relationship(back_populates="subscriptions", sa_relationship_kwargs={"lazy": "selectin"})
 
 class UsageRecord(Base, table=True):
     """

@@ -79,8 +79,6 @@ async def add_scopes(session: AsyncSession, api_key_id: UUID, scopes: list[dict[
         session.add(s)
         created.append(s)
     await session.commit()
-    for s in created:
-        await session.refresh(s)
     return created
 
 async def remove_scopes(session: AsyncSession, api_key_id: UUID, scope_ids: list[UUID]) -> int:

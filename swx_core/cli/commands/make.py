@@ -391,6 +391,7 @@ def make_from_model(ctx: Context, model_name, module):
     _, file_name, _ = normalize_resource_names(model_name, "model")
     submodule_name = module + "." + file_name
     click.echo(f"DEBUG: Derived submodule name: {submodule_name}")
+    sub_mod: Any = None  # type: ignore[assignment]
     try:
         sub_mod = importlib.import_module(submodule_name)
         sub_mod = importlib.reload(sub_mod)
@@ -408,8 +409,8 @@ def make_from_model(ctx: Context, model_name, module):
                 raise ImportError(
                     f"Cannot create spec for {submodule_name} at {target_model_file}"
                 )
-            sub_mod = module_from_spec(spec)
-            spec.loader.exec_module(sub_mod)
+            sub_mod = module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(sub_mod)  # type: ignore[union-attr]
             sys.modules[submodule_name] = sub_mod
             click.echo(
                 f"DEBUG: Successfully manually loaded submodule: {submodule_name}"
@@ -641,6 +642,7 @@ def migration(model_name, existing, new):
     # Construct the migration message.
     message = f"Migration for model {model_name}"
 
+    command: list[str] = []
     if existing:
         command = ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, "revision", "--autogenerate", "-m", message]
     elif new:

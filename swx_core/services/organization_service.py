@@ -1,8 +1,8 @@
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import cast
 from uuid import UUID
-from swx_core.utils.time import utc_now
+from swx_core.utils.time import utc_now, ensure_aware
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,7 +106,8 @@ async def accept_invitation(session: AsyncSession, token: str, user_id: UUID) ->
         raise HTTPException(status_code=404, detail="Invitation not found")
     if invitation.status != InvitationStatus.PENDING.value:
         raise HTTPException(status_code=400, detail="Invitation is not pending")
-    if invitation.expires_at <= utc_now():
+    invitation_expires = ensure_aware(invitation.expires_at)
+    if invitation_expires is not None and invitation_expires <= utc_now():
         await organization_repository.update_invitation_status(session, invitation.id, InvitationStatus.EXPIRED.value)
         raise HTTPException(status_code=400, detail="Invitation has expired")
     member = await organization_repository.get_member(session, invitation.organization_id, user_id)

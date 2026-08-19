@@ -74,26 +74,30 @@ async def get_user_permissions(
     team_id: Optional[UUID] = None,
     domain: Optional[str] = None,
 ) -> List[Permission]:
-    """Get all permissions granted to a user through their roles."""
+    """Get all permissions granted to a user through their roles.
+
+    Uses a single JOIN query instead of two sequential queries for better performance.
+    Falls back to L1/L2 cache when USER_CACHE_ENABLED=True.
+    """
     # Check L1/L2 cache first
     if settings.USER_CACHE_ENABLED:
         cached = await user_auth_cache.get_permissions(str(user_id))
         if cached is not None:
             return [Permission(**p) for p in cached]
 
-    # Get user's roles
-    roles = await get_user_roles(session, user_id, team_id=team_id, domain=domain)
-    if not roles:
-        return []
-
-    role_ids = [role.id for role in roles]
-
-    # Get permissions for these roles
+    # Build a single query: User -> UserRole -> Role -> RolePermission -> Permission
+    team_filter = cast(Any, UserRole.team_id) == team_id if team_id is not None else cast(Any, UserRole.team_id).is_(None)
     query = (
         select(Permission)
-        .join(RolePermission)
-        .where(cast(Any, RolePermission.role_id).in_(role_ids))
+        .join(RolePermission)  # pyright: ignore[reportArgumentType]
+        .join(Role)  # pyright: ignore[reportArgumentType]
+        .join(UserRole)  # pyright: ignore[reportArgumentType]
+        .where(cast(Any, UserRole.user_id) == user_id)
+        .where(team_filter)
     )
+
+    if domain is not None:
+        query = query.where(cast(Any, Role.domain) == domain)
 
     result = await session.execute(query)
     permissions = list(result.scalars().unique().all())
