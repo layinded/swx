@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.1] - 2026-08-20
+
+### Fixed — SWX-010: InvalidAudienceError on PyJWT v2+ in deprecated get_current_user; migrated 5 routes to new auth module
+
+**SWX-010** (`InvalidAudienceError`): PyJWT v2 validates the `aud` claim by
+default when it's present in the token. The deprecated
+`swx_core.security.dependencies.get_current_user` called `jwt.decode()`
+without specifying `audience` or `options={"verify_aud": False}`, causing
+`jwt.InvalidAudienceError` for any token that includes an `aud` claim (which
+all tokens created by `create_token()` do since v2.0).
+
+The same bug existed in:
+- `security/refresh_token_service.py` — two `jwt.decode` calls on refresh
+  tokens (fragile: currently works because refresh tokens lack `aud`, but
+  would break if `aud` were ever added)
+- `guards/jwt_guard.py` — `validate_token()` called `jwt.decode()` without
+  `audience`, causing `InvalidAudienceError` before the manual audience
+  check could run
+
+**Fix**: Added `options={"verify_aud": False}` to all three affected
+`jwt.decode` call sites, matching the pattern already used in
+`rate_limit_middleware.py` and `enforce.py`.
+
+**Route migration**: Migrated all 5 user routes from the deprecated
+`swx_core.security.dependencies.get_current_user` to the new
+`swx_core.auth.user.dependencies.UserDep`, which supports both Bearer
+headers and httpOnly cookies via `BearerOrCookieAuth`.
+
+| File | Change |
+|---|---|
+| `swx_core/security/dependencies.py` | Added `options={"verify_aud": False}` to `jwt.decode` |
+| `swx_core/security/refresh_token_service.py` | Added `options={"verify_aud": False}` to both `jwt.decode` calls |
+| `swx_core/guards/jwt_guard.py` | Added `options={"verify_aud": False}` to `validate_token`; removed unused `HTTPException`/`status` imports |
+| `swx_core/routes/user/conversation_route.py` | Migrated to `UserDep`; simplified `_current_user_id` |
+| `swx_core/routes/user/feature_flag_route.py` | Migrated to `UserDep`; simplified `_current_user_id` |
+| `swx_core/routes/user/safety_route.py` | Migrated to `UserDep`; simplified `_current_user_id` |
+| `swx_core/routes/user/data_transfer_route.py` | Migrated to `UserDep`; simplified `_current_user_id` |
+| `swx_core/routes/user/sso_route.py` | Migrated to `UserDep`; simplified `_current_user_id` |
+
+---
+
 ## [2.22.0] - 2026-08-19
 
 ### Fixed — SWX-007: MissingGreenlet on ApiKeyPublic.model_validate; SWX-009: naive-vs-aware datetime comparison causes async hang

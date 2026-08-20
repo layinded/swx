@@ -1,11 +1,11 @@
 # pyright: reportMissingTypeArgument=false
 
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from swx_core.auth.user.dependencies import UserDep
 from swx_core.controllers.conversation_controller import (
     add_message_controller,
     archive_conversation_controller,
@@ -20,13 +20,13 @@ from swx_core.controllers.conversation_controller import (
 from swx_core.database.db import get_session
 from swx_core.models.conversation import ConversationCreate, ConversationPublic, ConversationUpdate
 from swx_core.models.conversation_message import ConversationMessageCreate, ConversationMessagePublic, ConversationMessageUpdate
-from swx_core.security.dependencies import get_current_user
+from swx_core.models.user import User
 
 router = APIRouter(prefix="/conversations", tags=["User - Conversations"])
 
 
-def _current_user_id(user: dict[str, Any] | Any) -> UUID:
-    return UUID(user["id"]) if isinstance(user, dict) else user.id
+def _current_user_id(user: User) -> UUID:
+    return user.id
 
 
 @router.get("", response_model=list[ConversationPublic])
@@ -35,7 +35,7 @@ async def list_my_conversations(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: User = Depends(UserDep),
 ):
     user_id = _current_user_id(user)
     return await list_conversations_controller(session, user_id=user_id, status=status, skip=skip, limit=limit)
@@ -45,7 +45,7 @@ async def list_my_conversations(
 async def create_conversation(
     body: ConversationCreate,
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: User = Depends(UserDep),
 ):
     user_id = _current_user_id(user)
     return await create_conversation_controller(session, user_id, body)
@@ -55,7 +55,7 @@ async def create_conversation(
 async def get_conversation(
     conversation_id: UUID,
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: User = Depends(UserDep),
 ):
     user_id = _current_user_id(user)
     return await get_conversation_controller(session, conversation_id, user_id)
@@ -66,7 +66,7 @@ async def update_conversation(
     conversation_id: UUID,
     body: ConversationUpdate,
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: User = Depends(UserDep),
 ):
     user_id = _current_user_id(user)
     return await update_conversation_controller(session, conversation_id, body, user_id)
@@ -76,7 +76,7 @@ async def update_conversation(
 async def archive_conversation(
     conversation_id: UUID,
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: User = Depends(UserDep),
 ):
     user_id = _current_user_id(user)
     return await archive_conversation_controller(session, conversation_id, user_id)
@@ -86,7 +86,7 @@ async def archive_conversation(
 async def delete_conversation(
     conversation_id: UUID,
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: User = Depends(UserDep),
 ):
     user_id = _current_user_id(user)
     return await delete_conversation_controller(session, conversation_id, user_id)
@@ -97,7 +97,7 @@ async def add_message(
     conversation_id: UUID,
     body: ConversationMessageCreate,
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: User = Depends(UserDep),
 ):
     user_id = _current_user_id(user)
     return await add_message_controller(session, conversation_id, body, user_id)
@@ -109,7 +109,7 @@ async def list_messages(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: User = Depends(UserDep),
 ):
     user_id = _current_user_id(user)
     return await list_messages_controller(session, conversation_id, user_id, skip=skip, limit=limit)
@@ -120,6 +120,6 @@ async def update_message(
     message_id: UUID,
     body: ConversationMessageUpdate,
     session: AsyncSession = Depends(get_session),
-    user: dict = Depends(get_current_user),
+    user: User = Depends(UserDep),
 ):
     return await update_message_controller(session, message_id, body)

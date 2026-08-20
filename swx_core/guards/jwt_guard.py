@@ -10,7 +10,7 @@ import hashlib
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from fastapi import Request, HTTPException, status
+from fastapi import Request
 
 from swx_core.guards.base import BaseGuard, AuthenticatedUser
 from swx_core.config.settings import settings
@@ -159,7 +159,8 @@ class JWTGuard(BaseGuard):
             payload = jwt.decode(
                 token,
                 self.secret_key,
-                algorithms=[self.algorithm]
+                algorithms=[self.algorithm],
+                options={"verify_aud": False},
             )
             return payload
         except jwt.ExpiredSignatureError:

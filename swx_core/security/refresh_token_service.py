@@ -152,6 +152,7 @@ async def verify_refresh_token(
             refresh_token,
             settings.REFRESH_SECRET_KEY,
             algorithms=[settings.PASSWORD_SECURITY_ALGORITHM],
+            options={"verify_aud": False},
         )
         email = payload.get("sub")
         auth_provider = payload.get("auth_provider", "local")
@@ -212,6 +213,7 @@ async def revoke_refresh_token(session: AsyncSession, refresh_token: str) -> boo
             refresh_token,
             settings.REFRESH_SECRET_KEY,
             algorithms=[settings.PASSWORD_SECURITY_ALGORITHM],
+            options={"verify_aud": False},
         )
         email = payload.get("sub")
     except Exception:

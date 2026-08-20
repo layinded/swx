@@ -56,10 +56,14 @@ async def get_current_user(session: SessionDep, token: TokenDep, request: Reques
     """
     try:
         # Decode JWT token and extract user information
+        # PyJWT v2 validates the aud claim by default when present.
+        # Since this deprecated module doesn't specify an expected audience,
+        # we must disable audience verification to avoid InvalidAudienceError.
         payload = jwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=[settings.PASSWORD_SECURITY_ALGORITHM],
+            options={"verify_aud": False},
         )
         token_data = TokenPayload(**payload)
     except (InvalidTokenError, ValidationError):
