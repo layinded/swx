@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 
 from swx_core.database.db import SessionDep
 from swx_core.models.team import TeamPublic, TeamCreate, TeamUpdate
-from swx_core.auth.user.dependencies import get_current_user, UserDep
+from swx_core.auth.user.dependencies import UserDep
 from swx_core.controllers import team_controller
 
 router = APIRouter(

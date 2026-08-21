@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.3] - 2026-08-21
+
+### Fixed — Double-wrapping bug in UserDep/AdminUserDep dependency injection
+
+All route files using `User = Depends(UserDep)` or `dict/object = Depends(get_current_admin_user)`
+were double-wrapping the dependency. `UserDep` is `Annotated[User, Depends(get_current_user)]` —
+the `Depends()` is already embedded in the type alias. Writing `User = Depends(UserDep)` wraps it
+a second time, which at best causes a FastAPI warning and at worst fails silently.
+
+Changed all occurrences to the correct pattern:
+- `user: User = Depends(UserDep)` → `user: UserDep` (5 user route files)
+- `current_user: User = Depends(get_current_user)` → `current_user: UserDep` (team_invitation_route)
+- `_admin: dict/object = Depends(get_current_admin_user)` → `_admin: AdminUserDep` (6 admin route files)
+
+Also reordered parameters so `UserDep`/`AdminUserDep` comes before `session: AsyncSession = Depends(get_session)`
+to prevent `SyntaxError: parameter without a default follows parameter with a default`.
+
+### Code clarity
+
+- Inlined `_current_user_id(user)` calls to `user.id` / `_admin.id` across all 5 user routes and
+  6 admin routes — the helper was a one-liner wrapping `.id`, now inlined for clarity
+- Removed `from swx_core.models.user import User` and `from uuid import UUID` where no longer needed
+  (feature_flag_route, safety_route, conversation_route, data_transfer_route, sso_route)
+- Removed unused `get_current_user` import from workspace_route.py
+- Removed unused `HTTPException` import from admin route files where `AdminUserDep` replaced
+  `Depends(get_current_admin_user)`
+- `team_invitation_route.py`: migrated from `get_current_user` to `UserDep`, removed unused
+  `HTTPException` and `User` imports, reordered params for consistency
+
+| File | Change |
+|---|---|
+| `swx_core/routes/user/conversation_route.py` | `user: UserDep`, inlined `user.id`, removed `_current_user_id` and `User` import |
+| `swx_core/routes/user/feature_flag_route.py` | `user: UserDep`, inlined `user.id`, removed `_current_user_id`, `User`, `UUID` imports |
+| `swx_core/routes/user/safety_route.py` | `user: UserDep`, inlined `user.id`, removed `_current_user_id` and `User` import |
+| `swx_core/routes/user/data_transfer_route.py` | `user: UserDep`, inlined `user.id`, removed `_current_user_id` and `User` import |
+| `swx_core/routes/user/sso_route.py` | `user: UserDep`, inlined `user.id`, removed `_current_user_id`, `User`, `UUID` imports |
+| `swx_core/routes/user/workspace_route.py` | Removed unused `get_current_user` import |
+| `swx_core/routes/team_invitation_route.py` | Migrated to `UserDep`, removed `HTTPException` and `User` imports |
+| `swx_core/routes/admin/conversation_route.py` | `AdminUserDep` type safety, param reorder |
+| `swx_core/routes/admin/sso_route.py` | `AdminUserDep` type safety, param reorder |
+| `swx_core/routes/admin/status_route.py` | `AdminUserDep`, removed `dict["id"]` hack |
+| `swx_core/routes/admin/data_transfer_route.py` | `AdminUserDep` type safety, param reorder |
+| `swx_core/routes/admin/safety_route.py` | `AdminUserDep` type safety, param reorder |
+| `swx_core/routes/admin/feature_flag_route.py` | `AdminUserDep` type safety, param reorder |
+
+---
+
 ## [2.22.2] - 2026-08-21
 
 ### Fixed — SWX-011: Missing `Any` import crashed module load; SWX-012: Admin/user route prefix collision

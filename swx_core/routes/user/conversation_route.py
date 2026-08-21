@@ -20,99 +20,86 @@ from swx_core.controllers.conversation_controller import (
 from swx_core.database.db import get_session
 from swx_core.models.conversation import ConversationCreate, ConversationPublic, ConversationUpdate
 from swx_core.models.conversation_message import ConversationMessageCreate, ConversationMessagePublic, ConversationMessageUpdate
-from swx_core.models.user import User
 
 router = APIRouter(prefix="/conversations", tags=["User - Conversations"])
 
 
-def _current_user_id(user: User) -> UUID:
-    return user.id
-
-
 @router.get("", response_model=list[ConversationPublic])
 async def list_my_conversations(
+    user: UserDep,
+    session: AsyncSession = Depends(get_session),
     status: str | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(UserDep),
 ):
-    user_id = _current_user_id(user)
-    return await list_conversations_controller(session, user_id=user_id, status=status, skip=skip, limit=limit)
+    return await list_conversations_controller(session, user_id=user.id, status=status, skip=skip, limit=limit)
 
 
 @router.post("", response_model=ConversationPublic, status_code=201)
 async def create_conversation(
+    user: UserDep,
     body: ConversationCreate,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(UserDep),
 ):
-    user_id = _current_user_id(user)
-    return await create_conversation_controller(session, user_id, body)
+    return await create_conversation_controller(session, user.id, body)
 
 
 @router.get("/{conversation_id}", response_model=ConversationPublic)
 async def get_conversation(
+    user: UserDep,
     conversation_id: UUID,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(UserDep),
 ):
-    user_id = _current_user_id(user)
-    return await get_conversation_controller(session, conversation_id, user_id)
+    return await get_conversation_controller(session, conversation_id, user.id)
 
 
 @router.put("/{conversation_id}", response_model=ConversationPublic)
 async def update_conversation(
+    user: UserDep,
     conversation_id: UUID,
     body: ConversationUpdate,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(UserDep),
 ):
-    user_id = _current_user_id(user)
-    return await update_conversation_controller(session, conversation_id, body, user_id)
+    return await update_conversation_controller(session, conversation_id, body, user.id)
 
 
 @router.put("/{conversation_id}/archive", response_model=ConversationPublic)
 async def archive_conversation(
+    user: UserDep,
     conversation_id: UUID,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(UserDep),
 ):
-    user_id = _current_user_id(user)
-    return await archive_conversation_controller(session, conversation_id, user_id)
+    return await archive_conversation_controller(session, conversation_id, user.id)
 
 
 @router.delete("/{conversation_id}", response_model=ConversationPublic)
 async def delete_conversation(
+    user: UserDep,
     conversation_id: UUID,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(UserDep),
 ):
-    user_id = _current_user_id(user)
-    return await delete_conversation_controller(session, conversation_id, user_id)
+    return await delete_conversation_controller(session, conversation_id, user.id)
 
 
 @router.post("/{conversation_id}/messages", response_model=ConversationMessagePublic, status_code=201)
 async def add_message(
+    user: UserDep,
     conversation_id: UUID,
     body: ConversationMessageCreate,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(UserDep),
 ):
-    user_id = _current_user_id(user)
-    return await add_message_controller(session, conversation_id, body, user_id)
+    return await add_message_controller(session, conversation_id, body, user.id)
 
 
 @router.get("/{conversation_id}/messages", response_model=list[ConversationMessagePublic])
 async def list_messages(
+    user: UserDep,
     conversation_id: UUID,
+    session: AsyncSession = Depends(get_session),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(UserDep),
 ):
-    user_id = _current_user_id(user)
-    return await list_messages_controller(session, conversation_id, user_id, skip=skip, limit=limit)
+    return await list_messages_controller(session, conversation_id, user.id, skip=skip, limit=limit)
 
 
 @router.put("/messages/{message_id}", response_model=ConversationMessagePublic)
@@ -120,6 +107,5 @@ async def update_message(
     message_id: UUID,
     body: ConversationMessageUpdate,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(UserDep),
 ):
     return await update_message_controller(session, message_id, body)
