@@ -2,6 +2,61 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.2] - 2026-08-21
+
+### Fixed — SWX-011: Missing `Any` import crashed module load; SWX-012: Admin/user route prefix collision
+
+**SWX-011** (`NameError: name 'Any' is not defined`): The migration of
+`feature_flag_route.py` to `UserDep` in v2.22.1 removed the `from typing
+import Any` import without adding it back, causing `NameError` at import
+time. Since `swx_core.routes.user` is a package, this crashed the entire
+user routes module, preventing all user endpoints (including
+`/api/conversations`) from loading.
+
+**SWX-012** (admin/user route prefix collision): Six admin routes
+(`/conversations`, `/sso`, `/status`, `/data-transfer`, `/safety`,
+`/feature-flags`) used prefixes without the `/admin/` segment, colliding
+with the corresponding user routes. Because the admin router is registered
+first, admin auth middleware intercepted user requests to these paths,
+rejecting user tokens with `INVALID_ADMIN_TOKEN` / "Audience doesn't
+match".
+
+**Fix**: Added `/admin/` prefix to all six colliding admin routes. Also
+removed duplicate `sso_router` includes from both `admin/__init__.py`
+and `user/__init__.py`.
+
+### Fixed — Code clarity: AdminUserDep type safety, deprecated module removal
+
+- Replaced `_admin: dict = Depends(get_current_admin_user)` and
+  `_admin: object = Depends(get_current_admin_user)` with
+  `_admin: AdminUserDep` in all 6 admin routes (conversation, sso, status,
+  data_transfer, safety, feature_flag). This eliminates the
+  `UUID(_admin["id"]) if isinstance(_admin, dict) else _admin.id` hack
+  in `status_route.py`, using `_admin.id` directly since `AdminUserDep`
+  returns `AdminUser`.
+- Reordered parameters so `_admin: AdminUserDep` comes before
+  `session: AsyncSession = Depends(get_session)` in all affected routes,
+  preventing `SyntaxError: parameter without a default follows parameter
+  with a default`.
+- Removed `swx_core/security/dependencies.py` (deprecated module). All
+  consumers have been migrated to `swx_core.auth.user.dependencies` and
+  `swx_core.auth.admin.dependencies`.
+
+| File | Change |
+|---|---|
+| `swx_core/routes/user/feature_flag_route.py` | Added `from typing import Any` (SWX-011) |
+| `swx_core/routes/admin/conversation_route.py` | Prefix → `/admin/conversations`; `AdminUserDep` type safety |
+| `swx_core/routes/admin/sso_route.py` | Prefix → `/admin/sso`; `AdminUserDep` type safety |
+| `swx_core/routes/admin/status_route.py` | Prefix → `/admin/status`; `AdminUserDep`; removed `dict["id"]` hack |
+| `swx_core/routes/admin/data_transfer_route.py` | Prefix → `/admin/data-transfer`; `AdminUserDep` type safety |
+| `swx_core/routes/admin/safety_route.py` | Prefix → `/admin/safety`; `AdminUserDep` type safety |
+| `swx_core/routes/admin/feature_flag_route.py` | Prefix → `/admin/feature-flags`; `AdminUserDep` type safety |
+| `swx_core/routes/admin/__init__.py` | Removed duplicate `sso_router` include |
+| `swx_core/routes/user/__init__.py` | Removed duplicate `sso_router` include |
+| `swx_core/security/dependencies.py` | Removed (deprecated, zero consumers) |
+
+---
+
 ## [2.22.1] - 2026-08-20
 
 ### Fixed — SWX-010: InvalidAudienceError on PyJWT v2+ in deprecated get_current_user; migrated 5 routes to new auth module
