@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.9] - 2026-08-24
+
+### Fixed — SWX-022: Webhook paid-plan fulfilment broken by allow_paid gate
+
+v2.22.8 (SWX-015) added `allow_paid: bool = False` to
+`SubscriptionService.create_subscription()` to prevent users from
+directly activating paid plans. This was correct, but both the
+Paystack and Flutterwave webhooks call `create_subscription()`
+without `allow_paid=True`, causing every legitimate paid-plan purchase
+to raise HTTP 402 — which the webhook's catch-all `except` block
+swallows and returns `{"status": "success", "message": "Processing failed"}`
+to the payment provider (HTTP 200), preventing retries.
+
+The user pays, the plan never activates, and the error is only visible
+in application logs.
+
+**Fix**: Pass `allow_paid=True` in both `paystack_webhook.py` and
+`flutterwave_webhook.py` — these are verified payment flows that the
+parameter's own docstring explicitly describes as the intended callers.
+
+### Changed Files
+
+- `swx_core/webhooks/paystack_webhook.py` — `allow_paid=True`
+- `swx_core/webhooks/flutterwave_webhook.py` — `allow_paid=True`
+- `pyproject.toml` — version bumped to 2.22.9
+
 ## [2.22.8] - 2026-08-24
 
 ### Security — GDPR Lifecycle Hardening & Code-Quality Audit
