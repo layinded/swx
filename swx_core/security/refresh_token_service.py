@@ -26,7 +26,6 @@ from typing import Any, Optional, cast
 
 from swx_core.config.settings import settings
 from swx_core.models.refresh_token import RefreshToken
-from swx_core.auth.core.jwt import create_token, TokenAudience
 from swx_core.security.encryption import encrypt_value, decrypt_value, is_encrypted
 from swx_core.utils.language_helper import translate
 from swx_core.utils.time import utc_now, ensure_aware
@@ -73,6 +72,8 @@ def create_access_token(
     Returns:
         str: The encoded JWT access token with audience="user".
     """
+    from swx_core.auth.core.jwt import create_token, TokenAudience
+
     return create_token(
         subject=email,
         audience=TokenAudience.USER,
@@ -81,6 +82,62 @@ def create_access_token(
         auth_provider=auth_provider,
         billing_plan=billing_plan,
     )
+
+
+def create_mfa_token(email: str, user_id: str, expires_delta: timedelta) -> str:
+    """
+    Generate a short-lived JWT token for MFA challenge verification.
+
+    This token is issued after successful password authentication when
+    MFA is enabled. It authorizes the holder to complete the MFA challenge
+    within the expiry window. Audience is "mfa" so it cannot be used as a
+    regular access token.
+
+    Args:
+        email (str): The email of the authenticated user.
+        user_id (str): The UUID of the authenticated user.
+        expires_delta (timedelta): Short expiry (default 5 minutes).
+
+    Returns:
+        str: The encoded JWT token with audience="mfa".
+    """
+    from swx_core.auth.core.jwt import create_token, TokenAudience
+
+    return create_token(
+        subject=email,
+        audience=TokenAudience.MFA,
+        expires_delta=expires_delta,
+    ) + "." + user_id
+
+
+def verify_mfa_token(token: str) -> tuple[str, str] | None:
+    """
+    Decode and validate an MFA challenge token.
+
+    Returns:
+        tuple[str, str] | None: (email, user_id) if valid, None otherwise.
+    """
+    try:
+        from swx_core.auth.core.jwt import TokenAudience
+
+        parts = token.rsplit(".", 1)
+        if len(parts) != 2:
+            return None
+        jwt_part, user_id = parts
+        payload = jwt.decode(
+            jwt_part,
+            settings.SECRET_KEY,
+            algorithms=[settings.PASSWORD_SECURITY_ALGORITHM],
+            audience=TokenAudience.MFA.value,
+        )
+        if payload.get("aud") != TokenAudience.MFA.value:
+            return None
+        email = payload.get("sub")
+        if not email:
+            return None
+        return email, user_id
+    except Exception:
+        return None
 
 
 async def create_refresh_token(

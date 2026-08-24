@@ -23,7 +23,6 @@ from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.config.settings import settings
-from swx_core.auth.core.jwt import create_token, decode_token, TokenAudience
 
 # Password hashing context (bcrypt)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -84,6 +83,8 @@ async def generate_password_reset_token(
 
     # Set token expiration time from settings (DB -> .env -> default)
     from swx_core.services.settings_helper import get_token_expiration
+    from swx_core.auth.core.jwt import create_token, TokenAudience
+
     expires_delta = await get_token_expiration(session, "password_reset")
 
     # Create token with explicit audience and separate secret key
@@ -111,6 +112,8 @@ def verify_password_reset_token(token: str) -> str | None:
         str | None: The email associated with the reset token if valid, otherwise None.
     """
     try:
+        from swx_core.auth.core.jwt import decode_token, TokenAudience
+
         # Decode token using separate secret key and validate audience
         decoded_token = decode_token(
             token,

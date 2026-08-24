@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.10] - 2026-08-24
+
+### Fixed — SWX-023: Circular import broke entire `/api/auth/*` surface
+
+Two circular-import chains prevented the auth module from loading at
+application startup, making login (and every auth-dependent endpoint)
+return 500:
+
+1. `swx_core.security.password_security` → `swx_core.auth.core.jwt`
+   → `swx_core.auth.user` → `swx_core.repositories.user_repository`
+   → back to `password_security`
+
+2. `swx_core.security.refresh_token_service` → `swx_core.auth.core.jwt`
+   → `swx_core.auth.__init__` → `swx_core.auth.user.dependencies`
+   → back to `refresh_token_service`
+
+**Fix**: Replace top-level `from swx_core.auth.core.jwt import …` in
+both `password_security.py` and `refresh_token_service.py` with lazy
+imports inside the functions that use those symbols. This breaks the
+cycle at module-load time while keeping the public API identical —
+all symbols remain available via `from swx_core.security import …`.
+
+Also fixed `AsyncAdaptedQueuePool` import in `db.py` (moved from
+`sqlalchemy.ext.asyncio`, where it does not exist, to the correct
+`sqlalchemy.pool`).
+
+### Changed Files
+
+- `swx_core/security/password_security.py` — lazy-import `create_token`, `decode_token`, `TokenAudience` inside `generate_password_reset_token()` and `verify_password_reset_token()`
+- `swx_core/security/refresh_token_service.py` — lazy-import `create_token`, `TokenAudience` inside `create_access_token()`, `create_mfa_token()`, and `verify_mfa_token()`
+- `swx_core/database/db.py` — `AsyncAdaptedQueuePool` import from `sqlalchemy.pool`
+- `swx_core/version.py` — patch bump 6 → 10
+- `pyproject.toml` — version 2.22.10
+
 ## [2.22.9] - 2026-08-24
 
 ### Fixed — SWX-022: Webhook paid-plan fulfilment broken by allow_paid gate

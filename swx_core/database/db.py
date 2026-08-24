@@ -23,7 +23,7 @@ from fastapi import Depends
 from sqlalchemy import event, Engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool, QueuePool, SingletonThreadPool, StaticPool
+from sqlalchemy.pool import NullPool, QueuePool, SingletonThreadPool, StaticPool, AsyncAdaptedQueuePool
 from sqlmodel import Session, create_engine
 
 from swx_core.config.settings import settings
@@ -88,6 +88,8 @@ def get_async_engine():
     global _async_engine
     if _async_engine is None:
         pool_class = _resolve_pool_class()
+        if pool_class is QueuePool:
+            pool_class = AsyncAdaptedQueuePool
         pool_kwargs: dict[str, object] = {}
         if pool_class is not NullPool:
             pool_kwargs = {
