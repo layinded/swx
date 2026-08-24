@@ -12,6 +12,10 @@ from swx_core.repositories import sso_repository
 from swx_core.repositories import status_repository
 from swx_core.repositories import data_transfer_repository
 from swx_core.repositories import feature_flag_repository
+from swx_core.repositories import mfa_repository
+from swx_core.repositories import social_account_repository
+from swx_core.repositories import erasure_repository
+from swx_core.repositories import gdpr_export_repository
 
 __all__ = [
     "BaseRepository",
@@ -22,4 +26,8 @@ __all__ = [
     "status_repository",
     "data_transfer_repository",
     "feature_flag_repository",
+    "mfa_repository",
+    "social_account_repository",
+    "erasure_repository",
+    "gdpr_export_repository",
 ]

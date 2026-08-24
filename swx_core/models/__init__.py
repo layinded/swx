@@ -67,6 +67,7 @@ from swx_core.models.token import (
     NewPassword,
     RefreshTokenRequest,
     LogoutRequest,
+    LoginResponse,
 )
 from swx_core.models.admin_user import (
     AdminUser,
@@ -147,6 +148,12 @@ from swx_core.models.sso_session import (
     SSOSessionUpdate,
     SSOSessionPublic,
 )
+from swx_core.models.social_account import (
+    SocialAccount,
+    SocialAccountPublic,
+    SocialAccountLinkRequest,
+    SocialAccountUnlinkRequest,
+)
 from swx_core.models.service_component import (
     ServiceComponent,
     ServiceComponentCreate,
@@ -186,6 +193,24 @@ from swx_core.models.flag_evaluation import (
     FlagEvaluation,
     FlagEvaluationCreate,
     FlagEvaluationPublic,
+)
+from swx_core.models.mfa import (
+    MfaRecoveryCode,
+    MfaEnrollRequest,
+    MfaVerifyEnrollRequest,
+    MfaChallengeRequest,
+    MfaRecoverRequest,
+    MfaDisableRequest,
+    MfaEnrollResponse,
+    MfaChallengeResponse,
+    MfaStatusResponse,
+    MfaStepUpRequest,
+    MfaStepUpResponse,
+)
+from swx_core.models.erasure_certificate import (
+    ErasureCertificate,
+    ErasureCertificateCreate,
+    ErasureCertificatePublic,
 )
 
 __all__ = [
@@ -239,6 +264,7 @@ __all__ = [
     "NewPassword",
     "RefreshTokenRequest",
     "LogoutRequest",
+    "LoginResponse",
     # Refresh Token
     "RefreshToken",
     "RefreshTokenCreate",
@@ -312,6 +338,11 @@ __all__ = [
     "SSOSessionCreate",
     "SSOSessionUpdate",
     "SSOSessionPublic",
+    # Social Account
+    "SocialAccount",
+    "SocialAccountPublic",
+    "SocialAccountLinkRequest",
+    "SocialAccountUnlinkRequest",
     # Service Component (Status Page)
     "ServiceComponent",
     "ServiceComponentCreate",
@@ -345,4 +376,20 @@ __all__ = [
     "FlagEvaluation",
     "FlagEvaluationCreate",
     "FlagEvaluationPublic",
+    # MFA
+    "MfaRecoveryCode",
+    "MfaEnrollRequest",
+    "MfaVerifyEnrollRequest",
+    "MfaChallengeRequest",
+    "MfaRecoverRequest",
+    "MfaDisableRequest",
+    "MfaEnrollResponse",
+    "MfaChallengeResponse",
+    "MfaStatusResponse",
+    "MfaStepUpRequest",
+    "MfaStepUpResponse",
+    # Erasure Certificate
+    "ErasureCertificate",
+    "ErasureCertificateCreate",
+    "ErasureCertificatePublic",
 ]

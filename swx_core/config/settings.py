@@ -20,9 +20,9 @@ Configuration Sections:
 """
 
 import secrets
-from typing import ClassVar
-from typing import Literal
-from pydantic import Field, field_validator, computed_field, AliasChoices
+from typing import ClassVar, Literal
+
+from pydantic import AliasChoices, Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -111,8 +111,12 @@ class Settings(BaseSettings):
         default_factory=lambda: secrets.token_urlsafe(32),
         description="Secret key for JWT tokens",
     )
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # 30 days
+    MFA_CHALLENGE_EXPIRE_MINUTES: int = 5
+    EMAIL_VERIFICATION_ENABLED: bool = True
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+    SOCIAL_ACCOUNT_LINKING_ENABLED: bool = True
     REFRESH_SECRET_KEY: str = Field(
         default_factory=lambda: secrets.token_urlsafe(32),
         description="Secret key for refresh tokens",
@@ -447,8 +451,8 @@ class Settings(BaseSettings):
 
     # Auth Cache Configuration
     USER_CACHE_ENABLED: bool = Field(
-        default=False,
-        description="Enable Redis-backed L1/L2 cache for user auth lookups (backward compatible)",
+        default=True,
+        description="Enable Redis-backed L1/L2 cache for user auth lookups (requires Redis)",
     )
     USER_CACHE_TTL: int = Field(
         default=300,
@@ -632,9 +636,11 @@ class Settings(BaseSettings):
     LOCAL_CURRENCY_ENABLED: bool = True
     PAYSTACK_SECRET_KEY: str = "${PAYSTACK_SECRET_KEY}"
     PAYSTACK_PUBLIC_KEY: str = "${PAYSTACK_PUBLIC_KEY}"
+    PAYSTACK_WEBHOOK_SECRET: str = "${PAYSTACK_WEBHOOK_SECRET}"
     FLUTTERWAVE_SECRET_KEY: str = "${FLUTTERWAVE_SECRET_KEY}"
     FLUTTERWAVE_PUBLIC_KEY: str = "${FLUTTERWAVE_PUBLIC_KEY}"
     FLUTTERWAVE_ENCRYPTION_KEY: str = "${FLUTTERWAVE_ENCRYPTION_KEY}"
+    FLUTTERWAVE_WEBHOOK_SECRET: str = "${FLUTTERWAVE_WEBHOOK_SECRET}"
     MPESA_CONSUMER_KEY: str = "${MPESA_CONSUMER_KEY}"
     MPESA_CONSUMER_SECRET: str = "${MPESA_CONSUMER_SECRET}"
     MPESA_PASSKEY: str = "${MPESA_PASSKEY}"
@@ -643,6 +649,49 @@ class Settings(BaseSettings):
     EXCHANGE_RATE_SYNC_INTERVAL_HOURS: int = 6
     DEFAULT_TAX_JURISDICTION: str = "NG"
     DEFAULT_BASE_CURRENCY: str = "USD"
+
+    QUOTA_WINDOW_HOURS: int = Field(default=5, description="Rolling usage window size in hours")
+    QUOTA_WINDOW_DEFAULT_TOKENS: int = Field(default=100_000, description="Default token quota per window")
+    QUOTA_MONTHLY_DEFAULT_TOKENS: int = Field(default=1_000_000, description="Default monthly token quota")
+    QUOTA_WINDOW_MAX_RESETS: int = Field(default=1, description="Max window resets per window")
+    QUOTA_DAILY_MAX_RESETS: int = Field(default=3, description="Max window resets per day")
+
+    USAGE_METERING_DEFAULT_CURRENCY: str = Field(
+        default="NGN", description="Default currency for usage metering wallet debits"
+    )
+    USAGE_METERING_DEFAULT_MODEL_KEY: str = Field(
+        default="default", description="Fallback model key when model is not in pricing table"
+    )
+    USAGE_METERING_MODEL_PRICING: dict = Field(
+        default_factory=lambda: {
+            "gpt-4": {"input": 30_000, "output": 60_000},
+            "gpt-4o": {"input": 2_500, "output": 10_000},
+            "gpt-3.5-turbo": {"input": 500, "output": 1_500},
+            "claude-3-opus": {"input": 15_000, "output": 75_000},
+            "claude-3-sonnet": {"input": 3_000, "output": 15_000},
+            "claude-3-haiku": {"input": 250, "output": 1_250},
+            "default": {"input": 1_000, "output": 3_000},
+        },
+        description="Per-model nano pricing for usage metering (input/output per token)",
+    )
+
+    QUOTA_MONTHLY_TTL_DAYS: int = Field(default=32, description="TTL in days for monthly quota Redis keys")
+    QUOTA_DAILY_TTL_HOURS: int = Field(default=36, description="TTL in hours for daily reset counter Redis keys")
+    QUOTA_WINDOW_TTL_BUFFER_HOURS: int = Field(default=1, description="Extra hours added to window key TTL as buffer")
+    WEBHOOK_IDEMPOTENCY_TTL: int = Field(default=604800, description="TTL in seconds for webhook idempotency Redis keys (default: 7 days)")
+    WEBHOOK_RETENTION_DAYS: int = Field(default=30, description="Days to retain inbound webhook delivery records")
+
+    SWX_AUDIT_RETENTION_POLICIES: dict = Field(
+        default_factory=lambda: {
+            "auth": 90,
+            "billing": 365,
+            "admin": 180,
+            "gateway": 30,
+            "pii": 2555,
+            "usage": 90,
+        },
+        description="Per-log-type retention days (hot DB retention).",
+    )
 
     MONITORING_ENABLED: bool = Field(
         default=False, description="Enable Sentry monitoring"
@@ -755,6 +804,15 @@ COMPLIANCE_DEFAULT_RETENTION_DAYS: int = 365
 COMPLIANCE_AUTO_MASK_IP: bool = True
 COMPLIANCE_AUTO_REDACT_FIELDS: bool = True
 COMPLIANCE_DATA_SUBJECT_REQUEST_EXPIRY_DAYS: int = 30
+
+# GDPR Settings
+GDPR_ENABLED: bool = True
+GDPR_DELETION_GRACE_DAYS: int = 30
+GDPR_EXPORT_FORMAT: str = "json"
+GDPR_ANONYMIZE_ON_DELETE: bool = True
+GDPR_SOLE_OWNER_BLOCK: bool = True
+GDPR_EXPORT_EXPIRY_DAYS: int = 7
+GDPR_MIN_VERIFICATION_DAYS: int = 1
 
 # Notification Settings
 NOTIFICATION_ENABLED: bool = True

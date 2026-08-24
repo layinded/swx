@@ -416,3 +416,35 @@ async def cache_refresh_handler(session: AsyncSession, payload: Dict[str, Any]) 
     except Exception as e:
         logger.error(f"Failed to refresh cache: {e}")
         return {"refreshed": False, "cache_type": cache_type, "error": str(e)}
+
+
+async def compliance_data_subject_delete_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
+    request_id_str = payload.get("request_id")
+    if not request_id_str:
+        raise ValueError("request_id is required")
+
+    from swx_core.services.compliance.erasure_service import process_erasure_for_request
+
+    request_id = uuid.UUID(str(request_id_str))
+    user_id_raw = payload.get("user_id")
+    if not user_id_raw:
+        raise ValueError("user_id is required")
+    user_id = uuid.UUID(str(user_id_raw))
+
+    logger.info(f"Processing data subject deletion for request {request_id}, user {user_id}")
+
+    result = await process_erasure_for_request(session, request_id, user_id)
+
+    logger.info(f"Data subject deletion completed for request {request_id}: {result.get('status')}")
+    return result
+
+
+async def compliance_retention_apply_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
+    resource_type = payload.get("resource_type")
+
+    from swx_core.services.compliance.retention_service import apply_retention
+
+    logger.info(f"Applying retention policy for resource_type={resource_type}")
+    result = await apply_retention(session, resource_type=resource_type)
+    logger.info(f"Retention applied: {result}")
+    return {"status": "completed", "resource_type": resource_type, "result": result}

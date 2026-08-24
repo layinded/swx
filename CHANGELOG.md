@@ -2,6 +2,756 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.8] - 2026-08-24
+
+### Security — GDPR Lifecycle Hardening & Code-Quality Audit
+
+Post-implementation audit of the GDPR right-to-erasure pipeline. Five bugs
+found and fixed; no remaining known issues.
+
+#### Bug: Refresh tokens not deleted after user anonymization
+
+`execute_erasure()` read `user.email` after calling `anonymize_user()`, which
+overwrites the email to `erased_{id}@erased.invalid`. The refresh-token table
+filters by `user_email`, so tokens were never found and never deleted. Fixed
+by capturing email before anonymization via a new `get_user_email()` repository
+function (CSR-compliant).
+
+#### Bug: Conversation messages deleted after parent conversations
+
+`delete_user_related_data()` listed `swx_conversations` in its hard-delete spec
+before deleting conversation messages. Since messages have a foreign key to
+conversations, the parent rows were deleted first, making the message deletion
+a no-op. Fixed by moving conversation-message deletion to the front of the
+batch (Step 1), before all other hard-deletes (Step 2).
+
+#### Bug: N+1 queries in sole-owner guard
+
+`find_sole_owned_organizations()` and `find_sole_owned_teams()` issued one
+COUNT query per org/team — classic N+1. Rewritten as correlated scalar
+subqueries (`SELECT ... WHERE member_count <= 1`) so each check is a single
+SQL statement.
+
+#### Bug: 27+ individual commits per erasure
+
+`_delete_rows_by_column()` and `_anonymize_column_by_user_id()` each committed
+independently, meaning one erasure operation produced 27+ database commits.
+Refactored to batch all deletes/anonymizes into a single `session.commit()` at
+the end of `delete_user_related_data()`. Conversation messages are included in
+the same batch.
+
+#### Bug: Unauthorized access to erasure certificates
+
+`GET /user/gdpr/erasure-certificates/{certificate_id}` was missing the
+`current_user: UserDep` dependency, allowing any authenticated user to view any
+certificate by UUID. Added authentication dependency.
+
+#### Fix: Audit log export incomplete
+
+`gdpr_export_repository.get_user_audit_logs()` only queried by `actor_id`.
+The erasure policy anonymizes both `actor_id` and `resource_id`. Added `OR`
+condition so audit logs where the user is the `resource_id` are also exported.
+
+#### Fix: Unprotected conversations export
+
+The conversations section in `export_user_data_zip()` was not wrapped in
+try/except, so a single table failure would crash the entire ZIP export.
+Added error handling consistent with the other sections.
+
+### Changed Files
+
+- `swx_core/repositories/erasure_repository.py` — N+1→subquery, batch commit,
+  FK-safe delete order, `get_user_email()`, `_anonymize_audit_logs()` (private)
+- `swx_core/services/compliance/erasure_service.py` — email captured before
+  anonymization via `get_user_email()`
+- `swx_core/services/data_transfer/gdpr_service.py` — conversations wrapped
+  in try/except
+- `swx_core/repositories/gdpr_export_repository.py` — audit logs query both
+  actor_id and resource_id
+- `swx_core/routes/user/gdpr_route.py` — auth dependency on certificate endpoint
+- `swx_core/security/__init__.py` — lazy imports to break circular dependency
+- `tests/services/compliance/test_erasure_service.py` — updated for
+  `get_user_email` mock
+- `pyproject.toml` — version bumped to 2.22.8
+
+## [2.22.7] - 2026-08-24
+
+### Security — Phase 0 P0 Hardening
+
+Six critical security fixes addressing authentication, authorization, and
+billing integrity vulnerabilities identified in the v2.22.6 platform audit.
+
+#### T-001: Remove user-facing wallet credit/debit/transfer/convert routes
+
+Removed `POST /wallet/credit`, `POST /wallet/debit`, `POST /wallet/transfer`,
+and `POST /wallet/convert` from `billing_route.py`. These endpoints allowed
+any authenticated user to arbitrarily credit their own wallet. Wallet
+mutations are now only available to internal services and webhook handlers.
+Also added `UserDep` authentication to `/payments/verify`.
+
+#### T-002: Gate subscription creation to free plans only
+
+Added `allow_paid: bool = False` parameter to `SubscriptionService.create_subscription()`.
+By default, paid-plan subscriptions are rejected with 402. Internal callers
+(webhook handlers) must explicitly pass `allow_paid=True`. Plan lookup now
+uses `billing_repository.get_plan_by_key()` (CSR-compliant).
+
+#### T-003: Add token blacklist check to primary auth path
+
+Added `_get_token_blacklist()` helper in `dependencies.py` that checks the
+JTI against the blacklist table after JWT decode. Replaced raw `select(User)`
+with `get_user_by_email()` from `user_repository` (CSR-compliant). Removed
+unused `sqlmodel` import.
+
+#### T-004: Add is_active checks to social login and refresh token
+
+`login_social_user_service()` and `refresh_access_token_service()` now raise
+HTTP 400 for inactive or anonymous users. Prevents disabled accounts from
+obtaining valid access tokens.
+
+#### T-005: Fix organization IDOR — add membership check
+
+Added optional `user_id` parameter to `organization_service.get_organization()`.
+When `user_id` is provided, `_require_member()` is called as defense-in-depth,
+verifying the user belongs to the organization before returning data.
+
+#### T-006: Make wallet operations atomic (single transaction)
+
+Fixed a two-commit race condition in wallet credit/debit operations where
+the ledger entry was committed separately from the balance update, allowing
+concurrent requests to read stale balances (double-spend risk).
+
+- Added `auto_commit=False` parameter to `ledger_service.credit()` and
+  `ledger_service.debit()`, allowing callers to control transaction boundaries
+- Added `wallet_repository.update_balance_no_commit()` (flush without commit)
+- Added `wallet_repository.get_by_account_currency_for_update()` (SELECT … FOR
+  UPDATE) for row-level locking during debit operations
+- Rewrote `credit_wallet()` and `debit_wallet()` to use single `session.commit()`
+- `transfer()` now debits + credits in one atomic transaction instead of two
+  separate commits
+- Fixed bug in `resolve_wallet_for_charge()` where `None` currency could be
+  passed to `_wallet_entity()` instead of resolved `charge_currency`
+- Removed dead code (`atomic_debit_no_commit` had pyright errors and no callers)
+- Refactored subscription_service.py for CSR compliance: all direct queries
+  moved to `billing_repository` (5 new repo functions added)
+
+### Phase 1 — P1 Hardening (Partial)
+
+#### T-016: Add billing audit logging
+
+Added `AuditLogger.log_event()` calls to all wallet and subscription mutations,
+creating an immutable audit trail for SOC 2 compliance. Every financial
+operation now records actor type, actor ID, resource type, resource ID, and
+structured context (amount, currency, reference).
+
+- `wallet_service.py`: audit entries for credit, debit, transfer, convert
+  (`wallet.credit`, `wallet.debit`, `wallet.transfer`). Actor defaults to
+  `SYSTEM`; callers pass `actor_type=ActorType.USER, actor_id=str(user_id)`.
+- `subscription_service.py`: audit entries for create, cancel, Stripe sync,
+  grace enter/renewal/expire (`subscription.create`, `subscription.cancel`,
+  `subscription.sync_stripe`, `subscription.create_stripe`,
+  `subscription.grace_entered`, `subscription.renewal_succeeded`,
+  `subscription.grace_expired`). User-initiated actions use `ActorType.USER`;
+  webhook/system actions use `ActorType.SYSTEM`.
+
+#### T-017: Add plan_key and plan_name to SubscriptionPublic
+
+`SubscriptionPublic` now includes `plan_key: str` and `plan_name: Optional[str]`,
+populated from the associated `Plan` via `billing_repository.get_plan_by_id()`.
+API consumers can now determine the user's current plan without custom joins.
+
+#### T-018: Add UserDep to /payments/verify (completed in T-001)
+
+Already implemented during T-001 when vulnerable wallet routes were removed.
+
+#### T-012: Add GDPR User columns + migration
+
+Added `deactivated_at` (DateTime tz, nullable), `gdpr_deleted_at` (DateTime tz, nullable),
+and `anonymous` (Boolean, NOT NULL, server_default=false) columns to `swx_users`.
+Migration backfills `is_active = TRUE` where NULL and `anonymous = FALSE` where NULL.
+These columns enable future GDPR erasure, deactivation tracking, and anonymous-user gating.
+
+### Changed Files (Phase 1)
+
+- `swx_core/services/billing/wallet_service.py` — audit logging + actor params
+- `swx_core/services/billing/subscription_service.py` — audit logging
+- `swx_core/models/billing.py` — SubscriptionPublic: added plan_id, plan_key, plan_name
+- `swx_core/controllers/subscription_controller.py` — enriched with plan lookup
+- `swx_core/models/user.py` — added deactivated_at, gdpr_deleted_at, anonymous columns
+- `swx_core/database/migrations/v2_22_9_add_gdpr_user_columns.py` — Alembic migration
+
+#### T-013: Add GDPR configuration settings
+
+Added `GDPR_ENABLED`, `GDPR_DELETION_GRACE_DAYS`, `GDPR_EXPORT_FORMAT`,
+`GDPR_ANONYMIZE_ON_DELETE`, `GDPR_SOLE_OWNER_BLOCK`, `GDPR_EXPORT_EXPIRY_DAYS`,
+and `GDPR_MIN_VERIFICATION_DAYS` to `settings.py` as module-level constants
+following the existing `COMPLIANCE_*` pattern. All have safe defaults and are
+non-breaking.
+
+#### T-014: Register compliance job handlers
+
+Added `compliance_data_subject_delete_handler` and
+`compliance_retention_apply_handler` to `handlers.py`, delegating to
+`data_subject_service.process_data_subject_request()` and
+`retention_service.apply_retention()` respectively. Added
+`compliance_data_subject_delete` and `compliance_retention_apply` to the
+`JobType` enum. Registered both handlers in `main.py` startup. DSR deletion
+and retention jobs now execute when enqueued instead of silently failing.
+
+#### T-032: Reduce access token lifetime to 15 minutes
+
+Changed `ACCESS_TOKEN_EXPIRE_MINUTES` default from 10,080 (7 days) to 15
+minutes across all fallback locations: `settings.py`,
+`settings_service.py`, `auth_provider.py`, and `jwt_guard.py`. Refresh tokens
+remain at 30 days. This aligns with industry best practices and complements
+the token blacklist added in T-003.
+
+### Changed Files
+
+- `swx_core/routes/user/billing_route.py`
+- `swx_core/services/billing/subscription_service.py`
+- `swx_core/controllers/subscription_controller.py`
+- `swx_core/auth/user/dependencies.py`
+- `swx_core/services/auth_service.py`
+- `swx_core/services/organization_service.py`
+- `swx_core/repositories/billing_repository.py`
+- `swx_core/services/billing/wallet_service.py`
+- `swx_core/services/ledger_service.py`
+- `swx_core/repositories/wallet_repository.py`
+- `swx_core/config/settings.py` — T-013: GDPR settings, T-032: access token lifetime
+- `swx_core/services/settings_service.py` — T-032: access token lifetime default
+- `swx_core/providers/auth_provider.py` — T-032: access token fallback
+- `swx_core/guards/jwt_guard.py` — T-032: access token fallback
+- `swx_core/models/job.py` — T-014: compliance job types
+- `swx_core/services/job/handlers.py` — T-014: compliance job handlers
+- `swx_core/main.py` — T-014: handler registration, T-015: webhook bridge registration
+
+#### T-007: Multi-Tenancy ADR
+
+Architecture Decision Record for shared-database, tenant-column isolation.
+Defines `BaseRepository.tenant_aware` flag, `TenantContextMiddleware` activation,
+and the tenant data model. Located at `.omo/adr/multi-tenancy-architecture.md`.
+
+#### T-008: Payment Convergence ADR
+
+Architecture Decision Record for a unified `PaymentService.apply_payment()`
+entry point. All payment confirmations (Stripe, Paystack, Flutterwave, M-Pesa)
+go through one validated, idempotent path. Located at
+`.omo/adr/payment-convergence-architecture.md`.
+
+#### T-009: Domain Event Architecture ADR
+
+Architecture Decision Record formalizing the event bus. Defines typed event
+payloads, namespace convention (`billing.*`, `compliance.*`, `auth.*`),
+webhook bridge (wildcard listener), and PII scrubbing. Located at
+`.omo/adr/domain-event-architecture.md`.
+
+#### T-010: MFA Architecture ADR
+
+Architecture Decision Record for TOTP-based MFA with recovery codes and
+step-up authentication. TOTP as primary; WebAuthn deferred to future phase.
+Located at `.omo/adr/mfa-architecture.md`.
+
+#### T-015: Wire webhook dispatcher to event bus
+
+Added `WebhookBridgeListener` in `swx_core/events/listeners/webhook_bridge_listener.py`.
+Bridges all domain events (except `webhook.*`) to outbound webhook delivery via
+`webhook_dispatcher.dispatch_event()`. Includes PII scrubbing: removes passwords,
+tokens, and secrets; masks email, IP, and phone fields. Registered as a wildcard
+listener at `EventPriority.LOWEST` in `main.py` startup (step 5).
+
+- `swx_core/events/listeners/webhook_bridge_listener.py` — new: webhook bridge + PII scrubbing
+- `swx_core/events/listeners/__init__.py` — unchanged (auto-discovery loads it)
+- `swx_core/main.py` — step 5: register webhook bridge
+
+#### T-011: Register TenantContextMiddleware
+
+Added `apply_middleware(app)` function to `tenant_middleware.py` so the dynamic
+middleware loader registers it. The middleware reads `X-Tenant-ID` and `X-Team-ID`
+headers and falls back to `user.tenant_id` / `user.current_team_id`. It is
+gated by `ORGANIZATION_ENABLED` (skips registration when organization is disabled).
+Closes SWX-019 (tenant middleware was dead code).
+
+- `swx_core/middleware/tenant_middleware.py` — added `apply_middleware()`
+
+#### T-026: TOTP MFA Service
+
+Implemented TOTP-based multi-factor authentication per ADR-010. Added `mfa_enabled`,
+`mfa_secret` (encrypted), and `mfa_verified_at` columns to `swx_users`. Created
+`swx_mfa_recovery_codes` table for single-use recovery codes (bcrypt-hashed).
+
+New files:
+- `swx_core/models/mfa.py` — `MfaRecoveryCode` model + request/response schemas
+- `swx_core/repositories/mfa_repository.py` — CRUD for MFA status and recovery codes
+- `swx_core/services/auth/mfa_service.py` — TOTP enrollment, verification,
+  recovery, and disable flows. Encrypts TOTP secrets with `EncryptionService`.
+  Emits events: `mfa.enrollment_initiated`, `mfa.enrollment_verified`,
+  `mfa.disabled`, `mfa.recovery_code_used`, `mfa.recovery_codes_regenerated`.
+- `swx_core/database/migrations/v2_22_10_add_mfa_columns.py` — Alembic migration
+  (nullable-first with server defaults, backfill, then NOT NULL constraint)
+
+Dependencies added: `pyotp>=2.9.0`, `qrcode[pil]>=7.4`
+
+#### T-028: MFA Verification in Login Flow
+
+Modified the login flow to gate MFA-enabled users. When `user.mfa_enabled` is
+true, `POST /auth/` now returns `LoginResponse(mfa_required=True, mfa_token=...)`
+instead of full tokens. A new `POST /auth/mfa/verify` endpoint exchanges the
+short-lived MFA challenge token + TOTP/recovery code for real tokens.
+
+New/changed:
+- `swx_core/auth/core/jwt.py` — added `TokenAudience.MFA`
+- `swx_core/security/refresh_token_service.py` — added `create_mfa_token()`,
+  `verify_mfa_token()` (short-lived JWT with audience="mfa")
+- `swx_core/models/token.py` — added `LoginResponse` schema (mfa_required,
+  mfa_token, access_token, refresh_token)
+- `swx_core/services/auth_service.py` — `login_user_service()` now returns
+  `LoginResponse`; branches on `user.mfa_enabled`. Added
+  `verify_mfa_challenge_service()`.
+- `swx_core/controllers/auth_controller.py` — added
+  `verify_mfa_challenge_controller()`
+- `swx_core/routes/access/mfa_route.py` — new: `POST /auth/mfa/verify`
+- `swx_core/routes/user/mfa_route.py` — new: `POST /user/mfa/enroll`,
+  `POST /user/mfa/verify-enrollment`, `GET /user/mfa/status`,
+  `POST /user/mfa/disable`, `POST /user/mfa/recovery-codes/regenerate`
+- `swx_core/routes/access/auth_route.py` — login returns `LoginResponse`;
+  `cookie_login()` handles MFA-pending branch
+- `swx_core/config/settings.py` — added `MFA_CHALLENGE_EXPIRE_MINUTES=5`
+
+#### T-029: Step-Up Authentication
+
+Added `require_recent_mfa` dependency (aliased as `RecentMfaDep`) that validates
+a short-lived `X-Step-Up-Token` header for sensitive operations. Users call
+`POST /auth/mfa/step-up` with a TOTP code to obtain the token, then pass it
+on subsequent requests to operations like password change and account deletion.
+
+New/changed:
+- `swx_core/auth/user/dependencies.py` — added `StepUpTokenHeader`,
+  `require_recent_mfa()`, `RecentMfaDep` type alias
+- `swx_core/services/auth/mfa_service.py` — added `step_up()` function
+- `swx_core/controllers/auth_controller.py` — added `step_up_mfa_controller()`
+- `swx_core/routes/access/mfa_route.py` — added `POST /auth/mfa/step-up`
+- `swx_core/routes/user/user_route.py` — `update_password` and
+  `delete_user_me` now require `RecentMfaDep` (step-up auth)
+- `swx_core/models/mfa.py` — added `MfaStepUpRequest`, `MfaStepUpResponse`
+
+#### T-031: Email Verification Flow
+
+Added email verification for local-auth registrations. Social auth users
+(Google, Facebook) are auto-verified since their provider confirms email
+ownership. When `EMAIL_VERIFICATION_ENABLED=True` (default), local users
+must click the verification link before their email is considered verified.
+When `False`, all local users are auto-verified on registration.
+
+New/changed:
+- `swx_core/models/user.py` — added `email_verified_at` column
+- `swx_core/database/migrations/v2_22_11_add_email_verified_at.py` — Alembic
+  migration
+- `swx_core/config/settings.py` — added `EMAIL_VERIFICATION_ENABLED=True`,
+  `EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS=24`
+- `swx_core/services/auth/email_verification_service.py` — new: token generation,
+  verification, request, resend. `auto_verify_if_disabled()` and
+  `mark_social_user_verified()` helpers
+- `swx_core/services/auth_service.py` — `register_user_service()` now calls
+  `auto_verify_if_disabled()` or `mark_social_user_verified()` after creation
+- `swx_core/controllers/auth_controller.py` — added
+  `request_email_verification_controller`, `verify_email_controller`,
+  `resend_email_verification_controller`
+- `swx_core/routes/access/auth_route.py` — added
+  `POST /auth/email/verify/{email}`, `POST /auth/email/verify`,
+  `POST /auth/email/resend-verification`
+- `swx_core/email/email_service.py` — added `generate_verify_email()`
+- `swx_core/email/templates/build/verify_email.html` — new: verification
+  email template
+
+#### T-030: Account Linking (Social Auth)
+
+Added a `SocialAccount` model for linking multiple OAuth providers to a single
+user. When a social login email matches an existing local account, the accounts
+are linked (after email verification gate). New social users get an auto-created
+account with `email_verified_at` set (providers verify email ownership).
+
+Users can view, link, and unlink providers via `/user/accounts/` endpoints.
+Unlinking is blocked if it would leave the user with no authentication method.
+
+New/changed:
+- `swx_core/models/social_account.py` — `SocialAccount` model + request/response
+  schemas
+- `swx_core/database/migrations/v2_22_12_add_social_accounts.py` — Alembic
+  migration (unique constraint on provider+provider_id)
+- `swx_core/repositories/social_account_repository.py` — CRUD for social accounts
+- `swx_core/services/auth/account_linking_service.py` — `link_social_account`,
+  `unlink_social_account`, `find_or_create_user_from_social`
+- `swx_core/routes/user/account_linking_route.py` — `GET /user/accounts/linked`,
+  `DELETE /user/accounts/unlink`
+- `swx_core/config/settings.py` — added `SOCIAL_ACCOUNT_LINKING_ENABLED=True`
+
+#### Post-implementation audit: event emissions + code-clarity
+
+All state-changing operations across Phase 3 now emit events via `event_bus`.
+Fixed 7 missing event emissions, normalized API inconsistency, removed unused
+imports, fixed a security bug, and registered missing routes.
+
+- `auth_service.py` — added `user.login`, `user.login.mfa_required`,
+  `mfa.challenge_verified`, `user.logout`, `user.password_reset` events;
+  normalized `emit(Event(...))` → `dispatch("event", payload={...})`
+- `email_verification_service.py` — added `email.verified` to
+  `auto_verify_if_disabled()` and `mark_social_user_verified()`
+- `social_account_repository.py` — fixed `has_local_password()` bug:
+  removed incorrect `auth_provider == "local"` check (would reject users who
+  set a password after social auth signup)
+- `models/social_account.py` — removed unused `Optional`, `Boolean`, `text`
+  imports
+- `models/mfa.py` — removed unused `Boolean`, `String`, `text` imports;
+  added `# pyright: ignore[reportAssignmentType]` suppressor on `__tablename__`
+- `services/auth/account_linking_service.py` — removed unused `Request` import
+- `routes/access/__init__.py` — registered `mfa_route` (was missing)
+- `routes/user/__init__.py` — registered `mfa_route` and
+  `account_linking_route` (were missing)
+
+#### T-033: ErasureService + ErasureCertificate
+
+Added a proper GDPR right-to-erasure implementation with per-table erasure
+policies, anonymization support, and cryptographic erasure certificates for
+compliance proof. Replaced the naive `gdpr_service.execute_hard_deletion()`
+(which just deleted the User row) with a proper ErasureService that:
+
+1. Sets `deactivated_at` + `gdpr_deleted_at` on the User (T-012 columns)
+2. When `GDPR_ANONYMIZE_ON_DELETE=True` (default), anonymizes PII instead of
+   hard-deleting — sets email to `erased_{id}@erased.invalid`, clears password,
+   sets `anonymous=True`
+3. Creates an `ErasureCertificate` record documenting which tables were affected
+   and the erasure type, providing compliance proof
+4. Bridges the DSR system (`data_subject_service`) to the erasure system via
+   `process_erasure_for_request()` — the T-014 handler now calls this instead
+   of just marking the request completed
+5. The `gdpr_service.request_deletion()` and `cancel_deletion()` now delegate
+   to `erasure_service.request_erasure()` and `cancel_erasure()`, which properly
+   set `gdpr_deleted_at` and `deactivated_at`
+
+New/changed:
+- `swx_core/models/erasure_certificate.py` — `ErasureCertificate` model +
+  create/public schemas
+- `swx_core/database/migrations/v2_22_13_add_erasure_certificates.py` — Alembic
+  migration
+- `swx_core/repositories/erasure_repository.py` — certificate CRUD, user
+  anonymization, deletion marking, cancellation
+- `swx_core/services/compliance/erasure_service.py` — `request_erasure`,
+  `execute_erasure`, `cancel_erasure`, `get_erasure_certificate`,
+  `list_erasure_certificates`, `process_erasure_for_request`
+- `swx_core/services/data_transfer/gdpr_service.py` — refactored to delegate
+  to erasure_service; removed `execute_hard_deletion()`
+- `swx_core/services/job/handlers.py` — `compliance_data_subject_delete_handler`
+  now calls `process_erasure_for_request()` instead of just marking completed
+- `swx_core/controllers/gdpr_controller.py` — added certificate controller
+  functions
+- `swx_core/routes/user/gdpr_route.py` — added
+  `GET /user/gdpr/erasure-certificates`,
+  `GET /user/gdpr/erasure-certificates/{certificate_id}`
+- `swx_core/config/settings.py` — T-013 GDPR settings now wired into
+  erasure flow (grace days, anonymize-on-delete, etc.)
+
+#### T-034: GDPR data export service (Article 20)
+
+Added `GdprExportRepository` with 20 user-data fetch functions and rewrote
+`GdprService.export_user_data_zip()` to collect all GDPR-relevant data into a
+structured ZIP archive. Conversations are handled separately with a secondary
+fetch for messages by conversation IDs.
+
+- `swx_core/repositories/gdpr_export_repository.py` — 20 async fetch functions
+  for all user data tables (social accounts, consents, notifications, API keys,
+  devices, exports, imports, roles, team/org memberships, referrals, onboarding,
+  flag evaluations, audit logs, conversations, conversation messages)
+- `swx_core/services/data_transfer/gdpr_service.py` — full GDPR ZIP export with
+  `_model_to_dict` / `_models_to_dicts` helpers, per-section error handling,
+  and `gdpr.export_completed` event dispatch
+
+#### T-035: GDPR controller + routes
+
+Verified all GDPR endpoints wired correctly:
+- `GET /user/gdpr/export` → `export_user_data`
+- `POST /user/gdpr/request-deletion` → `request_deletion`
+- `POST /user/gdpr/cancel-deletion` → `cancel_deletion`
+- `GET /user/gdpr/erasure-certificates` → `list_certificates`
+- `GET /user/gdpr/erasure-certificates/{id}` → `get_certificate`
+
+#### T-036: Per-table erasure policy
+
+Implemented per-table erasure policy with 23 hard-delete tables and 4 anonymize
+tables, plus audit log anonymization. `erasure_repository.delete_user_related_data()`
+now iterates all tables, applying the correct policy per table:
+- **Hard delete** (23 tables): social_accounts, devices, api_keys,
+  webhook_endpoints, conversation_messages, conversations, flag_evaluations,
+  notifications, notification_preferences, onboarding_steps, org_memberships,
+  referral_codes, referral_events, sso_sessions, team_members, user_consents,
+  user_roles, data_exports, data_imports, user_sessions, password_reset_tokens,
+  user_contacts, feature_usage
+- **Anonymize** (4 tables): audit_logs (user_id → erased_{id}),
+  user_notes (content wiped), feedback_entries (content wiped),
+  search_history (query wiped)
+
+#### T-037: Sole-owner guard for GDPR erasure
+
+Added `_check_sole_owner()` to `erasure_service.py` that queries for
+organizations and teams where the user is the sole owner (owner_id == user_id
+AND member count ≤ 1). Both `request_erasure()` and `execute_erasure()` now
+check sole ownership before proceeding:
+- `request_erasure()` raises HTTP 409 with descriptive detail listing the
+  org/team names if the user is a sole owner
+- `execute_erasure()` returns `{"status": "blocked", "reason": ...}` if the
+  user is a sole owner, preventing irreversible data loss
+- `erasure_repository.py`: added `find_sole_owned_organizations()` and
+  `find_sole_owned_teams()` queries
+
+#### T-038: Auth cache invalidation + token revocation on erasure
+
+Added `_revoke_auth_session()` to `erasure_service.py` that revokes all active
+tokens and invalidates the auth cache for a user being erased. Called during
+both `request_erasure()` (immediate deactivation) and `execute_erasure()`
+(final deletion). This prevents erased users from continuing to use valid
+tokens during the grace period or after deletion.
+
+- `swx_core/security/__init__.py` — converted to lazy `__getattr__` imports to
+  break circular dependency (`password_security` → `auth.core.jwt` →
+  `user_repository` → `password_security`)
+
+### Changed Files (GDPR Lifecycle)
+
+- `swx_core/repositories/erasure_repository.py` — sole-owner queries, per-table
+  erasure policy
+- `swx_core/repositories/gdpr_export_repository.py` — 20 user-data fetch
+  functions
+- `swx_core/services/compliance/erasure_service.py` — sole-owner guard,
+  `_revoke_auth_session()`, per-table erasure orchestration
+- `swx_core/services/data_transfer/gdpr_service.py` — full ZIP export, lazy
+  erasure imports, `_models_to_dicts` with Sequence type
+- `swx_core/security/__init__.py` — lazy imports to break circular dependency
+- `tests/services/compliance/test_erasure_service.py` — 16 tests
+- `tests/services/data_transfer/test_gdpr_service.py` — 17 tests
+
+---
+
+## [2.22.6] - 2026-08-23
+
+### Fixed — SWX-011: Paystack/Flutterwave webhook doesn't assign plans
+
+Both webhook handlers treated all payments identically (wallet credit only).
+Plan payments (`plan-{key}-{uuid}` reference prefix) never created a
+subscription, so users stayed on the old plan after paying for an upgrade.
+
+**Fix:** Added `_parse_reference_prefix()` to both handlers. References with
+`plan-` prefix now call `SubscriptionService.create_subscription()`.
+References with `pack-` prefix (or unrecognized) fall through to wallet credit.
+
+Edge case fixed: keys containing hyphens (e.g. `plan-pro-v1-{uuid}`) are
+parsed correctly — the UUID is the last segment, the key is everything between
+the prefix and the UUID.
+
+### Fixed — SWX-012: Settings ${ENV_VAR} placeholder not resolved when env var is unset
+
+When `PAYSTACK_WEBHOOK_SECRET` (or `FLUTTERWAVE_WEBHOOK_SECRET`) env var was
+not set, pydantic-settings returned the literal string `"${PAYSTACK_WEBHOOK_SECRET}"`
+(truthy), so the `or` fallback to `PAYSTACK_SECRET_KEY` never fired.
+
+**Fix:** Replaced `secret = settings.X or settings.Y` with
+`_resolve_webhook_secret()` helper that checks `startswith("${")` on each
+candidate before falling through. Returns `None` only when both are
+placeholders or empty.
+
+### Fixed — SWX-013: /quota/status uses hardcoded default instead of plan entitlement
+
+`GET /quota/status` returned `monthly_quota` from
+`settings.QUOTA_MONTHLY_DEFAULT_TOKENS` (1M) regardless of the user's plan.
+
+**Fix:** Added `billing_service.get_plan_monthly_quota()` which uses
+`EntitlementResolver.get_entitlement()` to look up `ai.tokens_per_month`
+from the user's active subscription's plan. Falls back to the settings
+default when no subscription or entitlement exists.
+
+### Tests Added
+
+- `TestReferencePrefixParsing` (14 tests) — plan/pack prefix routing, hyphen-in-key edge case, unrecognized references
+- `TestWebhookSecretResolution` (7 tests) — placeholder fallback, both-placeholder, empty-string edge cases
+
+---
+
+## [2.22.5] - 2026-08-23
+
+### Fixed — Paystack reference format bug (v2.22.4 regression)
+
+Payment initialization references used colons (`plan:pro_v1:a1b2c3d4`) which
+Paystack rejects. All references now use hyphens (`plan-pro_v1-a1b2c3d4`).
+
+Affected files:
+- `billing_controller._call_provider_with_amount` — `f"{prefix}:{item_key}:{uuid4().hex}"` → `f"{prefix}-{item_key}-{uuid4().hex}"`
+- `usage_metering_service.record_and_charge` — `f"usage:{request_id}"` → `f"usage-{request_id}-{charge_key}"`
+- `wallet_service.credit_wallet_internal` — `f"internal:{uuid4().hex}"` → `f"internal-{key}"`
+- `wallet_adjustment_service._execute` — `f"adjustment:{request.id}"` → `f"adjustment-{request.id}"`
+
+### Fixed — Removed all hardcoded values
+
+All hardcoded currency strings, TTL values, and pricing tables now read
+from `settings.py`:
+
+| Setting | Default | Replaces |
+|---------|---------|----------|
+| `USAGE_METERING_DEFAULT_CURRENCY` | `"NGN"` | Hardcoded `"NGN"` in `record_and_charge` |
+| `USAGE_METERING_DEFAULT_MODEL_KEY` | `"default"` | Hardcoded fallback key |
+| `USAGE_METERING_MODEL_PRICING` | 7-model dict | Hardcoded `MODEL_PRICING_NANO` module constant |
+| `QUOTA_MONTHLY_TTL_DAYS` | `32` | Hardcoded `32 * 24 * 3600` |
+| `QUOTA_DAILY_TTL_HOURS` | `36` | Hardcoded `36 * 3600` |
+| `QUOTA_WINDOW_TTL_BUFFER_HOURS` | `1` | Hardcoded `+ 3600` buffer |
+| `WEBHOOK_IDEMPOTENCY_TTL` | `604800` | Hardcoded `604800` (7 days) in webhook handlers |
+| `WEBHOOK_RETENTION_DAYS` | `30` | Hardcoded `retention_days=30` in cleanup |
+
+Currency defaults (`"USD"`, `"NGN"`) in controllers and services now use
+`settings.DEFAULT_BASE_CURRENCY` instead of hardcoded strings.
+
+### Code Clarity
+
+- Removed unused `description` parameter from `credit_wallet_internal`
+- Fixed `reference` and `idempotency_key` in `credit_wallet_internal` to share the same UUID (traceability)
+- Renamed `status` → `quota_status` in `record_and_charge` (avoid shadowing)
+- Made `currency` parameter `str | None` in `resolve_wallet_for_charge` and `record_and_charge` (falls back to settings)
+- Moved inline `settings` import to module level in `wallet_service.py`
+
+---
+
+## [2.22.4] - 2026-08-22
+
+### Added — User-Facing Billing, Payments, Subscriptions, Quota & Webhooks
+
+Complete user-facing billing surface with server-side validated payment
+initialization, subscription lifecycle management, transaction history,
+quota tracking, credit packs, and Paystack/Flutterwave webhook handlers.
+
+#### Wave 1 — P0 Security & Foundation
+
+| Item | Files |
+|------|-------|
+| Currency conversion utility (`major_to_nano`, `kobo_to_nano`, `provider_amount_to_nano`, `major_to_provider_amount`) | `swx_core/utils/currency.py` (NEW) |
+| Session helper `with_read_session()` for DB-read-then-HTTP pattern | `swx_core/database/session_helpers.py` (NEW) |
+| Session management documentation | `docs/04-core-concepts/SESSION_MANAGEMENT.md` (NEW) |
+| Server-side validated payment init (plan) — `POST /payments/initialize/plan` | `swx_core/controllers/billing_controller.py` (ADD) |
+| Credit pack model + migration | `swx_core/models/credit_pack.py` (NEW), `swx_core/database/migrations/v2_22_4_add_credit_pack.py` (NEW) |
+| Server-side validated payment init (pack) — `POST /payments/initialize/pack` | `swx_core/controllers/billing_controller.py` (ADD) |
+| Paystack webhook handler — HMAC-SHA512, kobo→nano, idempotent wallet credit | `swx_core/webhooks/paystack_webhook.py` (NEW) |
+| Paystack webhook secret setting | `swx_core/config/settings.py` (ADD) |
+
+#### Wave 2 — P1 Billing Surface
+
+| Item | Files |
+|------|-------|
+| Public plan listing — `GET /plans` (no auth) | `swx_core/controllers/billing_controller.py`, `swx_core/routes/user/billing_route.py` |
+| Get current subscription — `GET /subscriptions/current` | `swx_core/controllers/subscription_controller.py` (NEW) |
+| List subscriptions — `GET /subscriptions` (paginated) | `swx_core/controllers/subscription_controller.py` |
+| Subscribe to plan — `POST /subscriptions` | `swx_core/controllers/subscription_controller.py` |
+| Cancel subscription — `POST /subscriptions/{id}/cancel` (ownership check) | `swx_core/controllers/subscription_controller.py` |
+| Transaction history — `GET /transactions` (type/date filters + pagination) | `swx_core/controllers/billing_controller.py`, `swx_core/services/ledger_service.py`, `swx_core/repositories/ledger_repository.py` |
+| Quota status — `GET /quota/status` (Redis 5hr rolling window + monthly) | `swx_core/services/billing/usage_window_service.py` (NEW), `swx_core/controllers/quota_controller.py` (NEW) |
+| Reset usage window — `POST /quota/reset-window` (guardrails) | `swx_core/controllers/quota_controller.py` |
+| Credit pack listing + purchase — `GET /credit-packs`, `POST /credit-packs/{key}/purchase` | `swx_core/controllers/billing_controller.py`, `swx_core/routes/user/billing_route.py` |
+| Flutterwave webhook handler — HMAC-SHA256, major→nano, idempotent wallet credit | `swx_core/webhooks/flutterwave_webhook.py` (NEW) |
+| Flutterwave webhook secret setting | `swx_core/config/settings.py` (ADD) |
+| SubscriptionPublic schema | `swx_core/models/billing.py` (ADD) |
+
+#### New Service Layer (CSR Compliance)
+
+All controllers now route through services, never repositories directly:
+
+| Service | File | Purpose |
+|---------|------|---------|
+| `billing_service` | `swx_core/services/billing/billing_service.py` (NEW) | Plan/credit pack/account lookups |
+| `currency_service` | `swx_core/services/billing/currency_service.py` (NEW) | Currency CRUD |
+| `UsageWindowService` | `swx_core/services/billing/usage_window_service.py` (NEW) | Redis-based quota tracking |
+| `SubscriptionService` (extended) | `swx_core/services/billing/subscription_service.py` | Added `get_active_subscription`, `list_subscriptions`, `get_subscription_by_id` |
+| `exchange_rate_service` (extended) | `swx_core/services/billing/exchange_rate_service.py` | Added `get_all_for_base` |
+
+#### Settings Added
+
+```env
+PAYSTACK_WEBHOOK_SECRET=${PAYSTACK_WEBHOOK_SECRET}
+FLUTTERWAVE_WEBHOOK_SECRET=${FLUTTERWAVE_WEBHOOK_SECRET}
+QUOTA_WINDOW_HOURS=5
+QUOTA_WINDOW_DEFAULT_TOKENS=100000
+QUOTA_MONTHLY_DEFAULT_TOKENS=1000000
+QUOTA_WINDOW_MAX_RESETS=1
+QUOTA_DAILY_MAX_RESETS=3
+```
+
+### Fixed — CSR Violations in Pre-Existing Controllers
+
+- `billing_controller.py`: currency/exchange-rate functions now route through
+  `currency_service` and `exchange_rate_service` instead of calling
+  `currency_repository` and `exchange_rate_repository` directly
+- Replaced `HTTPException(status_code=404)` with `NotFoundError` (SwX error hierarchy)
+- Removed dead `_currency_payload` helper (moved to `currency_service`)
+- Removed dead `HTTPException` import
+
+### Code Clarity
+
+- Removed dead import (`billing_repository` in `paystack_webhook.py`)
+- Fixed empty catch block (`except Exception: pass` → added `logger.debug`)
+- Renamed misleading `idempotency_key` → `dedup_key` (Redis dedup vs ledger idempotency)
+- Moved `_find_user_by_email` from method to module-level (unused `self`)
+- Extracted `_call_provider_with_amount` helper (eliminated plan/pack duplication)
+- Removed dead `pack_key` from `PaymentInitializePackRequest` (path param covers it)
+- Fixed `record_usage` bug — `_incr` now accepts `amount` parameter (was ignoring `tokens`)
+- Added event emission for `quota.window_reset` via `event_bus`
+- Removed redundant `int(round())` casts (3 occurrences)
+- Removed unused `# noqa: E712` directives
+
+### Added — Wave 3 (P2 Completeness)
+
+| Item | Files |
+|------|-------|
+| Durable webhook idempotency table (`swx_inbound_webhook_delivery`) | `swx_core/models/inbound_webhook_delivery.py` (NEW), `swx_core/repositories/inbound_webhook_delivery_repository.py` (NEW), `swx_core/services/webhook_idempotency_service.py` (NEW), migration `v2_22_5` |
+| Wallet debit user endpoint — `POST /wallets/{currency}/debit` | `swx_core/controllers/billing_controller.py`, `swx_core/routes/user/billing_route.py` |
+| Wallet transfer user endpoint — `POST /wallets/transfer` | `swx_core/controllers/billing_controller.py`, `swx_core/routes/user/billing_route.py` |
+| Stripe webhook extended — durable idempotency + `sync_stripe_subscription` on checkout/invoice events | `swx_core/webhooks/stripe_webhook.py` (MODIFIED) |
+| Subscription renewal failure handling — grace period fields + `enter_grace_period`, `retry_renewal`, `expire_grace`, `handle_renewal_failure`, `is_grace_expired` | `swx_core/models/billing.py`, `swx_core/services/billing/subscription_service.py`, migration `v2_22_6` |
+| Usage metering service — `calculate_cost_nano` by model, `record_and_charge` with idempotent debit + quota enforcement | `swx_core/services/billing/usage_metering_service.py` (NEW) |
+| `credit_wallet_internal()` convenience — auto-generates reference + idempotency_key | `swx_core/services/billing/wallet_service.py` |
+| BaseRepository session docs — DB-read-then-HTTP deadlock warning | `docs/04-core-concepts/BASE_CLASSES.md` (UPDATED) |
+
+### Changed — Breaking
+
+- `USER_CACHE_ENABLED` default flipped from `False` to `True` — requires Redis for user auth lookups
+
+### Added — Wave 4 (P3 Advanced)
+
+| Item | Files |
+|------|-------|
+| Referral system — `ReferralCode` + `ReferralEvent` models, service, controller, user routes, migration | `swx_core/models/referral.py` (NEW), `swx_core/repositories/referral_repository.py` (NEW), `swx_core/services/billing/referral_service.py` (NEW), `swx_core/controllers/referral_controller.py` (NEW), `swx_core/routes/user/referral_route.py` (NEW), migration `v2_22_7` |
+| Dual-control wallet adjustments — propose/approve/reject/execute flow with audit trail | `swx_core/models/wallet_adjustment.py` (NEW), `swx_core/services/billing/wallet_adjustment_service.py` (NEW), `swx_core/controllers/wallet_adjustment_controller.py` (NEW), `swx_core/routes/admin/wallet_adjustment_route.py` (NEW), migration `v2_22_8` |
+| Wallet priority resolution — `resolve_wallet_for_charge()` (org/personal, never cross-charge, 402 on empty) | `swx_core/services/billing/wallet_service.py` |
+| Credit expiry — `CreditLot` model with FIFO consumption (bonus first) + `expire_stale_lots()` | `swx_core/models/credit_lot.py` (NEW), `swx_core/services/billing/credit_expiry_service.py` (NEW), migration `v2_22_8` |
+| API key rotation grace period — already existed (`rotate_api_key` + `API_KEY_ROTATION_GRACE_HOURS`) | Verified existing implementation in `swx_core/services/auth/api_key_service.py` |
+| Subscription renewal grace — `handle_renewal_failure()` + `is_grace_expired()` | `swx_core/services/billing/subscription_service.py` |
+| Audit log retention per-type policies — `SWX_AUDIT_RETENTION_POLICIES` setting | `swx_core/config/settings.py` |
+| GDPR data export (ZIP) — `POST /user/gdpr/export/zip` | `swx_core/services/data_transfer/gdpr_service.py` (NEW), `swx_core/controllers/gdpr_controller.py` (NEW), `swx_core/routes/user/gdpr_route.py` (UPDATED) |
+| GDPR data deletion — `POST /user/gdpr/deletion` (30-day grace + immediate deactivation) + cancel | `swx_core/services/data_transfer/gdpr_service.py`, `swx_core/routes/user/gdpr_route.py` |
+
+### Fixed — Wave 4 Code Clarity
+
+- Fixed BUG: `CreditLot.expires_at is not None` in SQLAlchemy filter → `.isnot(None)`
+- Removed dead `_SOURCE_PRIORITY` dict (unused)
+- Removed unnecessary try/except for stdlib `zipfile` import
+- Moved inline imports to module level in `resolve_wallet_for_charge`
+- Created `wallet_adjustment_controller.py` and `gdpr_controller.py` — routes now go through controllers (CSR compliance)
+- Added missing events: `quota.usage_recorded`, `credit_lot.created`, `credit_lot.consumed`, `referral.applied`
+
+### Tests Added
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `tests/utils/test_currency.py` | 30 | Currency conversion pure functions |
+| `tests/webhooks/test_webhook_handlers.py` | 25 | Signature verification + payload extraction |
+| `tests/billing/test_usage_metering.py` | 10 | Cost calculation by model |
+| `tests/billing/test_session_helpers.py` | 5 | `with_read_session` context manager |
+
+---
+
 ## [2.22.3] - 2026-08-21
 
 ### Fixed — Double-wrapping bug in UserDep/AdminUserDep dependency injection

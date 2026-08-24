@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from pydantic import EmailStr
-from sqlalchemy import Column, DateTime, String, text
+from sqlalchemy import Boolean, Column, DateTime, String, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
@@ -71,6 +71,25 @@ class User(UserBase, table=True):
     auth_provider: str = Field(default="local", max_length=50)
     provider_id: Optional[str] = Field(default=None, unique=True, max_length=255)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
+    deactivated_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    gdpr_deleted_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    anonymous: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")))
+    mfa_enabled: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")))
+    mfa_secret: Optional[str] = Field(default=None, max_length=500)
+    mfa_verified_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    email_verified_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -131,6 +150,8 @@ class UserPublic(UserBase):
     auth_provider: str
     avatar_url: Optional[str] = None
     preferred_language: str  # pyright: ignore[reportGeneralTypeIssues]
+    email_verified_at: Optional[datetime] = None
+    mfa_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 
