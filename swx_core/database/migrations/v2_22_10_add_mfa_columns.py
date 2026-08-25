@@ -30,8 +30,8 @@ def upgrade() -> None:
 
     op.create_table(
         "swx_mfa_recovery_codes",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("user_id", sa.String(36), sa.ForeignKey("swx_users.id"), nullable=False, index=True),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("user_id", sa.Uuid(), sa.ForeignKey("swx_users.id"), nullable=False, index=True),
         sa.Column("code_hash", sa.String(255), nullable=False),
         sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),

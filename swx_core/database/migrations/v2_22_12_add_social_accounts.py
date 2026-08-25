@@ -17,8 +17,8 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "swx_social_accounts",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("user_id", sa.String(36), sa.ForeignKey("swx_users.id"), nullable=False, index=True),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("user_id", sa.Uuid(), sa.ForeignKey("swx_users.id"), nullable=False, index=True),
         sa.Column("provider", sa.String(50), nullable=False),
         sa.Column("provider_id", sa.String(255), nullable=False),
         sa.Column("provider_email", sa.String(255), nullable=True),

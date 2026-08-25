@@ -17,9 +17,9 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "swx_erasure_certificates",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("user_id", sa.String(36), sa.ForeignKey("swx_users.id"), nullable=False, index=True),
-        sa.Column("request_id", sa.String(36), sa.ForeignKey("swx_data_subject_request.id"), nullable=True),
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("user_id", sa.Uuid(), sa.ForeignKey("swx_users.id"), nullable=False, index=True),
+        sa.Column("request_id", sa.Uuid(), sa.ForeignKey("swx_data_subject_request.id"), nullable=True),
         sa.Column("erasure_type", sa.String(20), nullable=False),
         sa.Column("status", sa.String(20), server_default="pending", nullable=False),
         sa.Column("tables_affected", sa.Text, nullable=True),
