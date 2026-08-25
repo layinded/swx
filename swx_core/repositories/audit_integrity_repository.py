@@ -1,9 +1,6 @@
-"""Repository for audit log integrity — DB operations only (SOC 2 CC7.2).
+"""Repository for audit log integrity — DB operations only (SOC 2 CC7.2)."""
 
-All hash-chain computation and verification business logic lives in
-the service layer. This module provides only database read/persist
-operations.
-"""
+# pyright: reportAttributeAccessIssue=false, reportArgumentType=false, reportCallIssue=false
 
 from uuid import UUID
 

@@ -6,10 +6,12 @@ Database queries for SOC 2 CC6.2 access review reporting.
 All database queries live here (SWX Controller → Service → Repository pattern).
 """
 
+# pyright: reportAttributeAccessIssue=false, reportArgumentType=false, reportCallIssue=false
+
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import and_, func, select, distinct
+from sqlalchemy import and_, func, select, distinct, literal_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.models.audit_log import AuditLog
@@ -31,9 +33,9 @@ async def find_orphaned_accounts(
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=days_inactive)
 
-    # Users who logged in within the window
+    # Users who logged in within the window (subquery returning actor_id values)
     recent_login_actor_ids = (
-        select(AuditLog.actor_id)
+        select(AuditLog.actor_id)  # type: ignore[union-attr]
         .where(
             AuditLog.action == "auth.login_success",
             AuditLog.timestamp >= cutoff,
@@ -63,14 +65,11 @@ async def find_unused_roles(
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=days_unused)
 
-    # Roles that appear in RBAC audit events within the window
+    # Roles that appear in RBAC audit events within the window (subquery)
     used_role_ids_stmt = (
-        select(AuditLog.resource_id)
+        select(AuditLog.resource_id)  # type: ignore[union-attr]
         .where(
-            AuditLog.action.in_([
-                "rbac.role_assigned",
-                "rbac.role_removed",
-            ]),
+            AuditLog.action.in_(["rbac.role_assigned", "rbac.role_removed"]),
             AuditLog.timestamp >= cutoff,
         )
         .distinct()
@@ -146,7 +145,7 @@ async def find_over_provisioned_users(
         recent_admin_activity = await session.execute(
             select(func.count()).select_from(AuditLog).where(
                 AuditLog.actor_id == str(assignment.user_id),
-                AuditLog.action.like("admin.%"),
+                AuditLog.action.like("admin.%"),  # type: ignore[union-attr]
                 AuditLog.timestamp >= cutoff,
             )
         )

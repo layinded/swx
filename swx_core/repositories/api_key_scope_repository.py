@@ -1,7 +1,7 @@
 # pyright: reportExplicitAny=false, reportAny=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingTypeArgument=false, reportAttributeAccessIssue=false, reportArgumentType=false, reportUnnecessaryTypeIgnoreComment=false
 
 from typing import Any
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 from swx_core.utils.time import utc_now
 
@@ -106,7 +106,7 @@ async def check_scope(session: AsyncSession, api_key_id: UUID, resource: str, ac
     return False
 
 
-async def find_expired_keys(session: AsyncSession, before: object) -> list[ApiKey]:
+async def find_expired_keys(session: AsyncSession, before: datetime) -> list[ApiKey]:
     """Find active API keys that have expired (SOC 2 CC6.1)."""
     stmt = select(ApiKey).where(
         ApiKey.is_active == True,  # noqa: E712
@@ -116,7 +116,7 @@ async def find_expired_keys(session: AsyncSession, before: object) -> list[ApiKe
     return list((await session.execute(stmt)).scalars().all())
 
 
-async def find_inactive_keys(session: AsyncSession, inactive_before: object) -> list[ApiKey]:
+async def find_inactive_keys(session: AsyncSession, inactive_before: datetime) -> list[ApiKey]:
     """Find active API keys unused beyond the inactive threshold (SOC 2 CC6.1)."""
     stmt = select(ApiKey).where(
         ApiKey.is_active == True,  # noqa: E712

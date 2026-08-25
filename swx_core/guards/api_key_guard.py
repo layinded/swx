@@ -72,6 +72,7 @@ class APIKeyGuard(BaseGuard):
     async def validate_token(self, token: str) -> Dict[str, Any]:
         """Validate API key by delegating to the service layer."""
         from swx_core.database.db import async_session
+        from swx_core.services.auth.api_key_service import validate_api_key
         async with async_session() as session:
             key_public = await validate_api_key(session, token)
             if key_public is None:
