@@ -8,9 +8,9 @@ Implements webhook handling for Paystack payment events with:
 - Idempotent wallet credit (by Paystack reference)
 - Redis fast-path idempotency (falls back to ledger idempotency)
 
-Paystack sends amounts in kobo (1 NGN = 100 kobo).  SwX wallet balances
-are in nano (1 NGN = 10,000,000 nano).  The conversion is handled by
-``swx_core.utils.currency.kobo_to_nano``.
+Shared apply logic lives in ``payment_confirmation_service`` so both
+the webhook and the /confirm endpoint use the same subscription/wallet
+creation code without double-processing.
 """
 
 import hashlib
@@ -21,14 +21,16 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
 
 from swx_core.config.settings import settings
 from swx_core.database.db import AsyncSessionLocal
 from swx_core.middleware.logging_middleware import logger
 from swx_core.models.billing import BillingAccountType
-from swx_core.models.user import User
-from swx_core.services.billing import wallet_service
+from swx_core.services.billing.payment_confirmation_service import (
+    apply_payment,
+    find_user_by_email,
+    parse_reference_prefix,
+)
 from swx_core.services.billing.subscription_service import SubscriptionService
 from swx_core.utils.currency import kobo_to_nano
 
@@ -64,25 +66,6 @@ def _extract_payload_fields(data: dict[str, Any]) -> tuple[str, int, str, str, s
         return None
 
     return reference, amount_kobo, email, currency, status_value
-
-
-def _parse_reference_prefix(reference: str) -> tuple[str, str | None]:
-    """Parse a payment reference to determine what was purchased.
-
-    References are formatted as ``{prefix}-{key}-{uuid}`` where the key
-    itself may contain hyphens (e.g. ``plan-pro-v1-a1b2c3d4``).
-
-    Returns ``(prefix, key)`` where prefix is "plan", "pack", or "" for
-    unrecognized references (treated as generic wallet credits).
-    """
-    parts = reference.split("-")
-    if len(parts) < 3:
-        return "", None
-    prefix = parts[0]
-    if prefix not in ("plan", "pack"):
-        return "", None
-    key = "-".join(parts[1:-1])
-    return prefix, key
 
 
 class PaystackWebhookHandler:
@@ -145,11 +128,11 @@ class PaystackWebhookHandler:
                 )
 
         amount_nano = kobo_to_nano(amount_kobo)
-        purchase_type, item_key = _parse_reference_prefix(reference)
+        purchase_type, item_key = parse_reference_prefix(reference)
 
         try:
             async with AsyncSessionLocal() as session:
-                user = await _find_user_by_email(session, email)
+                user = await find_user_by_email(session, email)
                 if user is None:
                     logger.warning("Paystack webhook: no user for email %s", email)
                     return PaystackWebhookResult(
@@ -157,19 +140,11 @@ class PaystackWebhookHandler:
                         message="User not found",
                     )
 
-                sub_service = SubscriptionService(session)
-                account = await sub_service.get_or_create_account(
-                    user.id, BillingAccountType.USER, user.email
+                await apply_payment(
+                    session, user.id, reference, amount_nano, currency,
+                    purchase_type, item_key,
                 )
-
-                if purchase_type == "plan" and item_key is not None:
-                    await sub_service.create_subscription(account.id, item_key, allow_paid=True)
-                    logger.info("Paystack webhook: created subscription for plan %s (reference %s)", item_key, reference)
-                else:
-                    await wallet_service.credit_wallet(
-                        session, account.id, currency, amount_nano, reference, reference
-                    )
-                    logger.info("Paystack webhook: credited %d nano for reference %s", amount_nano, reference)
+                await session.commit()
         except Exception:
             logger.exception("Paystack webhook: failed to process reference %s", reference)
             return PaystackWebhookResult(
@@ -185,25 +160,6 @@ class PaystackWebhookHandler:
         return PaystackWebhookResult(
             status="success", reference=reference, event_type=event_type
         )
-
-
-async def _find_user_by_email(session: AsyncSession, email: str) -> Optional[User]:
-    from swx_core.services.compliance.pii_encryption_service import (
-        encrypt_email,
-        should_encrypt_pii,
-        pii_encryption_enabled,
-        decrypt_user_pii,
-    )
-    if should_encrypt_pii():
-        encrypted_email = encrypt_email(email)
-        stmt = select(User).where(User.email_encrypted == encrypted_email)
-    else:
-        stmt = select(User).where(User.email == email)
-    result = await session.execute(stmt)
-    user = result.scalar_one_or_none()
-    if user and pii_encryption_enabled():
-        decrypt_user_pii(user)
-    return user
 
 
 def _resolve_webhook_secret() -> str | None:

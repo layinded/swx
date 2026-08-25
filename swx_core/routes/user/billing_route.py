@@ -34,6 +34,11 @@ class PaymentVerifyRequest(SQLModel):
     reference: str
 
 
+class PaymentConfirmRequest(SQLModel):
+    provider: str
+    reference: str
+
+
 class PaymentInitializePlanRequest(SQLModel):
     plan_key: str
     provider: str
@@ -74,6 +79,28 @@ async def initialize_payment(body: PaymentInitializeRequest, current_user: UserD
 @router.post("/payments/verify", response_model=dict[str, object])
 async def verify_payment(body: PaymentVerifyRequest, current_user: UserDep) -> dict[str, object]:
     return await billing_controller.verify_payment_controller(body.provider, body.reference)
+
+
+@router.post("/payments/confirm", response_model=dict[str, object])
+async def confirm_payment_endpoint(body: PaymentConfirmRequest, session: SessionDep, current_user: UserDep) -> dict[str, object]:
+    """Verify a payment and apply the result (SWX-021).
+
+    Bridges the gap between "provider says paid" and "account reflects it".
+    Idempotent with the webhook via shared Redis dedup key — so if both
+    the webhook and /confirm fire, the user is not double-charged.
+    """
+    redis_client = None
+    try:
+        from swx_core.container.container import get_container
+        container = get_container()
+        if container.bound("redis.client"):
+            redis_client = container.make("redis.client")
+    except Exception:
+        pass
+
+    return await billing_controller.confirm_payment_controller(
+        session, current_user.id, body.provider, body.reference, redis_client,
+    )
 
 
 @router.get("/plans", response_model=list[dict[str, object]])

@@ -22,6 +22,7 @@ from swx_core.services.billing import (
     tax_service,
     wallet_service,
 )
+from swx_core.services.billing.payment_confirmation_service import confirm_payment
 from swx_core.services.billing.provider_factory import get_local_payment_provider
 from swx_core.utils.currency import major_to_provider_amount
 from swx_core.utils.errors import NotFoundError
@@ -101,6 +102,30 @@ async def initialize_payment_controller(provider: str, amount: int, currency: st
 
 async def verify_payment_controller(provider: str, reference: str) -> dict[str, object]:
     return await get_local_payment_provider(provider).verify_payment(reference)
+
+
+async def confirm_payment_controller(
+    session: AsyncSession,
+    user_id: UUID,
+    provider: str,
+    reference: str,
+    redis_client=None,
+) -> dict[str, object]:
+    """Verify a payment with the provider and apply the result.
+
+    Bridges the gap between "provider says paid" and "account reflects it".
+    Idempotent with the webhook via shared Redis dedup key.
+    """
+    result = await confirm_payment(session, user_id, provider, reference, redis_client)
+    return {
+        "status": result.status,
+        "reference": result.reference,
+        "provider": result.provider,
+        "purchase_type": result.purchase_type,
+        "item_key": result.item_key,
+        "applied": result.applied,
+        "message": result.message,
+    }
 
 
 async def list_public_plans_controller() -> list[dict[str, object]]:
