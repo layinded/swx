@@ -6,6 +6,7 @@ from swx_core.models.user_role import UserRole, UserRoleCreate
 from swx_core.repositories import user_role_repository, user_repository, role_repository
 from swx_core.events.dispatcher import event_bus, Event
 from swx_core.auth.auth_cache import invalidate_user_permissions, invalidate_user_roles
+from swx_core.services.audit_logger import AuditLogger, ActorType, AuditOutcome, AuditAction
 
 
 async def _invalidate_user_assignment_caches(user_id: UUID) -> None:
@@ -44,7 +45,17 @@ async def assign_role_to_user_service(
             **({"context": event_context} if event_context is not None else {}),
         },
     ))
-    
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.RBAC_ROLE_ASSIGNED,
+        actor_type=ActorType.ADMIN,
+        resource_type="user_role",
+        resource_id=str(user_role.id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"user_id": str(assignment.user_id), "role_id": str(assignment.role_id)},
+    )
+
     return user_role
 
 
@@ -73,6 +84,16 @@ async def remove_role_from_user_service(
             **({"context": event_context} if event_context is not None else {}),
         },
     ))
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.RBAC_ROLE_REMOVED,
+        actor_type=ActorType.ADMIN,
+        resource_type="user_role",
+        resource_id=str(user_role_id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"user_id": user_id, "role_id": role_id},
+    )
 
 
 async def list_user_roles_service(session: AsyncSession, user_id: UUID) -> List[UserRole]:

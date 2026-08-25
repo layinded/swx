@@ -22,7 +22,7 @@ from fastapi import APIRouter, Request
 from swx_core.database.db import SessionDep
 from swx_core.models.common import Message
 from swx_core.models.user import UserPublic, UserUpdate, UserUpdatePassword
-from swx_core.auth.user.dependencies import UserDep
+from swx_core.auth.user.dependencies import UserDep, RecentMfaDep
 from swx_core.services.user_service import (
     update_user_profile_service,
     get_user_by_id_service,
@@ -103,37 +103,16 @@ async def read_user_by_id(
 async def update_password(
     session: SessionDep,
     body: UserUpdatePassword,
-    current_user: UserDep,
+    current_user: RecentMfaDep,
     request: Request,
 ) -> Any:
-    """
-    Change the current user's password.
-
-    Args:
-        session (SessionDep): The database session.
-        body (UserUpdatePassword): The current and new passwords.
-        current_user (UserDep): The currently authenticated user.
-        request (Request): The HTTP request object.
-
-    Returns:
-        Message: A success message indicating password change.
-    """
+    """Change the current user's password. Requires recent MFA step-up authentication."""
     return await update_password_service(session, current_user, body, request)
 
 
 @router.delete("/delete", response_model=Message, operation_id="delete_current_user")
 async def delete_user_me(
-    session: SessionDep, current_user: UserDep, request: Request = None
+    session: SessionDep, current_user: RecentMfaDep, request: Request = None
 ) -> Any:
-    """
-    Delete the currently authenticated user's account.
-
-    Args:
-        session (SessionDep): The database session.
-        current_user (UserDep): The currently authenticated user.
-        request (Request, optional): The HTTP request object.
-
-    Returns:
-        Message: A success message indicating account deletion.
-    """
+    """Delete the currently authenticated user's account. Requires recent MFA step-up authentication."""
     return await delete_user_service(session, current_user, request)

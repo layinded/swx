@@ -1,10 +1,12 @@
 # pyright: reportExplicitAny=false, reportAny=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingTypeArgument=false, reportAttributeAccessIssue=false, reportArgumentType=false, reportUnnecessaryTypeIgnoreComment=false
 
 from typing import Any
+from datetime import timedelta
 from uuid import UUID
 from swx_core.utils.time import utc_now
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import desc, select, func
 
 from swx_core.models.api_key_scope import ApiKey, ApiKeyScope
@@ -12,7 +14,11 @@ from swx_core.models.api_key_scope import ApiKey, ApiKeyScope
 async def create_api_key(session: AsyncSession, data: dict[str, Any]) -> ApiKey:
     key = ApiKey(**data)
     session.add(key)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise
     await session.refresh(key)
     return key
 
@@ -98,3 +104,58 @@ async def check_scope(session: AsyncSession, api_key_id: UUID, resource: str, ac
         if scope.resource in (resource, "*") and scope.action in (action, "*"):
             return True
     return False
+
+
+async def find_expired_keys(session: AsyncSession, before: object) -> list[ApiKey]:
+    """Find active API keys that have expired (SOC 2 CC6.1)."""
+    stmt = select(ApiKey).where(
+        ApiKey.is_active == True,  # noqa: E712
+        ApiKey.expires_at != None,  # noqa: E711  # pyright: ignore[reportOptionalOperand]
+        ApiKey.expires_at < before,  # pyright: ignore[reportOptionalOperand]
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def find_inactive_keys(session: AsyncSession, inactive_before: object) -> list[ApiKey]:
+    """Find active API keys unused beyond the inactive threshold (SOC 2 CC6.1)."""
+    stmt = select(ApiKey).where(
+        ApiKey.is_active == True,  # noqa: E712
+        ApiKey.last_used_at != None,  # noqa: E711  # pyright: ignore[reportOptionalOperand]
+        ApiKey.last_used_at < inactive_before,  # pyright: ignore[reportOptionalOperand]
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def batch_deactivate_keys(session: AsyncSession, keys: list[ApiKey]) -> int:
+    """Deactivate a batch of API keys, committing once. Returns count deactivated."""
+    for key in keys:
+        key.is_active = False
+        session.add(key)
+    if keys:
+        await session.commit()
+    return len(keys)
+
+
+async def deactivate_and_extend_key(session: AsyncSession, key_id: UUID, grace_hours: float) -> ApiKey | None:
+    """Deactivate a key and extend its expiry by grace_hours. Returns the updated key."""
+    key = await get_api_key_by_id(session, key_id)
+    if key is None:
+        return None
+    key.is_active = False
+    key.expires_at = utc_now() + timedelta(hours=grace_hours)
+    session.add(key)
+    await session.commit()
+    await session.refresh(key)
+    return key
+
+
+async def set_rotated_from_id(session: AsyncSession, key_id: UUID, rotated_from_id: UUID) -> ApiKey | None:
+    """Set the rotated_from_id on a key. Returns the updated key."""
+    key = await get_api_key_by_id(session, key_id)
+    if key is None:
+        return None
+    key.rotated_from_id = rotated_from_id
+    session.add(key)
+    await session.commit()
+    await session.refresh(key)
+    return key

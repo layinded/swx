@@ -23,6 +23,7 @@ class TokenAudience(str, Enum):
     ADMIN = "admin"
     USER = "user"
     SYSTEM = "system"
+    MFA = "mfa"
 
 
 def create_token(

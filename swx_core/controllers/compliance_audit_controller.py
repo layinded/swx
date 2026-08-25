@@ -8,6 +8,8 @@ from swx_core.models.compliance_audit import ComplianceConfigCreate, ComplianceC
 from swx_core.services.compliance import compliance_audit_service
 from swx_core.services.compliance import data_subject_service
 from swx_core.services.compliance import retention_service
+from swx_core.services.compliance.erasure_scheduler_service import execute_scheduled_erasures
+from swx_core.services.compliance.audit_integrity_service import get_integrity_report
 
 
 async def list_compliance_logs_controller(session: AsyncSession, **filters: object) -> AuditLogsPublic:
@@ -60,3 +62,19 @@ async def list_compliance_configs_controller(session: AsyncSession, category: st
 
 async def upsert_compliance_config_controller(session: AsyncSession, data: ComplianceConfigCreate) -> ComplianceConfigPublic:
     return await compliance_audit_service.upsert_compliance_config(session, data)
+
+
+async def execute_scheduled_erasures_controller(session: AsyncSession) -> dict:
+    return await execute_scheduled_erasures(session)
+
+
+async def purge_audit_logs_controller(session: AsyncSession, retention_days: int | None = None) -> dict:
+    return await retention_service.purge_expired_audit_logs(session, retention_days)
+
+
+async def purge_sessions_controller(session: AsyncSession, retention_days: int | None = None) -> dict:
+    return await retention_service.purge_expired_sessions(session, retention_days)
+
+
+async def verify_audit_integrity_controller(session: AsyncSession) -> dict[str, object]:
+    return await get_integrity_report(session)

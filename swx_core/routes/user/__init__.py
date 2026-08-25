@@ -16,6 +16,7 @@ from .notification_route import router as notification_router
 from .organization_route import router as organization_router
 from .referral_route import router as referral_router
 from .safety_route import router as safety_router
+from .session_route import router as session_router
 from .sso_route import router as sso_router
 from .status_route import router as status_router
 from .user_route import router as user_router
@@ -35,6 +36,7 @@ router.include_router(api_key_router)
 router.include_router(webhook_router)
 router.include_router(conversation_router)
 router.include_router(safety_router)
+router.include_router(session_router)
 router.include_router(sso_router)
 router.include_router(status_router)
 router.include_router(data_transfer_router)

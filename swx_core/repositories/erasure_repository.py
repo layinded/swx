@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func as sa_func
+from sqlalchemy import func as sa_func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -28,6 +28,19 @@ async def find_sole_owned_organizations(session: AsyncSession, user_id: UUID) ->
         select(Organization)
         .where(Organization.owner_id == user_id)
         .where(member_count <= 1)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def find_users_due_for_erasure(session: AsyncSession) -> list[User]:
+    """Find users past their GDPR grace period whose erasure is due."""
+    now = utc_now()
+    stmt = select(User).where(
+        and_(
+            User.is_active == False,  # noqa: E712
+            User.gdpr_deleted_at != None,  # noqa: E711  # pyright: ignore[reportOptionalOperand]
+            User.gdpr_deleted_at <= now,  # pyright: ignore[reportOptionalOperand]
+        )
     )
     return list((await session.execute(stmt)).scalars().all())
 

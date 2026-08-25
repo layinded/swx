@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.models.llm_provider_config import LLMProviderConfig, LLMProviderType
 from swx_core.repositories import llm_provider_repository
-from swx_core.services.llm.config_resolver import resolve_config
+from swx_core.services.llm.config_resolver import resolve_api_key, resolve_config
 from swx_core.services.llm.providers import BaseLLMProvider
 from swx_core.services.llm.providers.anthropic_provider import AnthropicProvider
 from swx_core.services.llm.providers.azure_provider import AzureProvider
@@ -17,7 +17,12 @@ _CHAIN_TTL: float = 60.0
 
 
 def resolve_credentials(config: LLMProviderConfig) -> dict[str, object]:
-    return resolve_config(config.credentials)
+    resolved = resolve_config(config.credentials)
+    if config.credential_source == "encrypted_db" and config.encrypted_api_key:
+        resolved["api_key"] = resolve_api_key(
+            config.credentials, config.credential_source, config.encrypted_api_key
+        )
+    return resolved
 
 
 def _get_cache_key(config: LLMProviderConfig) -> str:

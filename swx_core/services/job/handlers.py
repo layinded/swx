@@ -448,3 +448,21 @@ async def compliance_retention_apply_handler(session: AsyncSession, payload: Dic
     result = await apply_retention(session, resource_type=resource_type)
     logger.info(f"Retention applied: {result}")
     return {"status": "completed", "resource_type": resource_type, "result": result}
+
+
+async def compliance_api_key_expired_cleanup_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
+    from swx_core.services.compliance.api_key_lifecycle_service import revoke_expired_api_keys
+
+    logger.info("Running expired API key cleanup (SOC 2 CC6.1)")
+    result = await revoke_expired_api_keys(session)
+    logger.info("Expired API key cleanup completed: %d expired, %d inactive_revoked", result.get("expired_count", 0), result.get("inactive_revoked_count", 0))
+    return result
+
+
+async def compliance_session_idle_cleanup_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
+    from swx_core.services.auth.session_service import expire_idle_sessions
+
+    logger.info("Running idle session cleanup (SOC 2 CC6.1)")
+    count = await expire_idle_sessions(session)
+    logger.info("Idle session cleanup completed: %d sessions expired", count)
+    return {"status": "completed", "sessions_expired": count}

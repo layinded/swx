@@ -1130,4 +1130,89 @@ name = random_string(10)  # "aBcDeFgHiJ"
 
 ---
 
+## Currency Conversion (v2.22.4)
+
+**Module:** `swx_core/utils/currency.py`
+
+Single source of truth for converting between major currency units,
+provider minor units (kobo, cents), and nano (SwX wallet balance unit).
+
+### NANO_DIVISORS
+
+```python
+from swx_core.utils.currency import NANO_DIVISORS
+
+# 1 major unit = N nano
+NANO_DIVISORS = {
+    "NGN": 10_000_000,
+    "KES": 100,
+    "ZAR": 100,
+    "USD": 100,
+    "GHS": 100,
+}
+```
+
+### Functions
+
+```python
+from swx_core.utils.currency import (
+    major_to_nano,
+    nano_to_major,
+    kobo_to_nano,
+    provider_amount_to_nano,
+    major_to_provider_amount,
+)
+
+# Major → nano
+nano = major_to_nano(1000, "NGN")  # 10_000_000_000
+
+# Nano → major
+major = nano_to_major(10_000_000_000, "NGN")  # 1000.0
+
+# Paystack kobo → nano (1 kobo = 100,000 nano)
+nano = kobo_to_nano(100_000)  # 10_000_000_000
+
+# Provider-reported amount → nano (dispatches by provider + currency)
+nano = provider_amount_to_nano(100_000, "NGN", "paystack")  # kobo → nano
+nano = provider_amount_to_nano(1000, "NGN", "flutterwave")  # major → nano
+
+# Major → provider's expected unit (for payment initialization)
+kobo = major_to_provider_amount(1000, "NGN", "paystack")  # 100_000 (kobo)
+major = major_to_provider_amount(1000, "NGN", "flutterwave")  # 1000 (major)
+```
+
+---
+
+## Session Helpers (v2.22.4)
+
+**Module:** `swx_core/database/session_helpers.py`
+
+Provides `with_read_session()` — a short-lived `AsyncSession` context manager
+for the DB-read-then-HTTP pattern. Prevents connection pool exhaustion when
+controllers mix database reads with outbound HTTP calls.
+
+See [Session Management](./SESSION_MANAGEMENT.md) for full documentation.
+
+```python
+from swx_core.database.session_helpers import with_read_session
+
+async def my_controller(item_key, provider, email, callback_url):
+    async with with_read_session() as session:
+        item = await billing_service.get_item_by_key(session, item_key)
+        if item is None:
+            raise NotFoundError("Item", item_key)
+        item_amount = item.amount
+        item_currency = item.currency
+
+    # Session is now closed — safe to make the outbound HTTP call.
+    return await get_local_payment_provider(provider).initialize_payment(
+        item_amount, item_currency, email, reference, callback_url
+    )
+```
+
+---
+
 **Status:** Utilities documented and ready for use.
+
+**Version:** 2.22.4  
+**Last Updated:** 2026-08-22

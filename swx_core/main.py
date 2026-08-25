@@ -65,6 +65,22 @@ async def lifespan(app: FastAPI):  # noqa
     """
     logger.info("Initializing application startup...")
 
+    # Step 0a: Validate encryption key when PII encryption is enabled (fail-closed)
+    if settings.PII_ENCRYPTION_ENABLED:
+        from swx_core.security.encryption import validate_encryption_key
+        try:
+            validate_encryption_key()
+            logger.info("Encryption key validated successfully (PII encryption enabled).")
+        except Exception as e:
+            await alert_engine.emit(
+                severity=AlertSeverity.CRITICAL,
+                source=AlertSource.SYSTEM,
+                event_type="STARTUP_FAILURE_ENCRYPTION",
+                message=f"Application failed to start: PII encryption enabled but encryption key is invalid: {e}",
+                metadata={"error": str(e)},
+            )
+            raise
+
     # Step 1: Run Database Setup (Migrations & Superuser Creation)
     # When DOCKERIZED, prestart has already run db_setup (alembic + superuser + seed).
     # Skip here to avoid duplicate migrations (e.g. "type jobstatus already exists") and
@@ -91,6 +107,25 @@ async def lifespan(app: FastAPI):  # noqa
     else:
         logger.info("DOCKERIZED=true: skipping setup_database and seed_data (handled by prestart).")
 
+    # Step 2b: Verify audit log hash chain integrity (SOC 2 CC7.2, fail-closed)
+    # Must run AFTER database setup so the audit_log table exists on fresh installs.
+    try:
+        from swx_core.database.db import async_session
+        from swx_core.services.compliance.audit_integrity_service import check_startup_integrity
+        async with async_session() as integrity_session:
+            await check_startup_integrity(integrity_session)
+        logger.info("Audit log integrity verified at startup.")
+    except Exception as e:
+        logger.critical("Audit log integrity check FAILED at startup: %s", e)
+        await alert_engine.emit(
+            severity=AlertSeverity.CRITICAL,
+            source=AlertSource.SYSTEM,
+            event_type="STARTUP_FAILURE_AUDIT_INTEGRITY",
+            message=f"Application failed to start: audit log integrity check failed: {e}",
+            metadata={"error": str(e)},
+        )
+        raise
+
     # Step 3: Register system policies
     logger.info("Registering system policies...")
     from swx_core.services.policy.policy_registry import register_system_policies
@@ -106,6 +141,10 @@ async def lifespan(app: FastAPI):  # noqa
         alert_send_handler,
         audit_aggregate_handler,
         cache_refresh_handler,
+        compliance_data_subject_delete_handler,
+        compliance_retention_apply_handler,
+        compliance_api_key_expired_cleanup_handler,
+        compliance_session_idle_cleanup_handler,
     )
     from swx_core.models.job import JobType
     
@@ -114,26 +153,64 @@ async def lifespan(app: FastAPI):  # noqa
     register_job_handler(JobType.alert_send, alert_send_handler)
     register_job_handler(JobType.audit_aggregate, audit_aggregate_handler)
     register_job_handler(JobType.cache_refresh, cache_refresh_handler)
+    register_job_handler(JobType.compliance_data_subject_delete, compliance_data_subject_delete_handler)
+    register_job_handler(JobType.compliance_retention_apply, compliance_retention_apply_handler)
+    register_job_handler(JobType.compliance_api_key_expired_cleanup, compliance_api_key_expired_cleanup_handler)
+    register_job_handler(JobType.compliance_session_idle_cleanup, compliance_session_idle_cleanup_handler)
     logger.info("Job handlers registered successfully.")
 
-    # Step 5: Start job runner
+    # Step 5: Register webhook bridge (domain events -> outbound webhooks)
+    logger.info("Registering webhook bridge listener...")
+    from swx_core.events.listeners.webhook_bridge_listener import register_webhook_bridge
+    register_webhook_bridge()
+    logger.info("Webhook bridge listener registered successfully.")
+
+    # Step 6: Start job runner
     logger.info("Starting job runner...")
     from swx_core.services.job import start_job_runner
     await start_job_runner()
     logger.info("Job runner started successfully.")
 
-    # Step 6: Start background tasks (e.g., cache refresh)
+    # Step 7: Start background tasks (e.g., cache refresh)
     logger.info("Starting cache refresh background task.")
     start_cache_refresh()
 
-    # Step 7: Start audit event queue drain worker
+    # Step 8: Start audit event queue drain worker
     from swx_core.services.audit.audit_event_queue import audit_queue
     await audit_queue.start()
+
+    # Step 9: Start SIEM batch flush worker (SOC 2 CC7.2)
+    import asyncio
+    _bg_tasks: list[asyncio.Task] = []
+
+    if settings.SIEM_ENABLED:  # pyright: ignore[reportAttributeAccessIssue]
+        from swx_core.services.compliance.siem_service import siem_batch_loop
+        _siem_task = asyncio.create_task(siem_batch_loop())
+        _bg_tasks.append(_siem_task)
+        logger.info("SIEM batch flush worker started (interval=%ss).", settings.SIEM_BATCH_INTERVAL)
+
+    # Step 10: Start API key lifecycle cleanup worker (SOC 2 CC6.1)
+    from swx_core.services.compliance.api_key_lifecycle_service import api_key_lifecycle_loop
+    _api_key_task = asyncio.create_task(api_key_lifecycle_loop())
+    _bg_tasks.append(_api_key_task)
+    logger.info("API key lifecycle cleanup worker started (interval=%ss).", settings.API_KEY_LIFECYCLE_INTERVAL_SECONDS)
+
+    # Step 11: Start idle session cleanup worker (SOC 2 CC6.1)
+    from swx_core.services.auth.session_service import session_idle_cleanup_loop
+    _session_task = asyncio.create_task(session_idle_cleanup_loop())
+    _bg_tasks.append(_session_task)
+    logger.info("Idle session cleanup worker started (interval=%ss).", settings.SESSION_IDLE_CLEANUP_INTERVAL_SECONDS)
 
     # Yield control to the application (it will run until shutdown)
     yield
 
-    # Shutdown: stop audit queue drain worker
+    # Shutdown: cancel background tasks
+    for t in _bg_tasks:
+        t.cancel()
+    if _bg_tasks:
+        await asyncio.gather(*_bg_tasks, return_exceptions=True)
+        logger.info("Cancelled %d background tasks.", len(_bg_tasks))
+
     await audit_queue.stop()
     logger.info("Shutting down application...")
 

@@ -669,6 +669,176 @@ for feature in features:
 
 ---
 
+## User-Facing Billing Endpoints (v2.22.4)
+
+### Overview
+
+SwX Core v2.22.4 adds a complete user-facing billing surface: server-side
+validated payment initialization, subscription lifecycle management,
+transaction history, quota tracking, credit packs, and webhook handlers
+for Paystack and Flutterwave.
+
+All new endpoints follow the **CSR pattern** (Controller → Service →
+Repository) strictly. Controllers never call repositories directly.
+
+### Server-Side Validated Payment Initialization
+
+The previous `POST /user/billing/payments/initialize` accepted `amount_nano`
+from the client — a P0 security vulnerability. Two new endpoints replace
+it with server-side price validation:
+
+| Endpoint | Body | Server Action |
+|----------|------|---------------|
+| `POST /user/billing/payments/initialize/plan` | `{ plan_key, provider, callback_url, currency? }` | Looks up plan price from `swx_billing_plan`, converts to provider unit, calls provider |
+| `POST /user/billing/payments/initialize/pack` | `{ pack_key, provider, callback_url }` | Looks up pack price from `swx_credit_pack`, converts to provider unit, calls provider |
+
+**Key:** The client sends only `plan_key` / `pack_key` — never an amount.
+The controller uses `with_read_session()` to look up the price on a
+short-lived session, closes the session, THEN calls the payment provider.
+This prevents the session deadlock described in
+[Session Management](./SESSION_MANAGEMENT.md).
+
+**Currency conversion** uses `swx_core.utils.currency`:
+- `major_to_provider_amount(amount, currency, provider)` — converts plan price to the provider's expected unit (kobo for Paystack NGN, cents for Stripe USD, major for Flutterwave)
+- `provider_amount_to_nano(amount, currency, provider)` — converts webhook amounts back to nano for wallet credits
+
+### Credit Packs
+
+Credit packs allow users to buy tokens without upgrading their plan.
+
+**Model:** `swx_credit_pack` table (`swx_core/models/credit_pack.py`)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /user/billing/credit-packs` | List public, active credit packs |
+| `POST /user/billing/credit-packs/{pack_key}/purchase` | Initialize payment for a credit pack |
+
+On webhook success, tokens are credited to the user's wallet via
+`wallet_service.credit_wallet()` (idempotent by reference).
+
+### Subscription Lifecycle
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /user/billing/plans` | Public plan catalog (no auth required) |
+| `GET /user/billing/subscriptions/current` | Current active/trialing subscription (404 if none) |
+| `GET /user/billing/subscriptions` | All subscriptions (paginated: `skip`, `limit`) |
+| `POST /user/billing/subscriptions` | Subscribe to a plan (`{ plan_key }`) |
+| `POST /user/billing/subscriptions/{id}/cancel` | Cancel subscription (`?immediate=true` for immediate cancel) |
+
+The cancel endpoint performs an **ownership check** — the subscription's
+`account.owner_id` must match the current user's ID. Raises `ForbiddenError`
+on mismatch.
+
+All subscription operations go through `SubscriptionService` which emits
+events (`subscription.created`, `subscription.canceled`,
+`subscription.updated`) via `event_bus`.
+
+### Transaction History
+
+| Endpoint | Query Params | Description |
+|----------|-------------|-------------|
+| `GET /user/billing/transactions` | `entry_type`, `date_from`, `date_to`, `skip`, `limit` | User-scoped ledger entries (credits, debits, refunds, adjustments) |
+
+The controller resolves the user's billing account internally via
+`billing_service.get_user_billing_account()`, then queries
+`ledger_service.get_filtered_entry_history()` which delegates to
+`ledger_repository.get_filtered_entries()`.
+
+### Quota & Usage Windows
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /user/billing/quota/status` | Monthly + 5-hour rolling window usage |
+| `POST /user/billing/quota/reset-window` | Reset the rolling window (guardrails: max 1/window, max 3/day) |
+
+**UsageWindowService** (`swx_core/services/billing/usage_window_service.py`):
+- Redis primary store with in-memory fallback
+- Monthly counter: `quota:{account_id}:monthly:{YYYYMM}` (32-day TTL)
+- Window counter: `quota:{account_id}:window:{window_start_ts}` (5hr + 1hr TTL)
+- Reset guardrails: `QUOTA_WINDOW_MAX_RESETS` (default 1), `QUOTA_DAILY_MAX_RESETS` (default 3)
+- Emits `quota.window_reset` event on reset
+
+**Settings:**
+```env
+QUOTA_WINDOW_HOURS=5
+QUOTA_WINDOW_DEFAULT_TOKENS=100000
+QUOTA_MONTHLY_DEFAULT_TOKENS=1000000
+QUOTA_WINDOW_MAX_RESETS=1
+QUOTA_DAILY_MAX_RESETS=3
+```
+
+### Webhook Handlers
+
+| Endpoint | Provider | Signature | Amount Unit |
+|----------|----------|-----------|-------------|
+| `POST /webhooks/paystack` | Paystack | HMAC-SHA512 (`x-paystack-signature`) | Kobo (1 NGN = 100 kobo) |
+| `POST /webhooks/flutterwave` | Flutterwave | HMAC-SHA256 (`verif-hash`) | Major units |
+| `POST /webhooks/stripe` | Stripe | Stripe-Signature | Cents |
+
+All webhook handlers follow the same pattern:
+1. Verify signature
+2. Resolve webhook secret (handles `${ENV_VAR}` placeholders, falls back to API key)
+3. Check Redis idempotency (`webhook:{provider}:idempotency:{reference}`)
+4. Only process supported events (`charge.success` / `charge.completed`)
+5. Parse reference prefix to route the payment:
+   - `plan-{key}-{uuid}` → call `SubscriptionService.create_subscription(account_id, key)`
+   - `pack-{key}-{uuid}` → credit wallet (tokens purchased without plan upgrade)
+   - Unrecognized → credit wallet (generic payment)
+6. Convert amount to nano via `provider_amount_to_nano()` or `kobo_to_nano()`
+7. Look up user by email
+8. Ensure billing account exists (`SubscriptionService.get_or_create_account`)
+9. Execute the routed action (subscription creation or wallet credit)
+10. Mark as processed in Redis
+11. Return `200 { status: "success" }` (even for duplicates — prevents provider retries)
+
+**Settings:**
+```env
+# Quota
+QUOTA_WINDOW_HOURS=5
+QUOTA_WINDOW_DEFAULT_TOKENS=100000
+QUOTA_MONTHLY_DEFAULT_TOKENS=1000000
+QUOTA_WINDOW_MAX_RESETS=1
+QUOTA_DAILY_MAX_RESETS=3
+QUOTA_MONTHLY_TTL_DAYS=32
+QUOTA_DAILY_TTL_HOURS=36
+QUOTA_WINDOW_TTL_BUFFER_HOURS=1
+
+# Usage metering
+USAGE_METERING_DEFAULT_CURRENCY=NGN
+USAGE_METERING_DEFAULT_MODEL_KEY=default
+USAGE_METERING_MODEL_PRICING={"gpt-4":{"input":30000,"output":60000},...}
+
+# Webhooks
+PAYSTACK_WEBHOOK_SECRET=${PAYSTACK_WEBHOOK_SECRET}
+FLUTTERWAVE_WEBHOOK_SECRET=${FLUTTERWAVE_WEBHOOK_SECRET}
+WEBHOOK_IDEMPOTENCY_TTL=604800
+WEBHOOK_RETENTION_DAYS=30
+```
+
+### New Service Layer
+
+All new controllers route through services, never repositories directly:
+
+| Service | File | Wraps |
+|---------|------|------|
+| `billing_service` | `services/billing/billing_service.py` | Plan/credit pack/account lookups |
+| `currency_service` | `services/billing/currency_service.py` | Currency CRUD |
+| `UsageWindowService` | `services/billing/usage_window_service.py` | Redis-based quota tracking |
+| `SubscriptionService` (extended) | `services/billing/subscription_service.py` | Added `get_active_subscription`, `list_subscriptions`, `get_subscription_by_id` |
+| `exchange_rate_service` (extended) | `services/billing/exchange_rate_service.py` | Added `get_all_for_base` |
+
+### Session Management
+
+See [Session Management](./SESSION_MANAGEMENT.md) for the deadlock problem
+and the three correct patterns for routes that mix DB reads with outbound
+HTTP calls.
+
+**Key rule:** Routes that call payment providers must NOT take `SessionDep`.
+The controller manages its own short-lived session via `with_read_session()`.
+
+---
+
 ## Next Steps
 
 - Read [Rate Limiting Documentation](./RATE_LIMITING.md) for plan-based limits
@@ -678,3 +848,6 @@ for feature in features:
 ---
 
 **Status:** Billing system documented, ready for implementation.
+
+**Version:** 2.22.4  
+**Last Updated:** 2026-08-22

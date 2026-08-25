@@ -188,9 +188,22 @@ class PaystackWebhookHandler:
 
 
 async def _find_user_by_email(session: AsyncSession, email: str) -> Optional[User]:
-    stmt = select(User).where(User.email == email)
+    from swx_core.services.compliance.pii_encryption_service import (
+        encrypt_email,
+        should_encrypt_pii,
+        pii_encryption_enabled,
+        decrypt_user_pii,
+    )
+    if should_encrypt_pii():
+        encrypted_email = encrypt_email(email)
+        stmt = select(User).where(User.email_encrypted == encrypted_email)
+    else:
+        stmt = select(User).where(User.email == email)
     result = await session.execute(stmt)
-    return result.scalar_one_or_none()
+    user = result.scalar_one_or_none()
+    if user and pii_encryption_enabled():
+        decrypt_user_pii(user)
+    return user
 
 
 def _resolve_webhook_secret() -> str | None:

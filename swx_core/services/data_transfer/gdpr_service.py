@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.events.dispatcher import event_bus
 from swx_core.middleware.logging_middleware import logger
+from swx_core.services.audit_logger import AuditLogger, ActorType, AuditOutcome, AuditAction
 from swx_core.models.conversation import Conversation
 from swx_core.repositories import gdpr_export_repository
 
@@ -97,6 +98,17 @@ async def export_user_data_zip(session: AsyncSession, user_id: UUID) -> bytes:
     buffer.seek(0)
     logger.info("GDPR export completed for user %s", user_id)
     await event_bus.dispatch("gdpr.export_completed", payload={"user_id": str(user_id)})
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.GDPR_EXPORT_REQUESTED,
+        actor_type=ActorType.USER,
+        actor_id=str(user_id),
+        resource_type="user",
+        resource_id=str(user_id),
+        outcome=AuditOutcome.SUCCESS,
+    )
+
     return buffer.getvalue()
 
 
@@ -110,6 +122,17 @@ async def request_deletion(session: AsyncSession, user_id: UUID) -> dict[str, ob
 
     cert = await request_erasure(session, user_id)
 
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.GDPR_ERASURE_REQUESTED,
+        actor_type=ActorType.USER,
+        actor_id=str(user_id),
+        resource_type="user",
+        resource_id=str(user_id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"certificate_id": str(cert.id), "erasure_type": cert.erasure_type},
+    )
+
     return {
         "status": "deactivated",
         "certificate_id": str(cert.id),
@@ -122,4 +145,16 @@ async def cancel_deletion(session: AsyncSession, user_id: UUID) -> dict[str, obj
     """Cancel a pending deletion during the grace period."""
     from swx_core.services.compliance.erasure_service import cancel_erasure
 
-    return await cancel_erasure(session, user_id)
+    result = await cancel_erasure(session, user_id)
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.GDPR_ERASURE_CANCELLED,
+        actor_type=ActorType.USER,
+        actor_id=str(user_id),
+        resource_type="user",
+        resource_id=str(user_id),
+        outcome=AuditOutcome.SUCCESS,
+    )
+
+    return result

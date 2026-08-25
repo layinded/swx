@@ -23,6 +23,7 @@ from swx_core.models.organization_invitation import (
 from swx_core.models.team_invitation import InvitationStatus
 from swx_core.repositories import organization_repository
 from swx_core.repositories.organization_repository import OrganizationData
+from swx_core.services.audit_logger import AuditLogger, ActorType, AuditOutcome, AuditAction
 
 async def _require_org(session: AsyncSession, org_id: UUID):
     organization = await organization_repository.get_organization_by_id(session, org_id)
@@ -49,9 +50,24 @@ async def create_organization(session: AsyncSession, data: OrganizationCreate, o
     organization = await organization_repository.create_organization(session, organization_data)
     await organization_repository.add_member(session, {"organization_id": organization.id, "user_id": owner_id, "role": OrganizationRole.OWNER.value, "invited_by": owner_id, "joined_at": utc_now(), "is_active": True})
     await event_bus.dispatch("organization.created", payload={"organization_id": str(organization.id), "owner_id": str(owner_id), "slug": organization.slug})
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.ORG_CREATED,
+        actor_type=ActorType.USER,
+        actor_id=str(owner_id),
+        resource_type="organization",
+        resource_id=str(organization.id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"slug": organization.slug},
+    )
+
     return OrganizationPublic.model_validate(organization)
 
-async def get_organization(session: AsyncSession, org_id: UUID) -> OrganizationPublic:
+async def get_organization(session: AsyncSession, org_id: UUID, user_id: UUID | None = None) -> OrganizationPublic:
+    # Defense-in-depth: verify membership if user_id is provided (user-facing calls)
+    if user_id:
+        await _require_member(session, org_id, user_id)
     return OrganizationPublic.model_validate(await _require_org(session, org_id))
 
 async def update_organization(session: AsyncSession, org_id: UUID, data: OrganizationUpdate, user_id: UUID) -> OrganizationPublic:
@@ -65,6 +81,18 @@ async def update_organization(session: AsyncSession, org_id: UUID, data: Organiz
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
     await event_bus.dispatch("organization.updated", payload={"organization_id": str(organization.id), "name": organization.name, "slug": organization.slug})
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.ORG_UPDATED,
+        actor_type=ActorType.USER,
+        actor_id=str(user_id),
+        resource_type="organization",
+        resource_id=str(org_id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"slug": organization.slug},
+    )
+
     return OrganizationPublic.model_validate(organization)
 
 async def delete_organization(session: AsyncSession, org_id: UUID, user_id: UUID) -> bool:
@@ -74,6 +102,16 @@ async def delete_organization(session: AsyncSession, org_id: UUID, user_id: UUID
     deleted = await organization_repository.delete_organization(session, org_id)
     if deleted:
         await event_bus.dispatch("organization.deleted", payload={"organization_id": str(org_id)})
+
+        audit = AuditLogger(session)
+        await audit.log_event(
+            action=AuditAction.ORG_DELETED,
+            actor_type=ActorType.USER,
+            actor_id=str(user_id),
+            resource_type="organization",
+            resource_id=str(org_id),
+            outcome=AuditOutcome.SUCCESS,
+        )
     return deleted
 
 async def list_organizations(session: AsyncSession, skip: int, limit: int) -> list[OrganizationPublic]:
@@ -116,6 +154,18 @@ async def accept_invitation(session: AsyncSession, token: str, user_id: UUID) ->
     public_member = OrganizationMemberPublic.model_validate(member)
     await organization_repository.update_invitation_status(session, invitation.id, InvitationStatus.ACCEPTED.value, accepted_at=utc_now())
     await event_bus.dispatch("organization.member_joined", payload={"organization_id": str(invitation.organization_id), "user_id": str(user_id), "role": public_member.role})
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.ORG_MEMBER_ADDED,
+        actor_type=ActorType.USER,
+        actor_id=str(user_id),
+        resource_type="organization",
+        resource_id=str(invitation.organization_id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"role": public_member.role},
+    )
+
     return public_member
 
 async def reject_invitation(session: AsyncSession, token: str) -> OrganizationInvitationPublic:
@@ -144,6 +194,17 @@ async def remove_member(session: AsyncSession, org_id: UUID, member_id: UUID, re
     removed = await organization_repository.remove_member(session, member_id)
     if removed:
         await event_bus.dispatch("organization.member_removed", payload={"organization_id": str(org_id), "user_id": str(member.user_id), "member_id": str(member_id)})
+
+        audit = AuditLogger(session)
+        await audit.log_event(
+            action=AuditAction.ORG_MEMBER_REMOVED,
+            actor_type=ActorType.USER,
+            actor_id=str(requester_id),
+            resource_type="organization",
+            resource_id=str(org_id),
+            outcome=AuditOutcome.SUCCESS,
+            context={"removed_user_id": str(member.user_id)},
+        )
     return removed
 
 async def leave_organization(session: AsyncSession, org_id: UUID, user_id: UUID) -> bool:

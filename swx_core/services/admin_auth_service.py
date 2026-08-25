@@ -15,6 +15,7 @@ from swx_core.security.refresh_token_service import (
     revoke_refresh_token,
 )
 from swx_core.services.settings_helper import get_token_expiration
+from swx_core.services.audit_logger import AuditLogger, ActorType, AuditOutcome, AuditAction
 
 
 async def login_admin_service(
@@ -24,9 +25,38 @@ async def login_admin_service(
         session=session, email=form_data.username, password=form_data.password
     )
     if not admin_user:
+        audit = AuditLogger(session)
+        await audit.log_event(
+            action=AuditAction.AUTH_LOGIN_FAILURE,
+            actor_type=ActorType.ADMIN,
+            context={"email": form_data.username, "reason": "invalid_credentials"},
+            outcome=AuditOutcome.FAILURE,
+            request=request,
+        )
         raise HTTPException(status_code=401, detail="Incorrect admin email or password")
     if not admin_user.is_active:
+        audit = AuditLogger(session)
+        await audit.log_event(
+            action=AuditAction.AUTH_LOGIN_FAILURE,
+            actor_type=ActorType.ADMIN,
+            actor_id=str(admin_user.id),
+            context={"reason": "inactive_account"},
+            outcome=AuditOutcome.FAILURE,
+            request=request,
+        )
         raise HTTPException(status_code=400, detail="Inactive admin user")
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.AUTH_LOGIN_SUCCESS,
+        actor_type=ActorType.ADMIN,
+        actor_id=str(admin_user.id),
+        resource_type="admin_user",
+        resource_id=str(admin_user.id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"auth_method": "password"},
+        request=request,
+    )
 
     return await _create_admin_token_pair(session, admin_user.email)
 
@@ -52,6 +82,22 @@ async def logout_admin_service(
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
     await revoke_refresh_token(session, request_data.refresh_token)
+
+    email = result[0] if result else None
+    admin_id = None
+    if email:
+        admin_user = await get_admin_by_email(session=session, email=email)
+        admin_id = str(admin_user.id) if admin_user else None
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.AUTH_LOGOUT,
+        actor_type=ActorType.ADMIN,
+        actor_id=admin_id,
+        outcome=AuditOutcome.SUCCESS,
+        request=request,
+    )
+
     return {"message": "Admin logged out successfully"}
 
 

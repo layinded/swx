@@ -1,11 +1,21 @@
+from datetime import datetime
+from uuid import UUID
+
 from fastapi import APIRouter
 from pydantic import Field
 from sqlmodel import SQLModel
 
 from swx_core.auth.user.dependencies import UserDep
-from swx_core.controllers import billing_controller
+from swx_core.controllers import (
+    billing_controller,
+    quota_controller,
+    subscription_controller,
+)
 from swx_core.database.db import SessionDep
-from swx_core.models.currency import ConvertRequest, ConvertResponse, WalletPublic, WalletTransactionRequest
+from swx_core.models.billing import SubscriptionPublic
+from swx_core.models.currency import WalletPublic
+from swx_core.models.ledger import LedgerEntryPublic
+from swx_core.services.billing.usage_window_service import QuotaStatus
 
 
 class PaymentInitializeRequest(SQLModel):
@@ -24,7 +34,22 @@ class PaymentVerifyRequest(SQLModel):
     reference: str
 
 
+class PaymentInitializePlanRequest(SQLModel):
+    plan_key: str
+    provider: str
+    callback_url: str
+    currency: str | None = None
+
+
+class PaymentInitializePackRequest(SQLModel):
+    provider: str
+    callback_url: str
+
+
 router = APIRouter(prefix="/user/billing", tags=["user-billing"])
+
+
+# Wallet: read-only (mutations via admin adjustment or verified payment only)
 
 
 @router.get("/wallets", response_model=list[WalletPublic])
@@ -37,14 +62,7 @@ async def get_wallet_balance(session: SessionDep, currency: str, current_user: U
     return await billing_controller.wallet_balance_controller(session, current_user.id, currency)
 
 
-@router.post("/wallets/{currency}/credit", response_model=WalletPublic)
-async def credit_wallet(session: SessionDep, currency: str, body: WalletTransactionRequest, current_user: UserDep) -> WalletPublic:
-    return await billing_controller.credit_wallet_controller(session, current_user.id, currency, body.amount_nano, body.reference, body.idempotency_key)
-
-
-@router.post("/convert", response_model=ConvertResponse)
-async def convert_wallets(session: SessionDep, body: ConvertRequest, current_user: UserDep) -> ConvertResponse:
-    return await billing_controller.convert_wallet_controller(session, current_user.id, body.from_currency, body.to_currency, body.amount_nano, body.idempotency_key)
+# Payments
 
 
 @router.post("/payments/initialize", response_model=dict[str, object])
@@ -54,5 +72,91 @@ async def initialize_payment(body: PaymentInitializeRequest, current_user: UserD
 
 
 @router.post("/payments/verify", response_model=dict[str, object])
-async def verify_payment(body: PaymentVerifyRequest) -> dict[str, object]:
+async def verify_payment(body: PaymentVerifyRequest, current_user: UserDep) -> dict[str, object]:
     return await billing_controller.verify_payment_controller(body.provider, body.reference)
+
+
+@router.get("/plans", response_model=list[dict[str, object]])
+async def list_public_plans() -> list[dict[str, object]]:
+    return await billing_controller.list_public_plans_controller()
+
+
+@router.post("/payments/initialize/plan", response_model=dict[str, object])
+async def initialize_payment_for_plan(body: PaymentInitializePlanRequest, current_user: UserDep) -> dict[str, object]:
+    return await billing_controller.initialize_payment_for_plan_controller(
+        plan_key=body.plan_key,
+        provider=body.provider,
+        callback_url=body.callback_url,
+        email=current_user.email,
+        currency=body.currency,
+    )
+
+
+@router.get("/credit-packs", response_model=list[dict[str, object]])
+async def list_credit_packs() -> list[dict[str, object]]:
+    return await billing_controller.list_credit_packs_controller()
+
+
+@router.post("/credit-packs/{pack_key}/purchase", response_model=dict[str, object])
+async def purchase_credit_pack(pack_key: str, body: PaymentInitializePackRequest, current_user: UserDep) -> dict[str, object]:
+    return await billing_controller.initialize_payment_for_pack_controller(
+        pack_key=pack_key,
+        provider=body.provider,
+        callback_url=body.callback_url,
+        email=current_user.email,
+    )
+
+
+# Subscriptions
+
+
+class CreateSubscriptionRequest(SQLModel):
+    plan_key: str
+
+
+@router.get("/subscriptions/current", response_model=SubscriptionPublic)
+async def get_current_subscription(session: SessionDep, current_user: UserDep) -> SubscriptionPublic:
+    return await subscription_controller.get_current_subscription_controller(session, current_user.id)
+
+
+@router.get("/subscriptions", response_model=list[SubscriptionPublic])
+async def list_subscriptions(session: SessionDep, current_user: UserDep, skip: int = 0, limit: int = 100) -> list[SubscriptionPublic]:
+    return await subscription_controller.list_subscriptions_controller(session, current_user.id, skip, limit)
+
+
+@router.post("/subscriptions", response_model=SubscriptionPublic, status_code=201)
+async def create_subscription(session: SessionDep, body: CreateSubscriptionRequest, current_user: UserDep) -> SubscriptionPublic:
+    return await subscription_controller.create_subscription_controller(session, current_user.id, body.plan_key)
+
+
+@router.post("/subscriptions/{subscription_id}/cancel", response_model=SubscriptionPublic)
+async def cancel_subscription(session: SessionDep, subscription_id: UUID, current_user: UserDep, immediate: bool = False) -> SubscriptionPublic:
+    return await subscription_controller.cancel_subscription_controller(session, current_user.id, subscription_id, immediate)
+
+
+# Transactions & quota
+
+
+@router.get("/transactions", response_model=list[LedgerEntryPublic])
+async def list_transactions(
+    session: SessionDep,
+    current_user: UserDep,
+    entry_type: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> list[LedgerEntryPublic]:
+    return await billing_controller.list_transactions_controller(
+        session, current_user.id, entry_type, date_from, date_to, skip, limit
+    )
+
+
+@router.get("/quota/status", response_model=QuotaStatus)
+async def get_quota_status(session: SessionDep, current_user: UserDep) -> QuotaStatus:
+    return await quota_controller.get_quota_status_controller(session, current_user.id)
+
+
+@router.post("/quota/reset-window", response_model=QuotaStatus)
+async def reset_quota_window(session: SessionDep, current_user: UserDep) -> QuotaStatus:
+    return await quota_controller.reset_quota_window_controller(session, current_user.id)

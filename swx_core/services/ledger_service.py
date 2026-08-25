@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -58,7 +59,7 @@ async def _current_balance(session: AsyncSession, account_id: UUID) -> tuple[int
     return 0, "USD"
 
 
-async def credit(session: AsyncSession, request: CreditRequest) -> LedgerEntryPublic:
+async def credit(session: AsyncSession, request: CreditRequest, *, auto_commit: bool = True) -> LedgerEntryPublic:
     idempotency_record = await ledger_repository.get_idempotency_record(session, request.idempotency_key) if request.idempotency_key else None
     existing_entry = await _existing_entry(session, idempotency_record)
     if request.idempotency_key and existing_entry is not None:
@@ -70,15 +71,17 @@ async def credit(session: AsyncSession, request: CreditRequest) -> LedgerEntryPu
         await ledger_repository.upsert_balance(session, request.account_id, entry.balance_after, entry.id, entry.currency)
         if request.idempotency_key:
             await ledger_repository.create_idempotency_record(session, {"key": request.idempotency_key, "account_id": request.account_id, "entry_id": entry.id, "status": "completed"})
-        await session.commit()
+        if auto_commit:
+            await session.commit()
     except Exception:
-        await session.rollback()
+        if auto_commit:
+            await session.rollback()
         raise
     await event_bus.dispatch("ledger.credit", payload={"account_id": str(request.account_id), "entry_id": str(entry.id), "amount": request.amount})
     return _entry_public(entry)
 
 
-async def debit(session: AsyncSession, request: DebitRequest) -> LedgerEntryPublic:
+async def debit(session: AsyncSession, request: DebitRequest, *, auto_commit: bool = True) -> LedgerEntryPublic:
     idempotency_record = await ledger_repository.get_idempotency_record(session, request.idempotency_key) if request.idempotency_key else None
     existing_entry = await _existing_entry(session, idempotency_record)
     if request.idempotency_key and existing_entry is not None:
@@ -92,9 +95,11 @@ async def debit(session: AsyncSession, request: DebitRequest) -> LedgerEntryPubl
         await ledger_repository.upsert_balance(session, request.account_id, entry.balance_after, entry.id, entry.currency)
         if request.idempotency_key:
             await ledger_repository.create_idempotency_record(session, {"key": request.idempotency_key, "account_id": request.account_id, "entry_id": entry.id, "status": "completed"})
-        await session.commit()
+        if auto_commit:
+            await session.commit()
     except Exception:
-        await session.rollback()
+        if auto_commit:
+            await session.rollback()
         raise
     await event_bus.dispatch("ledger.debit", payload={"account_id": str(request.account_id), "entry_id": str(entry.id), "amount": request.amount})
     return _entry_public(entry)
@@ -165,6 +170,28 @@ async def get_balance(session: AsyncSession, account_id: UUID) -> LedgerBalanceP
 
 async def get_entry_history(session: AsyncSession, account_id: UUID, skip: int, limit: int) -> list[LedgerEntryPublic]:
     return [_entry_public(entry) for entry in await ledger_repository.get_entries_by_account(session, account_id, skip, limit)]
+
+
+async def get_filtered_entry_history(
+    session: AsyncSession,
+    account_id: UUID,
+    *,
+    entry_type: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> list[LedgerEntryPublic]:
+    entries = await ledger_repository.get_filtered_entries(
+        session,
+        account_id,
+        entry_type=entry_type,
+        date_from=date_from,
+        date_to=date_to,
+        skip=skip,
+        limit=limit,
+    )
+    return [_entry_public(entry) for entry in entries]
 
 
 async def reconcile(session: AsyncSession, account_id: UUID) -> dict[str, int | bool]:

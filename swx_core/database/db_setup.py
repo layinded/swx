@@ -97,10 +97,23 @@ async def init_superuser(session: AsyncSession) -> None:
     superuser_password = settings.FIRST_SUPERUSER_PASSWORD
 
     # 1. User Domain Superuser
-    statement = select(User).where(User.email == superuser_email)
+    from swx_core.services.compliance.pii_encryption_service import (
+        encrypt_email,
+        should_encrypt_pii,
+        pii_encryption_enabled,
+        decrypt_user_pii,
+        encrypt_user_pii,
+    )
+    if should_encrypt_pii():
+        encrypted_email = encrypt_email(superuser_email)
+        statement = select(User).where(User.email_encrypted == encrypted_email)
+    else:
+        statement = select(User).where(User.email == superuser_email)
     result = await session.execute(statement)
     existing_user = result.scalar_one_or_none()
-    
+    if existing_user and pii_encryption_enabled():
+        decrypt_user_pii(existing_user)
+
     if not existing_user:
         hashed_password = await get_password_hash(superuser_password)
         new_user = User(
@@ -109,6 +122,7 @@ async def init_superuser(session: AsyncSession) -> None:
             is_superuser=True,
             full_name="System Admin",
         )
+        encrypt_user_pii(new_user)
         session.add(new_user)
         logger.info(f"User superuser '{superuser_email}' created.")
     else:

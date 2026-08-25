@@ -20,12 +20,12 @@ NOTE: This module is for USER domain tokens. Admin tokens should use admin auth 
 import jwt
 from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select, delete
 from datetime import timedelta
-from typing import Any, Optional, cast
+from typing import Optional
 
 from swx_core.config.settings import settings
 from swx_core.models.refresh_token import RefreshToken
+from swx_core.repositories import refresh_token_repository as token_repo
 from swx_core.security.encryption import encrypt_value, decrypt_value, is_encrypted
 from swx_core.utils.language_helper import translate
 from swx_core.utils.time import utc_now, ensure_aware
@@ -47,6 +47,20 @@ def _decrypt_token(ciphertext: str) -> str:
         return decrypt_value(ciphertext)
     except Exception:
         return ciphertext
+
+
+async def _audit_logout(session: AsyncSession, email: str, token_id: str) -> None:
+    """Record an AUTH_LOGOUT audit event for token revocation."""
+    from swx_core.services.audit_logger import AuditLogger, ActorType, AuditOutcome, AuditAction
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.AUTH_LOGOUT,
+        actor_type=ActorType.USER,
+        actor_id=email,
+        resource_type="session",
+        resource_id=token_id,
+        outcome=AuditOutcome.SUCCESS,
+    )
 
 
 def create_access_token(
@@ -130,8 +144,6 @@ def verify_mfa_token(token: str) -> tuple[str, str] | None:
             algorithms=[settings.PASSWORD_SECURITY_ALGORITHM],
             audience=TokenAudience.MFA.value,
         )
-        if payload.get("aud") != TokenAudience.MFA.value:
-            return None
         email = payload.get("sub")
         if not email:
             return None
@@ -141,23 +153,9 @@ def verify_mfa_token(token: str) -> tuple[str, str] | None:
 
 
 async def create_refresh_token(
-    session: AsyncSession, email: str, expires_delta: timedelta, auth_provider: str = "local"
+    session: AsyncSession, email: str, expires_delta: timedelta, auth_provider: str = "local",
+    device_info: str | None = None, ip_address: str | None = None,
 ) -> str:
-    """
-    Create or update a refresh token for the user.
-
-    - If a refresh token exists, update it instead of creating a new one.
-    - If no token exists, create a new refresh token.
-
-    Args:
-        session (AsyncSession): The database session.
-        email (str): The email of the user.
-        expires_delta (timedelta): The expiration duration of the refresh token.
-        auth_provider (str, optional): The authentication provider (default: "local").
-
-    Returns:
-        str: The encoded JWT refresh token.
-    """
     expire_at = utc_now() + expires_delta
     encoded_jwt = jwt.encode(
         {"exp": expire_at.timestamp(), "sub": email, "auth_provider": auth_provider},
@@ -165,21 +163,27 @@ async def create_refresh_token(
         algorithm=settings.PASSWORD_SECURITY_ALGORITHM,
     )
 
-    # Check if a refresh token already exists for this user
-    statement = select(RefreshToken).where(RefreshToken.user_email == email)
-    result = await session.execute(statement)
-    existing_token = result.scalar_one_or_none()
+    from swx_core.services.auth.session_service import enforce_concurrent_limit
+    await enforce_concurrent_limit(session, email)
+
+    existing_token = await token_repo.find_token_by_email(session, email)
 
     if existing_token:
-        existing_token.token = _encrypt_token(encoded_jwt)
-        existing_token.expires_at = expire_at
+        await token_repo.update_existing_token(
+            session, existing_token,
+            encrypted_value=_encrypt_token(encoded_jwt),
+            expires_at=expire_at,
+            last_activity_at=utc_now(),
+            device_info=device_info,
+            ip_address=ip_address,
+        )
     else:
         new_refresh_token = RefreshToken(
-            user_email=email, token=_encrypt_token(encoded_jwt), expires_at=expire_at
+            user_email=email, token=_encrypt_token(encoded_jwt), expires_at=expire_at,
+            device_info=device_info, ip_address=ip_address, last_activity_at=utc_now(),
         )
-        session.add(new_refresh_token)
+        await token_repo.create_token(session, new_refresh_token)
 
-    await session.commit()
     return encoded_jwt
 
 
@@ -220,9 +224,7 @@ async def verify_refresh_token(
                 detail=translate(request, "invalid_refresh_token_payload"),
             )
 
-        statement = select(RefreshToken).where(RefreshToken.user_email == email)
-        result = await session.execute(statement)
-        db_token = result.scalar_one_or_none()
+        db_token = await token_repo.find_token_by_email(session, email)
         if not db_token or _decrypt_token(db_token.token) != refresh_token:
             raise HTTPException(
                 status_code=401,
@@ -277,34 +279,38 @@ async def revoke_refresh_token(session: AsyncSession, refresh_token: str) -> boo
         email = None
 
     if email:
-        statement = select(RefreshToken).where(RefreshToken.user_email == email)
-        result = await session.execute(statement)
-        db_token = result.scalar_one_or_none()
-        if db_token and _decrypt_token(db_token.token) == refresh_token:
-            await session.delete(db_token)
-            await session.commit()
-            return True
+        all_tokens = await token_repo.find_all_tokens_by_email(session, email)
+        for db_token in all_tokens:
+            if _decrypt_token(db_token.token) == refresh_token:
+                await token_repo.delete_token(session, db_token)
+                _audit_logout(session, email, str(db_token.id))
+                return True
 
-    statement = select(RefreshToken).where(RefreshToken.token == refresh_token)
-    result = await session.execute(statement)
-    db_token = result.scalar_one_or_none()
+    # Fallback: match against encrypted storage (only works without at-rest encryption)
+    db_token = await token_repo.find_token_by_raw_value(session, refresh_token)
     if db_token:
-        await session.delete(db_token)
-        await session.commit()
+        await token_repo.delete_token(session, db_token)
+        _audit_logout(session, email or "unknown", str(db_token.id))
+        return True
 
-    return True
+    return False
 
 
-async def revoke_all_tokens(session: AsyncSession, email: str) -> None:
-    """
-    Revoke all active refresh tokens for a user (e.g., after a password reset).
+async def revoke_all_tokens(session: AsyncSession, email: str) -> int:
+    """Revoke all active refresh tokens for a user (e.g., after a password reset)."""
+    from swx_core.repositories import session_repository as session_repo
+    from swx_core.services.audit_logger import AuditLogger, ActorType, AuditOutcome, AuditAction
 
-    Args:
-        session (AsyncSession): The database session.
-        email (str): The email of the user whose tokens should be revoked.
-    """
-    statement = delete(RefreshToken).where(
-        cast(Any, RefreshToken.user_email == email)
-    )
-    await session.execute(statement)
-    await session.commit()
+    count = await session_repo.revoke_all_sessions(session, email)
+    if count > 0:
+        audit = AuditLogger(session)
+        await audit.log_event(
+            action=AuditAction.AUTH_SESSION_REVOKED,
+            actor_type=ActorType.SYSTEM,
+            actor_id=email,
+            resource_type="session",
+            resource_id="all",
+            outcome=AuditOutcome.SUCCESS,
+            context={"reason": "password_reset", "sessions_revoked": count},
+        )
+    return count

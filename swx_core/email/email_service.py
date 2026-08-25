@@ -146,3 +146,28 @@ def generate_new_account_email(
         },
     )
     return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_verify_email(email_to: str, token: str) -> EmailData:
+    """Generate an email for email address verification.
+
+    Args:
+        email_to: The recipient's email address.
+        token: The verification token.
+
+    Returns:
+        EmailData: A dataclass containing the subject and HTML content.
+    """
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Verify your email address"
+    link = f"{settings.FRONTEND_HOST}/verify-email?token={token}"
+    html_content = render_email_template(
+        template_name="verify_email.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "email": email_to,
+            "valid_hours": settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS,
+            "link": link,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)

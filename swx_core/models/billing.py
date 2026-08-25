@@ -6,14 +6,17 @@ This module defines the database models for the billing and entitlement system.
 
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func, text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, Relationship
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlmodel import Field, Relationship, SQLModel
+
 from swx_core.models.base import Base
 from swx_core.utils.time import utc_now
+
 
 class BillingAccountType(str, Enum):
     USER = "user"
@@ -57,16 +60,17 @@ TERMINAL_STATUSES: tuple[SubscriptionStatus, ...] = (
 )
 
 __all__ = [
-    "BillingAccountType",
-    "BillingInterval",
-    "BILLING_INTERVAL_DAYS",
-    "FeatureType",
-    "SubscriptionStatus",
     "ACTIVE_STATUSES",
+    "BILLING_INTERVAL_DAYS",
     "TERMINAL_STATUSES",
     "BillingAccount",
-    "Subscription",
+    "BillingAccountType",
+    "BillingInterval",
+    "FeatureType",
     "Plan",
+    "Subscription",
+    "SubscriptionPublic",
+    "SubscriptionStatus",
     "UsageRecord",
 ]
 
@@ -236,6 +240,17 @@ class Subscription(Base, table=True):
         description="When the trial period ends. Null means no trial or trial expired.",
     )
     
+    grace_period_ends_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+        description="When the renewal grace period ends. Null means no grace period.",
+    )
+    
+    renewal_failure_count: int = Field(
+        default=0,
+        sa_column=Column(Integer, nullable=False, server_default="0"),
+    )
+    
     subscription_metadata: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
@@ -251,6 +266,25 @@ class Subscription(Base, table=True):
     )
 
     account: BillingAccount = Relationship(back_populates="subscriptions", sa_relationship_kwargs={"lazy": "selectin"})
+
+
+class SubscriptionPublic(SQLModel):
+    id: uuid.UUID
+    plan_id: uuid.UUID
+    plan_key: str = ""
+    plan_name: Optional[str] = None
+    status: SubscriptionStatus
+    current_period_start: datetime
+    current_period_end: Optional[datetime] = None
+    cancel_at_period_end: bool = False
+    canceled_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    trial_ends_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes: bool = True
 
 class UsageRecord(Base, table=True):
     """

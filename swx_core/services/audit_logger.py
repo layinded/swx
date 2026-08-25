@@ -17,6 +17,7 @@ from swx_core.config.settings import COMPLIANCE_AUTO_MASK_IP, COMPLIANCE_AUTO_RE
 from swx_core.middleware.logging_middleware import logger
 from swx_core.services.compliance.field_redaction_service import redact_fields
 from swx_core.services.compliance.ip_masking_service import mask_ip
+from swx_core.services.compliance.audit_integrity_service import persist_log_hash
 
 
 class ActorType(str, Enum):
@@ -32,6 +33,83 @@ class AuditOutcome(str, Enum):
     DENIED_CONSENT_REQUIRED = "denied_consent_required"
     DENIED_DATA_CLASSIFICATION = "denied_data_classification"
     DENIED_POLICY = "denied_policy"
+
+
+class AuditAction(str, Enum):
+    """Canonical audit event action categories for SOC 2 CC7.2 compliance."""
+
+    # Auth events
+    AUTH_LOGIN_SUCCESS = "auth.login_success"
+    AUTH_LOGIN_FAILURE = "auth.login_failure"
+    AUTH_LOGOUT = "auth.logout"
+    AUTH_TOKEN_REFRESH = "auth.token_refresh"
+    AUTH_MFA_ENABLED = "auth.mfa_enabled"
+    AUTH_MFA_DISABLED = "auth.mfa_disabled"
+    AUTH_MFA_CHALLENGE_SUCCESS = "auth.mfa_challenge_success"
+    AUTH_MFA_CHALLENGE_FAILURE = "auth.mfa_challenge_failure"
+    AUTH_PASSWORD_RESET_REQUESTED = "auth.password_reset_requested"
+    AUTH_PASSWORD_RESET_COMPLETED = "auth.password_reset_completed"
+    AUTH_SOCIAL_LOGIN_SUCCESS = "auth.social_login_success"
+    AUTH_SOCIAL_LOGIN_FAILURE = "auth.social_login_failure"
+    AUTH_ACCOUNT_LOCKED = "auth.account_locked"
+    AUTH_ACCOUNT_UNLOCKED = "auth.account_unlocked"
+    AUTH_PASSWORD_RESET_RATE_LIMITED = "auth.password_reset_rate_limited"
+
+    # RBAC events
+    RBAC_ROLE_ASSIGNED = "rbac.role_assigned"
+    RBAC_ROLE_REMOVED = "rbac.role_removed"
+    RBAC_PERMISSION_DENIED = "rbac.permission_denied"
+
+    # Organization events
+    ORG_CREATED = "org.created"
+    ORG_UPDATED = "org.updated"
+    ORG_DELETED = "org.deleted"
+    ORG_MEMBER_ADDED = "org.member_added"
+    ORG_MEMBER_REMOVED = "org.member_removed"
+    ORG_OWNERSHIP_TRANSFERRED = "org.ownership_transferred"
+
+    # Team events
+    TEAM_CREATED = "team.created"
+    TEAM_UPDATED = "team.updated"
+    TEAM_DELETED = "team.deleted"
+    TEAM_MEMBER_ADDED = "team.member_added"
+    TEAM_MEMBER_REMOVED = "team.member_removed"
+    TEAM_OWNERSHIP_TRANSFERRED = "team.ownership_transferred"
+
+    # GDPR events
+    GDPR_EXPORT_REQUESTED = "gdpr.export_requested"
+    GDPR_ERASURE_REQUESTED = "gdpr.erasure_requested"
+    GDPR_ERASURE_COMPLETED = "gdpr.erasure_completed"
+    GDPR_ERASURE_CANCELLED = "gdpr.erasure_cancelled"
+
+    # Admin events
+    ADMIN_USER_CREATED = "admin.user_created"
+    ADMIN_USER_DEACTIVATED = "admin.user_deactivated"
+    ADMIN_USER_REACTIVATED = "admin.user_reactivated"
+    ADMIN_ROLE_CHANGED = "admin.role_changed"
+
+    # API key events
+    API_KEY_CREATED = "api_key.created"
+    API_KEY_ROTATED = "api_key.rotated"
+    API_KEY_REVOKED = "api_key.revoked"
+    API_KEY_EXPIRED = "api_key.expired"
+    API_KEY_INACTIVE_REVOKED = "api_key.inactive_revoked"
+
+    # Data export events
+    DATA_EXPORT_REQUESTED = "data_export.requested"
+    DATA_EXPORT_COMPLETED = "data_export.completed"
+
+    # PII encryption events
+    PII_ENCRYPTION_ENABLED = "pii.encryption_enabled"
+    PII_ENCRYPTION_KEY_ROTATED = "pii.encryption_key_rotated"
+
+    # Session management events (SOC 2 CC6.1)
+    AUTH_SESSION_REVOKED = "auth.session_revoked"
+    AUTH_SESSION_LIMIT_ENFORCED = "auth.session_limit_enforced"
+    AUTH_SESSION_EXPIRED_IDLE = "auth.session_expired_idle"
+
+    # Security events
+    SECURITY_CSP_VIOLATION = "security.csp_violation"
 
 
 class AuditLogger:
@@ -105,7 +183,19 @@ class AuditLogger:
 
             self.session.add(audit_entry)
             await self.session.commit()
+            try:
+                await persist_log_hash(self.session, audit_entry)
+            except Exception as hash_err:
+                logger.critical("Failed to persist hash chain for audit entry %s: %s. Removing entry to preserve chain integrity.", audit_entry.id, hash_err)
+                try:
+                    await self.session.delete(audit_entry)
+                    await self.session.commit()
+                except Exception:
+                    logger.critical("Failed to remove unhashed audit entry %s — chain integrity at risk.", audit_entry.id)
             logger.debug(f"Audit log recorded: {action} by {actor_type}:{actor_id}")
+
+            from swx_core.services.compliance.siem_service import enqueue_siem_event
+            await enqueue_siem_event(action, safe_context)
 
         except Exception as e:
             # Audit logging should not crash the main request flow, but it must be logged.

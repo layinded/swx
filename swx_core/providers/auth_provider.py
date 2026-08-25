@@ -108,7 +108,7 @@ class AuthServiceProvider(ServiceProvider):
         return JWTGuard(
             secret_key=settings.SECRET_KEY,
             algorithm=getattr(settings, "PASSWORD_SECURITY_ALGORITHM", "HS256"),
-            access_token_expire=getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 10080),
+            access_token_expire=getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 15),
             refresh_token_expire=getattr(settings, "REFRESH_TOKEN_EXPIRE_DAYS", 30),
             token_blacklist=token_blacklist,
         )
@@ -117,20 +117,9 @@ class AuthServiceProvider(ServiceProvider):
         """Create API key guard."""
         from swx_core.guards.api_key_guard import APIKeyGuard
 
-        # API key repository would be injected if available
-        key_repository = None
-        if app.bound("api_key.repository"):
-            key_repository = app.make("api_key.repository")
-
-        cache = None
-        if app.bound("cache"):
-            cache = app.make("cache")
-
         return APIKeyGuard(
             header_name="X-API-Key",
             query_param="api_key",
-            key_repository=key_repository,
-            cache=cache,
         )
 
     def _create_guard_manager(self, app):

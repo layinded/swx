@@ -1,190 +1,145 @@
-"""
-Logging Middleware
-------------------
-This module configures logging for the FastAPI application.
-
-Features:
-- Logs all incoming HTTP requests and their response times.
-- Captures application warnings as logs.
-- Stores logs in a rotating file system.
-
-Classes:
-- `LoggingMiddleware`: Middleware to log HTTP requests.
-
-Logs:
-- Console logs for real-time debugging.
-- Rotating file logs for persistent records.
-"""
-#
-# import logging
-# import os
-# import time
-# from datetime import datetime
-# from logging.handlers import RotatingFileHandler
-#
-# from starlette.middleware.base import BaseHTTPMiddleware
-# from starlette.requests import Request
-#
-# # Ensure logs directory exists
-# LOG_DIR = "logs"
-# if not os.path.exists(LOG_DIR):
-#     os.makedirs(LOG_DIR)
-#
-# # Create a logger instance
-# logger = logging.getLogger("SwX-API")
-# logger.setLevel(logging.INFO)  # Change to DEBUG for verbose logging
-#
-# # Log format
-# formatter = logging.Formatter(
-#     "%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
-# )
-#
-# # Console Handler (Logs to Terminal)
-# console_handler = logging.StreamHandler()
-# console_handler.setFormatter(formatter)
-# logger.addHandler(console_handler)
-#
-# # File Handler (Rotating logs, max 5MB per file, 10 backups)
-# log_filename = os.path.join(LOG_DIR, f"swx_api_{datetime.now().strftime('%Y-%m-%d')}.log")
-# file_handler = RotatingFileHandler(log_filename, maxBytes=5 * 1024 * 1024, backupCount=10)
-# file_handler.setFormatter(formatter)
-# logger.addHandler(file_handler)
-#
-# # Capture warnings as logs
-# logging.captureWarnings(True)
-#
-#
-# class LoggingMiddleware(BaseHTTPMiddleware):
-#     """
-#     Middleware to log all incoming HTTP requests and their response times.
-#     """
-#     async def dispatch(self, request: Request, call_next):
-#         """
-#         Logs request details and response duration.
-#
-#         Args:
-#             request: The incoming request object.
-#             call_next: The next middleware or request handler.
-#
-#         Logs:
-#             - Request method and URL.
-#             - Response status code and duration.
-#             - Categorized logging (INFO, WARNING, CRITICAL).
-#         """
-#         start_time = time.time()
-#
-#         response = await call_next(request)
-#
-#         duration = round(time.time() - start_time, 4)
-#         log_msg = f"{request.method} {request.url.path} - {response.status_code} - {duration}s"
-#
-#         if response.status_code >= 500:
-#             logger.critical(log_msg)  # Log server errors as CRITICAL
-#         elif response.status_code >= 400:
-#             logger.warning(log_msg)  # Log client errors as WARNING
-#         else:
-#             logger.info(log_msg)  # Log successful requests
-#
-#         return response
-
 import json
 import logging
 import os
 import time
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
+from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from swx_core.config.settings import settings
 
-# Get environment settings
 ENVIRONMENT = settings.ENVIRONMENT
-LOG_LEVEL = settings.LOG_LEVEL  # Default to WARNING
+LOG_LEVEL = settings.LOG_LEVEL
 LOG_DIR = settings.LOG_DIR
+LOG_FORMAT = settings.LOG_FORMAT
 
-# Ensure logs directory exists
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR, exist_ok=True)
 
-# Create a logger instance
 logger = logging.getLogger("SwX-API")
 
-# Convert LOG_LEVEL to valid logging level
 LOG_LEVEL_MAPPING = {
-    "DEBUG": logging.DEBUG,
-    "INFO": logging.INFO,
-    "WARNING": logging.WARNING,
-    "ERROR": logging.ERROR,
-    "CRITICAL": logging.CRITICAL,
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL,
+    "production": logging.WARNING,
 }
 
-logger.setLevel(LOG_LEVEL_MAPPING.get(LOG_LEVEL, logging.WARNING))  # Default to WARNING
+logger.setLevel(LOG_LEVEL_MAPPING.get(LOG_LEVEL, logging.WARNING))
 
-# Log format (structured JSON format for production)
-class JSONFormatter(logging.Formatter):
-    """Custom log formatter that outputs logs in JSON format."""
-    def format(self, record):
-        log_record = {
+
+class StructuredJSONFormatter(logging.Formatter):
+    """JSON log formatter with SOC 2 CC7.2 structured fields."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        log_record: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "message": record.getMessage(),
-            "file": record.filename,
-            "line": record.lineno,
         }
+
+        for attr in (
+            "request_id", "user_id", "ip", "path", "method",
+            "status_code", "duration_ms", "file", "line",
+        ):
+            value = getattr(record, attr, None)
+            if value is not None:
+                log_record[attr] = value
+
+        if not any(k in log_record for k in ("file", "line")):
+            log_record["file"] = record.filename
+            log_record["line"] = record.lineno
+
         return json.dumps(log_record)
 
-# Console Handler (Only enabled in development)
+
+class TextFormatter(logging.Formatter):
+    """Human-readable log formatter for development."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        base = f"{record.levelname:8} {record.getMessage()}"
+
+        extras: list[str] = []
+        for attr in ("request_id", "user_id", "ip", "method", "path", "status_code", "duration_ms"):
+            value = getattr(record, attr, None)
+            if value is not None:
+                extras.append(f"{attr}={value}")
+
+        if extras:
+            base += "  [" + " ".join(extras) + "]"
+
+        return base
+
+
+_formatter = StructuredJSONFormatter() if LOG_FORMAT == "json" else TextFormatter()
+
 if ENVIRONMENT == "local":
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(JSONFormatter())
+    console_handler.setFormatter(_formatter)
     logger.addHandler(console_handler)
 
-# File Handler (Rotating logs, max 5MB per file, 10 backups)
 log_filename = os.path.join(LOG_DIR, "swx_core.log")
 file_handler = RotatingFileHandler(log_filename, maxBytes=5 * 1024 * 1024, backupCount=10)
-file_handler.setFormatter(JSONFormatter())
+file_handler.setFormatter(_formatter)
 logger.addHandler(file_handler)
 
-# Capture warnings as logs
 logging.captureWarnings(True)
 
+
 class LoggingMiddleware(BaseHTTPMiddleware):
-    """
-    Middleware to log all incoming HTTP requests and their response times.
-    """
-    async def dispatch(self, request: Request, call_next):
-        """
-        Logs request details and response duration.
+    """SOC 2 CC7.2 structured logging middleware.
 
-        Args:
-            request: The incoming request object.
-            call_next: The next middleware or request handler.
+    Captures request_id, user_id, ip, method, path, status_code,
+    and duration_ms for every HTTP request.
+    """
 
-        Logs:
-            - Request method and URL.
-            - Response status code and duration.
-            - Categorized logging (INFO, WARNING, CRITICAL).
-        """
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         start_time = time.time()
 
         response = await call_next(request)
 
-        duration = round(time.time() - start_time, 4)
-        log_msg = {
+        duration_ms = round((time.time() - start_time) * 1000, 2)
+        request_id = getattr(request.state, "request_id", None) or request.headers.get("x-request-id")
+        user_id = getattr(request.state, "user_id", None) if hasattr(request.state, "user_id") else None
+        ip = request.client.host if request.client else None
+
+        log_data: dict[str, Any] = {
             "method": request.method,
             "path": request.url.path,
             "status_code": response.status_code,
-            "duration": duration
+            "duration_ms": duration_ms,
         }
+        if request_id:
+            log_data["request_id"] = request_id
+        if user_id:
+            log_data["user_id"] = str(user_id)
+        if ip:
+            log_data["ip"] = ip
 
-        if response.status_code >= 500:
-            logger.critical(json.dumps(log_msg))
-        elif response.status_code >= 400:
-            logger.warning(json.dumps(log_msg))
-        else:
-            if ENVIRONMENT == "local":  # Only log successful requests in development
-                logger.info(json.dumps(log_msg))
+        level = logging.CRITICAL
+        if response.status_code < 400:
+            level = logging.INFO
+        elif response.status_code < 500:
+            level = logging.WARNING
 
+        if level >= logging.CRITICAL or ENVIRONMENT != "production":
+            record = logger.makeRecord(
+                name="SwX-API",
+                level=level,
+                fn="",
+                lno=0,
+                msg=json.dumps(log_data),
+                args=(),
+                exc_info=None,
+            )
+            for key, val in log_data.items():
+                setattr(record, key, val)
+            logger.handle(record)
+
+        response.headers["X-Request-ID"] = request_id or ""
         return response

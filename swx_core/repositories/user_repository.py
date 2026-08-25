@@ -1,35 +1,35 @@
 """
-User Service
-------------
-This module provides user authentication, registration, and management services.
+User Repository
+---------------
+Database operations for user authentication, registration, and management.
 
-Features:
-- Supports local and social login authentication.
-- Provides user management functionalities (CRUD operations).
-- Implements password hashing and verification.
+All database queries live here (SWX Controller → Service → Repository pattern).
 
-Methods:
-- `authenticate_user()`: Authenticate a user using email and password.
-- `get_user_by_email()`: Retrieve a user by their email address.
-- `create_user()`: Create a new user (local or social).
-- `get_user_by_id()`: Retrieve a user by their unique ID.
-- `get_all_users()`: Retrieve all users with optional pagination.
-- `update_user()`: Update user information, including password if applicable.
-- `update_user_password()`: Update user password after verification.
-- `delete_user()`: Delete a user from the system.
-- `create_social_user()`: Create a new user from a social login provider.
+PII encryption (dual-write strategy):
+    When PII_ENCRYPTION_ENABLED is True, every write to User.email or
+    User.full_name also populates email_encrypted / full_name_encrypted,
+    and every read decrypts from the encrypted column (falling back to
+    plaintext when the encrypted column is NULL for gradual migration).
 """
 
-from typing import Any, List
+from typing import Any
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from swx_core.middleware.logging_middleware import logger
-from swx_core.models.user import User, UserCreate, UserUpdate, UserUpdatePassword
+from swx_core.models.user import User, UserCreate, UserUpdate
 from swx_core.security.password_security import verify_password, get_password_hash
+from swx_core.services.compliance.pii_encryption_service import (
+    encrypt_email,
+    pii_encryption_enabled,
+    should_encrypt_pii,
+    encrypt_user_pii,
+    decrypt_user_pii,
+)
+from swx_core.utils.time import utc_now
 
 
 async def authenticate_user(*, session: AsyncSession, email: str, password: str) -> User | None:
@@ -61,24 +61,20 @@ async def authenticate_user(*, session: AsyncSession, email: str, password: str)
 
 
 async def get_user_by_email(*, session: AsyncSession, email: str) -> User | None:
-    """
-    Retrieve a user by email (for local and social logins).
+    """Retrieve a user by email, querying the encrypted column when PII encryption is enabled."""
+    logger.debug(f"Looking up user by email")
+    if should_encrypt_pii():
+        encrypted_email = encrypt_email(email)
+        statement = select(User).where(User.email_encrypted == encrypted_email)
+    else:
+        statement = select(User).where(User.email == email)
 
-    Args:
-        session (AsyncSession): The database session.
-        email (str): The user's email address.
-
-    Returns:
-        User | None: The retrieved user if found, otherwise None.
-    """
-    logger.debug(f"Looking up user by email: {email}")
-    statement = select(User).where(User.email == email)
     result = await session.execute(statement)
     user_found = result.scalar_one_or_none()
-    if user_found:
-        logger.debug(f"Found user: {user_found}")
-    else:
-        logger.debug("No user found.")
+
+    if user_found and pii_encryption_enabled():
+        decrypt_user_pii(user_found)
+
     return user_found
 
 
@@ -111,9 +107,10 @@ async def create_user(
             "hashed_password": hashed_password,
             "auth_provider": auth_provider,
             "provider_id": provider_id,
-            "is_superuser": False,  # Security: Never allow superuser creation via registration
+            "is_superuser": False,
         },
     )
+    encrypt_user_pii(new_user)
     session.add(new_user)
     await session.commit()
     await session.refresh(new_user)
@@ -121,36 +118,24 @@ async def create_user(
 
 
 async def get_user_by_id(session: AsyncSession, user_id: str | UUID) -> User | None:
-    """
-    Retrieve a user by their unique ID.
-
-    Args:
-        session (AsyncSession): The database session.
-        user_id (str | UUID): The user's unique identifier.
-
-    Returns:
-        User | None: The retrieved user if found, otherwise None.
-    """
+    """Retrieve a user by ID, decrypting PII when encryption is enabled."""
     statement = select(User).where(User.id == user_id)
     result = await session.execute(statement)
-    return result.scalar_one_or_none()
+    user = result.scalar_one_or_none()
+    if user and pii_encryption_enabled():
+        decrypt_user_pii(user)
+    return user
 
 
-async def get_all_users(session: AsyncSession, skip: int = 0, limit: int = 100) -> List[User]:
-    """
-    Retrieve all users with optional pagination.
-
-    Args:
-        session (AsyncSession): The database session.
-        skip (int): Number of users to skip for pagination.
-        limit (int): Maximum number of users to return.
-
-    Returns:
-        List[User]: A list of user records.
-    """
+async def get_all_users(session: AsyncSession, skip: int = 0, limit: int = 100) -> list[User]:
+    """Retrieve all users with optional pagination, decrypting PII when encryption is enabled."""
     statement = select(User).offset(skip).limit(limit)
     result = await session.execute(statement)
-    return list(result.scalars().all())
+    users = list(result.scalars().all())
+    if pii_encryption_enabled():
+        for user in users:
+            decrypt_user_pii(user)
+    return users
 
 
 async def update_user(*, session: AsyncSession, db_user: User, user_in: UserUpdate) -> User:
@@ -174,6 +159,7 @@ async def update_user(*, session: AsyncSession, db_user: User, user_in: UserUpda
         extra_data["hashed_password"] = hashed_password
 
     db_user.sqlmodel_update(user_data, update=extra_data)
+    encrypt_user_pii(db_user)
     session.add(db_user)
     await session.commit()
     await session.refresh(db_user)
@@ -183,19 +169,7 @@ async def update_user(*, session: AsyncSession, db_user: User, user_in: UserUpda
 async def update_user_password(
     session: AsyncSession, user_id: str | UUID, current_password: str, new_password: str
 ) -> bool:
-    """
-    Update user password after verifying the current password.
-
-    Args:
-        session (AsyncSession): The database session.
-        user_id (str | UUID): The user's ID (UUID).
-        current_password (str): The user's current password.
-        new_password (str): The new password to be set.
-
-    Returns:
-        bool: True if the password was updated successfully, otherwise False.
-    """
-    db_user = await session.get(User, user_id)
+    db_user = await get_user_by_id(session=session, user_id=user_id)
     if not db_user:
         return False
     if not await authenticate_user(
@@ -269,8 +243,45 @@ async def create_social_user(
         auth_provider=provider,
         is_active=True,
     )
+    encrypt_user_pii(new_user)
 
     session.add(new_user)
     await session.commit()
     await session.refresh(new_user)
     return new_user
+
+
+async def increment_failed_login_attempts(session: AsyncSession, user: User) -> None:
+    """Increment the failed login attempt counter and persist."""
+    user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+    session.add(user)
+    await session.commit()
+
+
+async def lock_user_account(session: AsyncSession, user: User, locked_until: datetime) -> None:
+    """Lock a user account by setting locked_until and persisting."""
+    user.locked_until = locked_until
+    session.add(user)
+    await session.commit()
+
+
+async def reset_login_attempts(session: AsyncSession, user: User) -> None:
+    """Reset failed login attempts and clear account lock after successful login."""
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    session.add(user)
+    await session.commit()
+
+
+async def update_password_reset_timestamp(session: AsyncSession, user: User) -> None:
+    """Update password_reset_requested_at to the current time for rate limiting."""
+    user.password_reset_requested_at = utc_now()
+    session.add(user)
+    await session.commit()
+
+
+async def update_password_hash(session: AsyncSession, user: User, hashed_password: str) -> None:
+    """Update a user's hashed password."""
+    user.hashed_password = hashed_password
+    session.add(user)
+    await session.commit()

@@ -7,24 +7,24 @@ Handles subscription lifecycle management.
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, TypeGuard
-from swx_core.utils.time import utc_now
 
 from fastapi import HTTPException
-from sqlmodel import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from swx_core.models.billing import (
-    BillingAccount, 
-    BillingAccountType, 
-    Subscription, 
-    SubscriptionStatus, 
-    Plan,
-    BILLING_INTERVAL_DAYS,
-    ACTIVE_STATUSES,  # pyright: ignore[reportAttributeAccessIssue]
-    TERMINAL_STATUSES,  # pyright: ignore[reportAttributeAccessIssue]
-)
-from swx_core.middleware.logging_middleware import logger
 from swx_core.events.dispatcher import event_bus
+from swx_core.middleware.logging_middleware import logger
+from swx_core.models.billing import (
+    BILLING_INTERVAL_DAYS,
+    TERMINAL_STATUSES,  # pyright: ignore[reportAttributeAccessIssue]
+    BillingAccount,
+    BillingAccountType,
+    Subscription,
+    SubscriptionStatus,
+)
+from swx_core.repositories import billing_repository
+from swx_core.services.audit_logger import ActorType, AuditOutcome, get_audit_logger
+from swx_core.utils.time import utc_now
+
 
 class SubscriptionService:
     """
@@ -93,12 +93,8 @@ class SubscriptionService:
         account_type: BillingAccountType,
         billing_email: Optional[str] = None
     ) -> BillingAccount:
-        """
-        Ensures a billing account exists for the given owner.
-        """
-        stmt = select(BillingAccount).where(and_(BillingAccount.owner_id == owner_id, BillingAccount.account_type == account_type))
-        result = await self.session.execute(stmt)
-        account = result.scalar_one_or_none()
+        """Ensures a billing account exists for the given owner."""
+        account = await billing_repository.get_billing_account_by_owner(self.session, owner_id, account_type)
 
         if not account:
             account = BillingAccount(owner_id=owner_id, account_type=account_type, billing_email=billing_email)
@@ -111,16 +107,10 @@ class SubscriptionService:
 
     async def _deactivate_active_subscriptions(self, account_id: uuid.UUID) -> list[str]:
         """Cancel any active subscriptions for an account (row-locked). Returns canceled subscription IDs."""
-        stmt = select(Subscription).where(
-            and_(
-                Subscription.account_id == account_id,
-                Subscription.status.in_(ACTIVE_STATUSES),  # pyright: ignore[reportAttributeAccessIssue]
-            )
-        ).with_for_update()
-        result = await self.session.execute(stmt)
+        active_subs = await billing_repository.get_active_subscriptions_for_update(self.session, account_id)
         ended_at = utc_now()
         canceled_ids: list[str] = []
-        for sub in result.scalars().all():
+        for sub in active_subs:
             sub.status = SubscriptionStatus.CANCELED
             sub.ended_at = ended_at
             self.session.add(sub)
@@ -131,14 +121,23 @@ class SubscriptionService:
         self, 
         account_id: uuid.UUID, 
         plan_key: str,
-        stripe_subscription_id: Optional[str] = None
+        stripe_subscription_id: Optional[str] = None,
+        allow_paid: bool = False,
         ) -> Subscription:
-        """Subscribe an account to a plan."""
-        stmt = select(Plan).where(Plan.key == plan_key)
-        result = await self.session.execute(stmt)
-        plan = result.scalar_one_or_none()
+        """Subscribe an account to a plan.
+        
+        Paid plans are blocked unless allow_paid=True (used by verified payment flows).
+        Direct user subscription creation should only activate free plans.
+        """
+        plan = await billing_repository.get_plan_by_key(self.session, plan_key)
         if not plan:
             raise HTTPException(status_code=404, detail=f"Plan '{plan_key}' not found")
+
+        if not allow_paid and plan.amount is not None and plan.amount > 0:
+            raise HTTPException(
+                status_code=402,
+                detail=f"Plan '{plan_key}' requires payment. Use POST /payments/initialize/plan to initiate payment.",
+            )
 
         canceled_ids = await self._deactivate_active_subscriptions(account_id)
 
@@ -167,6 +166,14 @@ class SubscriptionService:
             "plan_key": plan_key,
             "status": SubscriptionStatus.ACTIVE.value,
         })
+        await get_audit_logger(self.session).log_event(
+            action="subscription.create",
+            actor_type=ActorType.USER,
+            resource_type="subscription",
+            resource_id=str(subscription.id),
+            outcome=AuditOutcome.SUCCESS,
+            context={"account_id": str(account_id), "plan_key": plan_key, "canceled_ids": canceled_ids},
+        )
         return subscription
 
     async def create_trial_subscription(
@@ -190,7 +197,7 @@ class SubscriptionService:
 
     async def cancel_subscription(self, subscription_id: uuid.UUID, immediate: bool = False):
         """Cancel a subscription (idempotent — skips if already canceled)."""
-        subscription = await self.session.get(Subscription, subscription_id)
+        subscription = await billing_repository.get_subscription_by_id(self.session, subscription_id)
         if not subscription:
             return
 
@@ -215,6 +222,14 @@ class SubscriptionService:
             "immediate": immediate,
             "cancel_at_period_end": not immediate,
         })
+        await get_audit_logger(self.session).log_event(
+            action="subscription.cancel",
+            actor_type=ActorType.USER,
+            resource_type="subscription",
+            resource_id=str(subscription_id),
+            outcome=AuditOutcome.SUCCESS,
+            context={"immediate": immediate, "cancel_at_period_end": not immediate},
+        )
 
     async def _sync_from_checkout_session(self, stripe_data: dict[str, object], checkout_id: str, depth: int = 0) -> None:
         """Fetch the full subscription object for a Checkout Session and retry sync."""
@@ -264,6 +279,14 @@ class SubscriptionService:
             "status": status.value,
             "source": "stripe_webhook",
         })
+        await get_audit_logger(self.session).log_event(
+            action="subscription.sync_stripe",
+            actor_type=ActorType.SYSTEM,
+            resource_type="subscription",
+            resource_id=str(subscription.id),
+            outcome=AuditOutcome.SUCCESS,
+            context={"stripe_subscription_id": stripe_id, "status": status.value, "source": "stripe_webhook"},
+        )
 
     async def _create_subscription_from_stripe(
         self,
@@ -284,14 +307,12 @@ class SubscriptionService:
             logger.warning("No Stripe price found for subscription %s", stripe_id)
             return
 
-        plan_stmt = select(Plan).where(Plan.stripe_price_id == stripe_price_id)
-        plan = (await self.session.execute(plan_stmt)).scalar_one_or_none()
+        plan = await billing_repository.get_plan_by_stripe_price_id(self.session, stripe_price_id)
         if not plan:
             logger.warning("No local plan found for Stripe price %s", stripe_price_id)
             return
 
-        account_stmt = select(BillingAccount).where(BillingAccount.stripe_customer_id == customer_id)
-        account = (await self.session.execute(account_stmt)).scalar_one_or_none()
+        account = await billing_repository.get_billing_account_by_stripe_customer(self.session, customer_id)
         if not account:
             logger.warning("No local account found for Stripe customer %s", customer_id)
             return
@@ -323,6 +344,14 @@ class SubscriptionService:
             "status": status.value,
             "source": "stripe_webhook",
         })
+        await get_audit_logger(self.session).log_event(
+            action="subscription.create_stripe",
+            actor_type=ActorType.SYSTEM,
+            resource_type="subscription",
+            resource_id=str(subscription.id),
+            outcome=AuditOutcome.SUCCESS,
+            context={"account_id": str(account.id), "stripe_subscription_id": stripe_id, "status": status.value, "source": "stripe_webhook"},
+        )
 
     async def sync_stripe_subscription(self, stripe_data: dict[str, object], depth: int = 0):
         """Sync a subscription from Stripe webhook data (Subscription or Checkout Session)."""
@@ -345,8 +374,7 @@ class SubscriptionService:
         if not isinstance(cancel_at_period_end, bool):
             cancel_at_period_end = False
 
-        stmt = select(Subscription).where(Subscription.stripe_subscription_id == stripe_id)
-        subscription = (await self.session.execute(stmt)).scalar_one_or_none()
+        subscription = await billing_repository.get_subscription_by_stripe_id(self.session, stripe_id)
         status = self._get_stripe_subscription_status(stripe_status)
         period_start = self._from_stripe_timestamp(current_period_start)
         period_end = self._from_stripe_timestamp(current_period_end)
@@ -365,6 +393,97 @@ class SubscriptionService:
         await self._create_subscription_from_stripe(
             stripe_data, stripe_id, status, period_start, period_end, cancel_at_period_end, stripe_price_id
         )
+
+    async def get_active_subscription(self, account_id: uuid.UUID) -> Optional[Subscription]:
+        return await billing_repository.get_active_subscription(self.session, account_id)
+
+    async def list_subscriptions(self, account_id: uuid.UUID, skip: int, limit: int) -> list[Subscription]:
+        return await billing_repository.get_subscriptions_by_account(self.session, account_id, skip, limit)
+
+    async def get_subscription_by_id(self, subscription_id: uuid.UUID) -> Optional[Subscription]:
+        return await billing_repository.get_subscription_by_id(self.session, subscription_id)
+
+    async def enter_grace_period(self, subscription_id: uuid.UUID, grace_days: int = 3) -> Subscription:
+        subscription = await billing_repository.get_subscription_by_id(self.session, subscription_id)
+        if subscription is None:
+            raise HTTPException(status_code=404, detail=f"Subscription {subscription_id} not found")
+        subscription.status = SubscriptionStatus.PAST_DUE
+        subscription.grace_period_ends_at = utc_now() + timedelta(days=grace_days)
+        subscription.renewal_failure_count += 1
+        await self._commit_or_rollback(subscription, f"Failed to enter grace period for {subscription_id}")
+        logger.info("Subscription %s entered %d-day grace period (failure #%d)", subscription_id, grace_days, subscription.renewal_failure_count)
+        await event_bus.dispatch("subscription.grace_entered", payload={
+            "subscription_id": str(subscription_id),
+            "grace_ends_at": subscription.grace_period_ends_at.isoformat() if subscription.grace_period_ends_at else None,
+        })
+        await get_audit_logger(self.session).log_event(
+            action="subscription.grace_entered",
+            actor_type=ActorType.SYSTEM,
+            resource_type="subscription",
+            resource_id=str(subscription_id),
+            outcome=AuditOutcome.SUCCESS,
+            context={"grace_days": grace_days, "renewal_failure_count": subscription.renewal_failure_count},
+        )
+        return subscription
+
+    async def retry_renewal(self, subscription_id: uuid.UUID) -> Subscription:
+        subscription = await billing_repository.get_subscription_by_id(self.session, subscription_id)
+        if subscription is None:
+            raise HTTPException(status_code=404, detail=f"Subscription {subscription_id} not found")
+        subscription.status = SubscriptionStatus.ACTIVE
+        subscription.grace_period_ends_at = None
+        subscription.renewal_failure_count = 0
+        await self._commit_or_rollback(subscription, f"Failed to retry renewal for {subscription_id}")
+        logger.info("Subscription %s renewal succeeded — grace cleared", subscription_id)
+        await event_bus.dispatch("subscription.renewal_succeeded", payload={
+            "subscription_id": str(subscription_id),
+        })
+        await get_audit_logger(self.session).log_event(
+            action="subscription.renewal_succeeded",
+            actor_type=ActorType.SYSTEM,
+            resource_type="subscription",
+            resource_id=str(subscription_id),
+            outcome=AuditOutcome.SUCCESS,
+        )
+        return subscription
+
+    async def expire_grace(self, subscription_id: uuid.UUID) -> Subscription:
+        subscription = await billing_repository.get_subscription_by_id(self.session, subscription_id)
+        if subscription is None:
+            raise HTTPException(status_code=404, detail=f"Subscription {subscription_id} not found")
+        subscription.status = SubscriptionStatus.CANCELED
+        subscription.ended_at = utc_now()
+        subscription.grace_period_ends_at = None
+        await self._commit_or_rollback(subscription, f"Failed to expire grace for {subscription_id}")
+        logger.info("Subscription %s grace expired — downgraded to cancelled", subscription_id)
+        await event_bus.dispatch("subscription.grace_expired", payload={
+            "subscription_id": str(subscription_id),
+        })
+        await get_audit_logger(self.session).log_event(
+            action="subscription.grace_expired",
+            actor_type=ActorType.SYSTEM,
+            resource_type="subscription",
+            resource_id=str(subscription_id),
+            outcome=AuditOutcome.SUCCESS,
+        )
+        return subscription
+
+    async def handle_renewal_failure(self, subscription_id: uuid.UUID, grace_days: int = 3) -> Subscription:
+        """Handle a recurring payment failure: enter grace period.
+
+        Called by webhook handlers when invoice.payment_failed or
+        Paystack auto-renewal fails. Enters a grace period during which
+        the user retains access.
+        """
+        return await self.enter_grace_period(subscription_id, grace_days)
+
+    async def is_grace_expired(self, subscription_id: uuid.UUID) -> bool:
+        """Check if a subscription's grace period has expired."""
+        subscription = await billing_repository.get_subscription_by_id(self.session, subscription_id)
+        if subscription is None or subscription.grace_period_ends_at is None:
+            return False
+        return utc_now() > subscription.grace_period_ends_at
+
 
 def get_subscription_service(session: AsyncSession) -> SubscriptionService:
     return SubscriptionService(session)

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from swx_core.config.settings import NOTIFICATION_DEFAULT_RETRY_COUNT, NOTIFICATION_DEFAULT_TIMEOUT
 from swx_core.models.email_provider_config import EmailProviderConfig
 from swx_core.models.sms_provider_config import SMSProviderConfig
+from swx_core.security.encryption import decrypt_value, is_encrypted
 from swx_core.services.llm.config_resolver import resolve_config
 from swx_core.services.llm.resilience import CircuitBreakerRegistry, call_with_timeout, retry_with_backoff
 from swx_core.services.notifications import provider_cache
@@ -13,10 +14,31 @@ from swx_core.services.notifications.providers import africas_talking_provider, 
 _EMAIL_SENDERS = {"smtp": smtp_provider.send_email, "api": sendgrid_provider.send_email, "sendgrid": sendgrid_provider.send_email, "resend": sendgrid_provider.send_email}
 _SMS_SENDERS = {"twilio": twilio_provider.send_sms, "africas_talking": africas_talking_provider.send_sms}
 
+_SECRET_FIELDS_EMAIL = {"password", "api_key"}
+_SECRET_FIELDS_SMS = {"auth_token", "api_key"}
+
+
+def _decrypt_field(value: str | None) -> str | None:
+    if not value or not is_encrypted(value):
+        return value
+    try:
+        return decrypt_value(value)
+    except Exception:
+        return value
+
+
+def _decrypt_secrets(config: EmailProviderConfig | SMSProviderConfig) -> dict[str, Any]:
+    data = config.model_dump()
+    secret_fields = _SECRET_FIELDS_EMAIL if isinstance(config, EmailProviderConfig) else _SECRET_FIELDS_SMS
+    for field in secret_fields:
+        if field in data and data[field] is not None:
+            data[field] = _decrypt_field(data[field])
+    return {key: value for key, value in data.items() if value is not None}
+
 
 def _resolved_config(config: EmailProviderConfig | SMSProviderConfig) -> dict[str, Any]:
-    data = config.model_dump()
-    return resolve_config({key: value for key, value in data.items() if value is not None})
+    decrypted = _decrypt_secrets(config)
+    return resolve_config(decrypted)
 
 
 def _breaker(name: str):

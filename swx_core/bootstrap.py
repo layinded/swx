@@ -5,14 +5,13 @@ Registers all providers and boots the application with the service container.
 Uses configurable discovery for app paths instead of hardcoded swx_app.
 """
 
-from typing import List, Type, Optional
+from typing import List, Optional, Type
 
-from swx_core.container.container import Container, get_container, set_container
-from swx_core.providers.base import ServiceProvider
-from swx_core.middleware.logging_middleware import logger
 from swx_core.config.discovery import discovery
+from swx_core.container.container import Container, get_container
+from swx_core.middleware.logging_middleware import logger
+from swx_core.providers.base import ServiceProvider
 from swx_core.router import router as core_router
-
 
 # Core providers (in registration order)
 CORE_PROVIDERS = [
@@ -247,9 +246,15 @@ def register_webhook_routes(app) -> None:
     Args:
         app: FastAPI application instance
     """
+    from swx_core.webhooks.flutterwave_webhook import (
+        router as flutterwave_webhook_router,
+    )
+    from swx_core.webhooks.paystack_webhook import router as paystack_webhook_router
     from swx_core.webhooks.stripe_webhook import router as stripe_webhook_router
 
     app.include_router(stripe_webhook_router)
+    app.include_router(paystack_webhook_router)
+    app.include_router(flutterwave_webhook_router)
     logger.info("Registered webhook routes")
 
 
@@ -263,9 +268,10 @@ def register_event_listeners(container: Container) -> None:
     Args:
         container: Container instance
     """
+    import pkgutil
+
     from swx_core.events.dispatcher import event_bus
     from swx_core.events.listener import Listener
-    import pkgutil
 
     # Use configurable path
     listeners_path = discovery.app_listeners_path
@@ -353,12 +359,12 @@ def diagnose_discovery() -> dict:
 
 def _register_default_hooks() -> None:
     from swx_core.config.settings import settings
-    from swx_core.core.hooks import registration_hooks
     from swx_core.core.default_hooks import (
         assign_default_role,
         create_billing_account,
         create_personal_team,
     )
+    from swx_core.core.hooks import registration_hooks
 
     if settings.AUTO_ASSIGN_DEFAULT_ROLE:
         registration_hooks.add_post_register(assign_default_role)

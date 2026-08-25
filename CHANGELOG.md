@@ -2,6 +2,148 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.23.0] - 2026-08-25
+
+### SOC 2 Type I Compliance — Full Implementation
+
+This release implements all 9 code-level SOC 2 Type I trust service criteria
+and includes critical bug fixes discovered during edge-case review.
+
+#### CC6.1 — Access Management
+- **API Key Lifecycle** (T-701, T-702a, T-702b): Full API key lifecycle with
+  rotation (`POST /admin/api-keys/{key_id}/rotate`), expiry/inactive cleanup
+  background worker, and `API_KEY_MAX_EXPIRY_DAYS` / `API_KEY_MAX_INACTIVE_DAYS`
+  settings.
+- **Session Management** (T-801, T-802): Concurrent session limits
+  (`MAX_CONCURRENT_SESSIONS=5`), idle timeout (`SESSION_IDLE_TIMEOUT_MINUTES=60`),
+  session listing/revocation endpoints (`GET/DELETE /user/sessions`), and hourly
+  idle-session cleanup worker.
+
+#### CC6.2/CC6.1 — Account Lifecycle & Access Review
+- **Access Review** (T-301–T-303): Automated quarterly access review service
+  with orphaned accounts, unused roles, stale tokens, and over-provisioned
+  user detection.
+
+#### CC6.5 — Data Retention & Erasure
+- **Data Retention** (T-501–T-503): Retention purge scheduler, erasure
+  certificate generation, and backup status verification service.
+
+#### CC6.7 — Encryption at Rest
+- **Encryption** (T-101–T-104): PII encryption at rest with key validation,
+  token encryption/decryption, and fail-closed startup check.
+
+#### CC7.1 — Vulnerability Management
+- **Security Scanning** (T-901): GitHub Actions workflow for pip-audit CVE
+  scanning (block on Critical/High) and Dependabot weekly updates.
+- **Rate Limiting**: Password reset endpoint limited to 3 requests/hour.
+- **Database SSL**: `DATABASE_SSL_MODE` setting with `_inject_ssl_mode()` URL
+  helper.
+
+#### CC7.2 — Audit Logging & SIEM
+- **Tamper-Evident Audit Log** (T-201–T-203): SHA-256 hash-chained audit entries
+  with `SELECT FOR UPDATE` concurrency protection, all security-relevant
+  metadata fields (IP, user agent, request ID, context, data classification,
+  access result) included in the canonical hash, and fail-closed startup
+  verification.
+- **SIEM Integration** (T-601–T-603): Batch SIEM webhook forwarding for
+  critical and non-critical audit events, with bounded queue (10K max) to
+  prevent memory leaks.
+
+#### CC7.3/CC7.1 — Incident Response & Security Headers
+- **Incident Response** (T-401–T-403): Incident severity classification,
+  automated notification, and security response headers middleware.
+
+### Bug Fixes (Edge-Case Review)
+
+- **CRITICAL**: `refresh_token_service` used `scalar_one_or_none()` on queries
+  that can return multiple rows (concurrent logins), causing `MultipleResultsFound`
+  crashes. Replaced with `scalars().first()` + `order_by(created_at.desc())`.
+- **CRITICAL**: Audit-integrity startup check ran before database migrations,
+  causing `OperationalError` on fresh non-Dockerized installs. Moved check
+  to after `setup_database()`. Also widened exception handling from
+  `RuntimeError` only to `Exception`.
+- **MEDIUM**: `backup_status_service.get_backup_status` did not guard
+  `response.json()` — a non-JSON 200 response raised uncaught
+  `JSONDecodeError`. Added `try/except (ValueError, TypeError)`.
+- **MEDIUM**: Background cleanup tasks started with `asyncio.create_task()`
+  but handles discarded — no cancellation on shutdown. Now tracked in
+  `_bg_tasks` and cancelled during teardown.
+- **MEDIUM**: Hardcoded cleanup intervals (86400s, 3600s) replaced with
+  configurable settings `API_KEY_LIFECYCLE_INTERVAL_SECONDS` and
+  `SESSION_IDLE_CLEANUP_INTERVAL_SECONDS`.
+- **MEDIUM**: `main.py` startup had duplicate `except RuntimeError` and
+  `except Exception` blocks with identical bodies. Consolidated to single
+  `except Exception`.
+- **MEDIUM**: SIEM `enqueue_siem_event`/`forward_to_siem`/`flush_siem_batch`
+  had unused `session` parameter. Removed to clean up the API.
+- **MEDIUM**: SIEM `_batch_queue` was unbounded — could grow without limit
+  under sustained failure. Added `maxlen=10_000` cap (oldest entries dropped).
+- **MEDIUM**: `_audit_revoked_keys` used `API_KEY_EXPIRED` for both expired
+  and inactive-revoked keys. Added `API_KEY_INACTIVE_REVOKED` action.
+- **MEDIUM**: `revoke_all_tokens` (password reset) had no audit event. Now
+  emits `AUTH_SESSION_REVOKED` with context.
+- **MEDIUM**: `revoke_refresh_token` (logout) had no audit event. Now emits
+  `AUTH_LOGOUT`.
+- **MEDIUM**: `find_idle_sessions` excluded sessions with `NULL`
+  `last_activity_at`. Changed to treat `NULL` as idle-eligible (old sessions
+  without activity tracking are now correctly expired).
+- **MEDIUM**: Hash-chain `compute_log_hash` excluded IP, user agent, request
+  ID, context, data classification, and access result from the canonical
+  hash, allowing undetected metadata tampering. All fields now included.
+- **MEDIUM**: Hash-chain `persist_log_hash` had a TOCTOU race under concurrent
+  writes (two entries could read the same predecessor). Fixed with
+  `SELECT FOR UPDATE (skip_locked)` to serialize hash computation.
+- **MEDIUM**: `audit_logger.log_event` committed the entry before computing
+  its hash — if hash computation failed, the entry had `log_hash=None`,
+  breaking fail-closed integrity. Now removes unhashed entries on hash failure.
+- **MEDIUM**: `create_api_key` in repository had no `IntegrityError` handling
+  for duplicate `hashed_key`. Added rollback + re-raise for clean 409 mapping.
+- **LOW**: `api_key_guard.validate_token` was a stub returning `valid: True`
+  unconditionally. Now delegates to `validate_api_key` service.
+- **LOW**: `session_timeout.py` had unused `from uuid import UUID` import.
+
+### Architecture (SWX Pattern)
+
+- **`refresh_token_service.py`**: Extracted `RefreshTokenRepository` following
+  the SWX Controller → Service → Repository pattern. All direct
+  `session.add/commit/execute/delete` calls replaced with repository functions.
+- **SIEM service**: Removed `AsyncSession` parameter from `forward_to_siem`,
+  `enqueue_siem_event`, and `flush_siem_batch` (no DB operations needed).
+
+### Code Clarity
+- Removed redundant audience re-check in `verify_mfa_token` (already enforced
+  by `jwt.decode` with `audience=` parameter).
+- Fixed `revoke_refresh_token` fallback path that silently returned `True`
+  without deleting when encryption-at-rest is enabled.
+
+### Changed Files
+
+- `swx_core/security/refresh_token_service.py` — scalar_one_or_none fix,
+  repository extraction, audit events, fallback fix, redundant aud check removal
+- `swx_core/repositories/refresh_token_repository.py` — NEW: SWX-pattern
+  repository for refresh token DB operations
+- `swx_core/main.py` — startup reordering, duplicate except consolidation,
+  background task tracking, configurable intervals
+- `swx_core/services/compliance/backup_status_service.py` — JSON parse guard
+- `swx_core/services/compliance/siem_service.py` — removed session param,
+  bounded queue, no async_session in batch loop
+- `swx_core/services/compliance/audit_integrity_service.py` — metadata fields
+  in hash, SELECT FOR UPDATE, import cleanup
+- `swx_core/repositories/audit_integrity_repository.py` —
+  get_previous_hash_for_update with row lock
+- `swx_core/services/audit_logger.py` — hash failure recovery (remove unhashed
+  entries), SIEM call signature update
+- `swx_core/services/compliance/api_key_lifecycle_service.py` — configurable
+  interval, API_KEY_INACTIVE_REVOKED action
+- `swx_core/services/auth/session_service.py` — configurable interval
+- `swx_core/repositories/session_repository.py` — NULL idle activity handling
+- `swx_core/repositories/api_key_scope_repository.py` — IntegrityError handling
+- `swx_core/config/settings_compliance.py` — new interval settings
+- `swx_core/auth/user/session_timeout.py` — removed unused import
+- `swx_core/guards/api_key_guard.py` — validate_token delegates to service
+- `swx_core/version.py` — 2.23.0
+- `pyproject.toml` — 2.23.0
+
 ## [2.22.10] - 2026-08-24
 
 ### Fixed — SWX-023: Circular import broke entire `/api/auth/*` surface

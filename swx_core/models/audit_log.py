@@ -3,15 +3,19 @@
 """
 Audit Log Model
 ---------------
-This module defines the AuditLog model for tracking security and business-relevant events.
 
-Audit logs are immutable and append-only. No updates or deletes are allowed.
+SOC 2 CC7.2 compliant audit logging with tamper-evident hash chain.
+
+Every AuditLog entry includes a SHA-256 ``log_hash`` computed from
+the previous entry's hash concatenated with the current entry's
+canonical fields.  Breaking the chain proves tampering; verifying
+the chain proves integrity.
 """
 
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import Column, DateTime, text
+from sqlalchemy import Column, DateTime, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
@@ -57,6 +61,10 @@ class AuditLog(AuditLogBase, table=True):
             nullable=False,
             index=True
         )
+    )
+    log_hash: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True, index=True),
     )
 
 

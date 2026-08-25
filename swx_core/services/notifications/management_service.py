@@ -11,11 +11,30 @@ from swx_core.models.notification_preference import NotificationPreferencePublic
 from swx_core.models.notification_template import NotificationTemplateCreate, NotificationTemplatePublic
 from swx_core.models.sms_provider_config import SMSProviderConfigCreate, SMSProviderConfigPublic
 from swx_core.repositories import notification_repository
+from swx_core.security.encryption import encrypt_value, decrypt_value, is_encrypted
 from swx_core.services.llm.config_resolver import mask_api_key
 from swx_core.services.notifications import provider_factory
 from swx_core.services.notifications.provider_cache import invalidate_provider_cache
 from swx_core.services.notifications.template_service import invalidate_template_cache
 from swx_core.utils.time import utc_now
+
+
+def _encrypt_field(plaintext: str | None) -> str | None:
+    if not plaintext:
+        return plaintext
+    try:
+        return encrypt_value(plaintext)
+    except Exception:
+        return plaintext
+
+
+def _decrypt_field(ciphertext: str | None) -> str | None:
+    if not ciphertext or not is_encrypted(ciphertext):
+        return ciphertext
+    try:
+        return decrypt_value(ciphertext)
+    except Exception:
+        return ciphertext
 
 
 def _mask(value: str | None) -> str | None:
@@ -24,15 +43,15 @@ def _mask(value: str | None) -> str | None:
 
 def _email_public(config: Any) -> EmailProviderConfigPublic:
     data = config.model_dump()
-    data["password"] = _mask(config.password)
-    data["api_key"] = _mask(config.api_key)
+    data["password"] = _mask(_decrypt_field(config.password))
+    data["api_key"] = _mask(_decrypt_field(config.api_key))
     return EmailProviderConfigPublic.model_validate(data)
 
 
 def _sms_public(config: Any) -> SMSProviderConfigPublic:
     data = config.model_dump()
-    data["auth_token"] = _mask(config.auth_token)
-    data["api_key"] = _mask(config.api_key)
+    data["auth_token"] = _mask(_decrypt_field(config.auth_token))
+    data["api_key"] = _mask(_decrypt_field(config.api_key))
     return SMSProviderConfigPublic.model_validate(data)
 
 
@@ -42,7 +61,12 @@ async def list_email_providers(session: AsyncSession) -> list[EmailProviderConfi
 
 
 async def upsert_email_provider(session: AsyncSession, data: EmailProviderConfigCreate) -> EmailProviderConfigPublic:
-    config = await notification_repository.upsert_email_provider_config(session, data.model_dump())
+    payload = data.model_dump()
+    if payload.get("password"):
+        payload["password"] = _encrypt_field(payload["password"])
+    if payload.get("api_key"):
+        payload["api_key"] = _encrypt_field(payload["api_key"])
+    config = await notification_repository.upsert_email_provider_config(session, payload)
     invalidate_provider_cache()
     await event_bus.dispatch("notification.email_provider.upserted", payload={"provider_id": str(config.id), "name": config.name})
     return _email_public(config)
@@ -54,7 +78,12 @@ async def list_sms_providers(session: AsyncSession) -> list[SMSProviderConfigPub
 
 
 async def upsert_sms_provider(session: AsyncSession, data: SMSProviderConfigCreate) -> SMSProviderConfigPublic:
-    config = await notification_repository.upsert_sms_provider_config(session, data.model_dump())
+    payload = data.model_dump()
+    if payload.get("auth_token"):
+        payload["auth_token"] = _encrypt_field(payload["auth_token"])
+    if payload.get("api_key"):
+        payload["api_key"] = _encrypt_field(payload["api_key"])
+    config = await notification_repository.upsert_sms_provider_config(session, payload)
     invalidate_provider_cache()
     await event_bus.dispatch("notification.sms_provider.upserted", payload={"provider_id": str(config.id), "name": config.name})
     return _sms_public(config)

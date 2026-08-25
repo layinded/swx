@@ -10,16 +10,14 @@ Implements production-grade webhook handling with:
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request, status
 
 from swx_core.config.settings import settings
 from swx_core.middleware.logging_middleware import logger
-from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
 from swx_core.services.billing.stripe_provider import is_valid_stripe_webhook_secret
-
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
@@ -144,8 +142,29 @@ class StripeWebhookHandler:
                 message="Event type not supported",
             )
 
-        # 3. Check idempotency (Redis)
-        if self.redis:
+        # 3. Check idempotency (durable table + Redis fast-path)
+        if self.session_factory:
+            async with self.session_factory() as db_session:
+                from swx_core.services.webhook_idempotency_service import (
+                    check_and_record,
+                )
+
+                is_new = await check_and_record(
+                    db_session,
+                    "stripe",
+                    stripe_event_id,
+                    payload,
+                    redis_client=self.redis,
+                )
+                if not is_new:
+                    logger.info(f"Duplicate webhook event: {stripe_event_id}")
+                    return WebhookResult(
+                        status="duplicate",
+                        event_id=stripe_event_id,
+                        event_type=event_type,
+                        message="Event already processed",
+                    )
+        elif self.redis:
             idempotency_key = f"webhook:stripe:idempotency:{stripe_event_id}"
 
             if await self.redis.exists(idempotency_key):
@@ -157,7 +176,6 @@ class StripeWebhookHandler:
                     message="Event already processed",
                 )
 
-            # Mark as seen
             await self.redis.setex(idempotency_key, self.idempotency_ttl, event_type)
 
         # 4. Check replay protection
@@ -177,9 +195,18 @@ class StripeWebhookHandler:
                 message="Event too old",
             )
 
-        # 5. Enqueue for async processing
+        # 5. Process subscription events inline, others via job queue
         try:
             event_object = event["data"]["object"]
+
+            if event_type in ("checkout.session.completed", "invoice.paid", "invoice.payment_failed"):
+                await self._sync_subscription(event_type, event_object)
+                return WebhookResult(
+                    status="processed",
+                    event_id=stripe_event_id,
+                    event_type=event_type,
+                )
+
             job = await self._enqueue_job(stripe_event_id, event_type, event_object)
 
             logger.info(
@@ -213,13 +240,54 @@ class StripeWebhookHandler:
                 message=str(exc),
             )
 
+    async def _sync_subscription(self, event_type: str, event_data: Dict[str, Any]) -> None:
+        """Sync subscription state from Stripe checkout/invoice events."""
+        if self.session_factory is None:
+            logger.warning("Stripe webhook: no session_factory — cannot sync subscription inline")
+            return
+
+        try:
+            from swx_core.services.billing.subscription_service import (
+                SubscriptionService,
+            )
+
+            if event_type == "checkout.session.completed":
+                async with self.session_factory() as session:
+                    sub_service = SubscriptionService(session)
+                    await sub_service.sync_stripe_subscription(event_data)
+            elif event_type in ("invoice.paid", "invoice.payment_failed"):
+                subscription_data = event_data.get("subscription")
+                lines = event_data.get("lines", {})
+                if isinstance(lines, dict):
+                    line_data = lines.get("data", [])
+                    if isinstance(line_data, list) and line_data:
+                        first_line = line_data[0]
+                        if isinstance(first_line, dict):
+                            price = first_line.get("price", {})
+                            if isinstance(price, dict):
+                                subscription_data = subscription_data or {
+                                    "id": event_data.get("subscription"),
+                                    "status": "active" if event_type == "invoice.paid" else "past_due",
+                                    "current_period_start": event_data.get("period_start"),
+                                    "current_period_end": event_data.get("period_end"),
+                                    "items": {"data": [first_line]},
+                                }
+                if isinstance(subscription_data, dict):
+                    async with self.session_factory() as session:
+                        sub_service = SubscriptionService(session)
+                        await sub_service.sync_stripe_subscription(subscription_data)
+                else:
+                    logger.info("Stripe webhook: %s — no subscription data to sync", event_type)
+        except Exception:
+            logger.exception("Stripe webhook: failed to sync subscription for %s", event_type)
+
     async def _enqueue_job(
         self, event_id: str, event_type: str, event_data: Dict[str, Any]
     ):
         """Enqueue webhook event for async processing."""
         try:
-            from swx_core.services.job.job_dispatcher import enqueue_job
             from swx_core.models.job import JobType
+            from swx_core.services.job.job_dispatcher import enqueue_job
 
             return await enqueue_job(
                 job_type=JobType.billing_webhook,

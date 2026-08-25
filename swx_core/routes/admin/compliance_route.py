@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, Query
 
 from swx_core.auth.admin.dependencies import get_current_admin_user
 from swx_core.controllers import compliance_audit_controller
+from swx_core.controllers import access_review_controller
+from swx_core.controllers import backup_status_controller
 from swx_core.database.db import SessionDep
 from swx_core.models.audit_log import AuditLogsPublic
 from swx_core.models.compliance_audit import ComplianceConfigCreate, ComplianceConfigPublic, DataSubjectRequestPublic, RetentionPolicyCreate, RetentionPolicyPublic
@@ -70,3 +72,105 @@ async def list_data_subject_requests(session: SessionDep) -> list[DataSubjectReq
 @router.post("/data-subject-requests/{request_id}/process")
 async def process_data_subject_request(session: SessionDep, request_id: UUID, admin_notes: str | None = None) -> dict[str, object]:
     return await compliance_audit_controller.process_data_subject_request_controller(session, request_id, admin_notes)
+
+
+# ── Access Review (SOC 2 CC6.2) ────────────────────────────────────
+
+
+@router.get("/access-review")
+async def get_access_review(
+    session: SessionDep,
+    days_inactive: int = Query(90, ge=1, description="Days without login to flag as orphaned"),
+    days_unused: int = Query(90, ge=1, description="Days without RBAC activity to flag role as unused"),
+    days_stale: int = Query(30, ge=1, description="Days for refresh tokens to be considered stale"),
+    days_over_provisioned: int = Query(30, ge=1, description="Days without admin activity to flag over-provisioned"),
+) -> dict[str, object]:
+    """Generate a comprehensive SOC 2 access review report."""
+    return await access_review_controller.get_access_review_controller(
+        session,
+        days_inactive=days_inactive,
+        days_unused=days_unused,
+        days_stale=days_stale,
+        days_over_provisioned=days_over_provisioned,
+    )
+
+
+@router.get("/access-review/orphaned-accounts")
+async def get_orphaned_accounts(
+    session: SessionDep,
+    days_inactive: int = Query(90, ge=1),
+) -> list[dict]:
+    """List active users with no login within the given period."""
+    return await access_review_controller.get_orphaned_accounts_controller(session, days_inactive)
+
+
+@router.get("/access-review/unused-roles")
+async def get_unused_roles(
+    session: SessionDep,
+    days_unused: int = Query(90, ge=1),
+) -> list[dict]:
+    """List role assignments with no recent RBAC audit activity."""
+    return await access_review_controller.get_unused_roles_controller(session, days_unused)
+
+
+@router.get("/access-review/stale-tokens")
+async def get_stale_tokens(
+    session: SessionDep,
+    days_old: int = Query(30, ge=1),
+) -> list[dict]:
+    """List refresh tokens older than threshold that are still valid."""
+    return await access_review_controller.get_stale_tokens_controller(session, days_old)
+
+
+@router.get("/access-review/over-provisioned-users")
+async def get_over_provisioned_users(
+    session: SessionDep,
+    days: int = Query(30, ge=1),
+) -> list[dict]:
+    """List users with admin roles but no admin audit activity."""
+    return await access_review_controller.get_over_provisioned_users_controller(session, days)
+
+
+# ── Erasure & Retention (SOC 2 CC6.5) ──────────────────────────────
+
+
+@router.post("/execute-scheduled-erasions")
+async def execute_scheduled_erasions(session: SessionDep) -> dict:
+    """Manually trigger scheduled GDPR erasure execution."""
+    return await compliance_audit_controller.execute_scheduled_erasions_controller(session)
+
+
+@router.post("/purge-audit-logs")
+async def purge_audit_logs(
+    session: SessionDep,
+    retention_days: int | None = Query(None, ge=1, description="Override retention days (default from settings)"),
+) -> dict:
+    """Purge audit logs older than the retention period."""
+    return await compliance_audit_controller.purge_audit_logs_controller(session, retention_days)
+
+
+@router.post("/purge-sessions")
+async def purge_sessions(
+    session: SessionDep,
+    retention_days: int | None = Query(None, ge=1, description="Override session retention days (default from settings)"),
+) -> dict:
+    """Purge refresh tokens older than the retention period."""
+    return await compliance_audit_controller.purge_sessions_controller(session, retention_days)
+
+
+# ── Backup Status (SOC 2 CC6.5) ────────────────────────────────────
+
+
+@router.get("/backup-status")
+async def get_backup_status(session: SessionDep) -> dict[str, object]:
+    """Return backup verification status for SOC 2 auditors."""
+    return await backup_status_controller.get_backup_status_controller(session)
+
+
+# ── Audit Integrity (SOC 2 CC7.2) ─────────────────────────────────
+
+
+@router.get("/audit-logs/verify-integrity")
+async def verify_audit_integrity(session: SessionDep) -> dict[str, object]:
+    """Walk the audit log hash chain and report any tampered entries."""
+    return await compliance_audit_controller.verify_audit_integrity_controller(session)

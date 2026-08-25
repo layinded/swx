@@ -229,3 +229,90 @@ def encrypt_api_key(plaintext: str) -> str:
 def decrypt_api_key(ciphertext: str) -> str:
     """Decrypt an API key. Alias for decrypt_value with domain-specific naming."""
     return decrypt_value(ciphertext)
+
+
+# ---------------------------------------------------------------------------
+# PII field encryption — convenience wrappers for personally identifiable info
+# ---------------------------------------------------------------------------
+# These wrap the core EncryptionService with PII-specific semantics:
+#   - Domain-tagged ciphertext (prefix includes "pii:" for auditability)
+#   - Fail-closed validation on startup when PII encryption is enabled
+#   - Separate from general encrypt_value so auditors can distinguish PII
+#     ciphertext from webhook-secret / API-key ciphertext in the database.
+# ---------------------------------------------------------------------------
+
+_PII_PREFIX = "pii:"
+
+
+def encrypt_pii_field(plaintext: str) -> str:
+    """Encrypt a PII field value (email, full_name, etc.).
+
+    Returns a versioned ciphertext prefixed with ``pii:`` so that
+    auditors and data-classification tools can distinguish PII ciphertext
+    from other encrypted values in the database.
+
+    Example::
+
+        >>> encrypt_pii_field("user@example.com")
+        'pii:v2:gAAAAABk...'
+
+    Raises:
+        EncryptionError: If SWX_ENCRYPTION_KEY is not configured.
+        ValueError: If plaintext is empty.
+    """
+    if not plaintext:
+        raise ValueError("PII plaintext cannot be empty.")
+    encrypted = encrypt_value(plaintext)
+    return f"{_PII_PREFIX}{encrypted}"
+
+
+def decrypt_pii_field(ciphertext: str) -> str:
+    """Decrypt a PII field value.
+
+    Accepts both ``pii:``-prefixed and plain versioned ciphertext for
+    backward compatibility (dual-write period).
+
+    Example::
+
+        >>> decrypt_pii_field("pii:v2:gAAAAABk...")
+        'user@example.com'
+
+    Raises:
+        DecryptionError: If the ciphertext cannot be decrypted.
+    """
+    if not ciphertext:
+        raise DecryptionError("PII ciphertext cannot be empty.")
+
+    # Strip pii: prefix if present (backward-compatible with plain ciphertext)
+    inner = ciphertext.removeprefix(_PII_PREFIX)
+    return decrypt_value(inner)
+
+
+def is_pii_encrypted(value: str) -> bool:
+    """Check whether a string is a PII-encrypted ciphertext (has ``pii:`` prefix)."""
+    return value.startswith(_PII_PREFIX)
+
+
+def validate_encryption_key() -> None:
+    """Fail-closed validation that SWX_ENCRYPTION_KEY is present and usable.
+
+    Call this at application startup (before accepting requests) when
+    PII encryption is enabled.  Raises ``EncryptionError`` if the key
+    is missing or cannot derive a valid Fernet key.
+
+    This is a **startup guard**, not a runtime check — it should be
+    called once in the FastAPI lifespan, not on every request.
+    """
+    service = _get_encryption_service()
+    # _resolve_versions raises EncryptionError if SWX_ENCRYPTION_KEY is missing
+    service._resolve_versions()
+
+    # Verify a round-trip works
+    test_plain = "__swx_pii_validation_round_trip__"
+    encrypted = encrypt_value(test_plain)
+    decrypted = decrypt_value(encrypted)
+    if decrypted != test_plain:
+        raise EncryptionError(
+            "Encryption key validation failed: round-trip decrypt "
+            "did not match plaintext. Check SWX_ENCRYPTION_KEY and SWX_ENCRYPTION_SALT."
+        )

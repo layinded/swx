@@ -49,6 +49,10 @@ class ApiKey(ApiKeyBase, table=True):
     __tablename__ = "swx_api_key"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    rotated_from_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("swx_api_key.id"), nullable=True, index=True),
+    )
     created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False))
     updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False))
 
@@ -90,6 +94,8 @@ class ApiKeyPublic(SQLModel):
     expires_at: Optional[datetime]
     last_used_at: Optional[datetime]
     rate_limit_override: Optional[int]
+    rotated_from_id: uuid.UUID | None = None
+    is_expired: bool = False
     created_at: datetime
     updated_at: datetime
 

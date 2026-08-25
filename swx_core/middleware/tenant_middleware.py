@@ -5,10 +5,11 @@ Middleware for extracting and setting tenant context from requests.
 """
 
 from uuid import UUID
-from fastapi import Request
+from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from swx_core.config.settings import settings
 from swx_core.core.tenant import (
     set_current_tenant,
     set_current_team,
@@ -66,3 +67,10 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
                 set_current_team(user.current_team_id)
             if hasattr(user, "is_superuser") and user.is_superuser:
                 set_super_admin(True)
+
+
+def apply_middleware(app: FastAPI) -> None:
+    if not getattr(settings, "ORGANIZATION_ENABLED", True):
+        return
+    app.add_middleware(TenantContextMiddleware)
+    logger.info("TenantContextMiddleware registered")

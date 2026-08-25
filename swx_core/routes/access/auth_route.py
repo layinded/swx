@@ -36,10 +36,15 @@ from swx_core.controllers.auth_controller import (
     recover_password_controller,
     reset_password_controller,
     register_controller,
+    verify_mfa_challenge_controller,
+    request_email_verification_controller,
+    verify_email_controller,
+    resend_email_verification_controller,
 )
 from swx_core.database.db import SessionDep
 from swx_core.models.common import Message
-from swx_core.models.token import Token, TokenRefreshRequest
+from swx_core.models.token import Token, TokenRefreshRequest, LoginResponse
+from swx_core.models.common import Message
 from swx_core.models.user import UserCreate, UserNewPassword, UserPublic
 from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
 from swx_core.services.alert_engine import alert_engine
@@ -52,15 +57,19 @@ from swx_core.utils.rate_limit import rate_limit_by_ip
 router = APIRouter(prefix="/auth")
 
 
-@router.post("/", response_model=Token)
+@router.post("/", response_model=LoginResponse)
 @rate_limit_by_ip(max_requests=5, window_seconds=60, action="login")
 async def login(
     session: SessionDep,
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
-) -> Token:
+) -> LoginResponse:
     """
     Handles user login.
+
+    When MFA is enabled for the user, returns `mfa_required=True` with
+    a short-lived `mfa_token`. The client must then call
+    `POST /auth/mfa/verify` to obtain full tokens.
 
     Args:
         session: The database session.
@@ -68,11 +77,11 @@ async def login(
         request (Request, optional): The HTTP request object.
 
     Returns:
-        Token: A dictionary containing the access token, refresh token, and token type.
+        LoginResponse: Tokens or MFA challenge depending on user settings.
     """
     audit = get_audit_logger(session)
     try:
-        token = await login_controller(session, form_data, request)
+        result = await login_controller(session, form_data, request)
         await audit.log_event(
             action="user.login",
             actor_type=ActorType.USER,
@@ -80,7 +89,7 @@ async def login(
             outcome=AuditOutcome.SUCCESS,
             request=request
         )
-        return token
+        return result
     except Exception as e:
         await audit.log_event(
             action="user.login",
@@ -255,6 +264,7 @@ async def recover_password(email: str, session: SessionDep, request: Request):
 
 
 @router.post("/password/reset", response_model=Message)
+@rate_limit_by_ip(max_requests=3, window_seconds=3600, action="password_reset")
 async def reset_password(session: SessionDep, body: UserNewPassword, request: Request):
     """
     Resets the user's password and revokes all active tokens.
@@ -286,6 +296,57 @@ async def reset_password(session: SessionDep, body: UserNewPassword, request: Re
             request=request
         )
         raise e
+
+
+@router.post("/email/verify/{email}", response_model=Message)
+@rate_limit_by_ip(max_requests=3, window_seconds=3600, action="email_verify_request")
+async def request_email_verification(
+    email: str,
+    session: SessionDep,
+    request: Request,
+) -> Message:
+    """
+    Request an email verification link.
+
+    Sends a verification email to the given address if the user exists
+    and their email is not yet verified. Rate-limited to prevent abuse.
+    """
+    return await request_email_verification_controller(email, session, request)
+
+
+@router.post("/email/verify", response_model=UserPublic)
+async def verify_email(
+    session: SessionDep,
+    token: str,
+    request: Request = None,  # pyright: ignore[reportArgumentType]
+) -> UserPublic:
+    """
+    Verify a user's email address using the token from the verification link.
+
+    Args:
+        session: The database session.
+        token: The verification token from the email link.
+        request: The HTTP request object.
+
+    Returns:
+        UserPublic: The verified user's profile.
+    """
+    return await verify_email_controller(session, token, request)
+
+
+@router.post("/email/resend-verification", response_model=Message)
+@rate_limit_by_ip(max_requests=3, window_seconds=3600, action="resend_email_verification")
+async def resend_email_verification(
+    session: SessionDep,
+    user: UserDep,
+) -> Message:
+    """
+    Resend the verification email for the authenticated user.
+
+    Only works if email verification is enabled and the user's email
+    is not yet verified.
+    """
+    return await resend_email_verification_controller(session, user.id)
 
 
 @router.post("/cookie/logout")
@@ -364,13 +425,31 @@ async def cookie_login(
     Returns user profile JSON in the response body.
     Sets swx_access_token and swx_refresh_token as httpOnly cookies.
 
+    When MFA is required, returns `mfa_required=True` with a
+    short-lived `mfa_token` instead of setting cookies.
+
     Returns:
-        JSONResponse: User profile with cookies set.
+        JSONResponse: User profile with cookies set, or MFA challenge.
     """
     audit = get_audit_logger(session)
     try:
-        auth_token = await login_controller(session, form_data, request)
-        
+        auth_result = await login_controller(session, form_data, request)
+
+        if auth_result.mfa_required:
+            await audit.log_event(
+                action="user.cookie.login.mfa_required",
+                actor_type=ActorType.USER,
+                actor_id=form_data.username,
+                outcome=AuditOutcome.SUCCESS,
+                request=request
+            )
+            return JSONResponse({
+                "mfa_required": True,
+                "mfa_token": auth_result.mfa_token,
+                "email": form_data.username,
+                "message": "MFA verification required",
+            })
+
         access_expires = await get_token_expiration(session, "access")
         refresh_expires = await get_token_expiration(session, "refresh")
 
@@ -378,14 +457,14 @@ async def cookie_login(
             "email": form_data.username,
             "message": "Authentication successful",
         })
-        
+
         secure = settings.COOKIE_SECURE and settings.ENVIRONMENT != "local"
         samesite = settings.COOKIE_SAMESITE
         domain = settings.COOKIE_DOMAIN
 
         response.set_cookie(
             key=settings.COOKIE_ACCESS_TOKEN_NAME,
-            value=auth_token.access_token,
+            value=auth_result.access_token or "",
             httponly=True,
             secure=secure,
             samesite=samesite,
@@ -393,10 +472,10 @@ async def cookie_login(
             path="/",
             domain=domain,
         )
-        if auth_token.refresh_token:
+        if auth_result.refresh_token:
             response.set_cookie(
                 key=settings.COOKIE_REFRESH_TOKEN_NAME,
-                value=auth_token.refresh_token,
+                value=auth_result.refresh_token,
                 httponly=True,
                 secure=secure,
                 samesite=samesite,

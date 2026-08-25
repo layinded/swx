@@ -1,12 +1,12 @@
-from swx_core.utils.time import utc_now
-
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.config.settings import settings
-from swx_core.models.currency import ExchangeRatePublic
+from swx_core.models.currency import ExchangeRate, ExchangeRatePublic
 from swx_core.repositories import currency_repository, exchange_rate_repository
 from swx_core.repositories.exchange_rate_repository import ExchangeRateData
+from swx_core.utils.time import utc_now
+
 
 def _manual_rates(base: str) -> dict[str, float]:
     defaults = {"USD": {"NGN": 1500.0, "KES": 129.5, "ZAR": 18.2, "GHS": 15.4}}
@@ -36,7 +36,7 @@ async def get_rate(session: AsyncSession, base: str, quote: str) -> float:
 
 async def convert(session: AsyncSession, amount_nano: int, from_currency: str, to_currency: str) -> int:
     rate = await get_rate(session, from_currency, to_currency)
-    return int(round(amount_nano * rate))
+    return round(amount_nano * rate)
 
 async def sync_rates(session: AsyncSession, base: str = "USD") -> dict[str, float]:
     base_code = base.upper()
@@ -50,3 +50,7 @@ async def set_manual_rate(session: AsyncSession, base: str, quote: str, rate: fl
         raise HTTPException(status_code=400, detail="Exchange rate must be greater than zero")
     entry = await exchange_rate_repository.create(session, _manual_rate_payload(base, quote, rate))
     return ExchangeRatePublic.model_validate(entry)
+
+
+async def get_all_for_base(session: AsyncSession, base: str) -> list[ExchangeRate]:
+    return await exchange_rate_repository.get_all_for_base(session, base)

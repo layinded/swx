@@ -256,10 +256,24 @@ class TeamInvitationService:
     async def _get_team_member_by_email(
         self, team_id: UUID, email: str
     ) -> TeamMember | None:
-        user_result = await self.session.execute(
-            select(User).where(User.email == email)
+        from swx_core.services.compliance.pii_encryption_service import (
+            encrypt_email,
+            should_encrypt_pii,
+            pii_encryption_enabled,
+            decrypt_user_pii,
         )
+        if should_encrypt_pii():
+            encrypted_email = encrypt_email(email)
+            user_result = await self.session.execute(
+                select(User).where(User.email_encrypted == encrypted_email)
+            )
+        else:
+            user_result = await self.session.execute(
+                select(User).where(User.email == email)
+            )
         user = user_result.scalar_one_or_none()
+        if user and pii_encryption_enabled():
+            decrypt_user_pii(user)
         if not user:
             return None
 

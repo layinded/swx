@@ -43,6 +43,12 @@ class JobType(str, Enum):
     audit_aggregate = "audit.aggregate"
     audit_cleanup = "audit.cleanup"
     
+    # Compliance jobs
+    compliance_data_subject_delete = "compliance.data_subject.delete"
+    compliance_retention_apply = "compliance.retention.apply"
+    compliance_api_key_expired_cleanup = "compliance.api_key.expired_cleanup"
+    compliance_session_idle_cleanup = "compliance.session.idle_cleanup"
+
     # System jobs
     cache_refresh = "system.cache.refresh"
     data_export = "system.data.export"

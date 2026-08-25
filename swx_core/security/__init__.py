@@ -32,6 +32,10 @@ def __getattr__(name: str) -> object:
         "encrypt_api_key": ".encryption",
         "decrypt_api_key": ".encryption",
         "is_encrypted": ".encryption",
+        "encrypt_pii_field": ".encryption",
+        "decrypt_pii_field": ".encryption",
+        "is_pii_encrypted": ".encryption",
+        "validate_encryption_key": ".encryption",
     }
     if name in _LAZY:
         module = _il.import_module(_LAZY[name], __name__)
@@ -57,4 +61,8 @@ __all__ = [
     "encrypt_api_key",
     "decrypt_api_key",
     "is_encrypted",
+    "encrypt_pii_field",
+    "decrypt_pii_field",
+    "is_pii_encrypted",
+    "validate_encryption_key",
 ]

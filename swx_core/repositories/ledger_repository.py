@@ -59,6 +59,27 @@ async def get_entries_by_account(session: AsyncSession, account_id: UUID, skip: 
     return list((await session.execute(stmt)).scalars().all())
 
 
+async def get_filtered_entries(
+    session: AsyncSession,
+    account_id: UUID,
+    *,
+    entry_type: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> list[LedgerEntry]:
+    stmt = select(LedgerEntry).where(LedgerEntry.account_id == account_id)  # pyright: ignore[reportArgumentType]
+    if entry_type is not None:
+        stmt = stmt.where(LedgerEntry.entry_type == entry_type)  # pyright: ignore[reportArgumentType]
+    if date_from is not None:
+        stmt = stmt.where(LedgerEntry.created_at >= date_from)  # pyright: ignore[reportArgumentType]
+    if date_to is not None:
+        stmt = stmt.where(LedgerEntry.created_at <= date_to)  # pyright: ignore[reportArgumentType]
+    stmt = stmt.order_by(*_entry_order()).offset(skip).limit(limit)  # pyright: ignore[reportArgumentType]
+    return list((await session.execute(stmt)).scalars().all())
+
+
 async def get_entries_by_reference(session: AsyncSession, account_id: UUID, reference_type: str, reference_id: str) -> list[LedgerEntry]:
     stmt = select(LedgerEntry).where(
         LedgerEntry.account_id == account_id,  # pyright: ignore[reportArgumentType]

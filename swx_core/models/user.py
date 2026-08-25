@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from pydantic import EmailStr
-from sqlalchemy import Boolean, Column, DateTime, String, text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
@@ -71,6 +71,8 @@ class User(UserBase, table=True):
     auth_provider: str = Field(default="local", max_length=50)
     provider_id: Optional[str] = Field(default=None, unique=True, max_length=255)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
+    email_encrypted: Optional[str] = Field(default=None, max_length=1024)
+    full_name_encrypted: Optional[str] = Field(default=None, max_length=1024)
     deactivated_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
@@ -87,6 +89,18 @@ class User(UserBase, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
     email_verified_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    failed_login_attempts: int = Field(
+        default=0,
+        sa_column=Column(Integer, nullable=False, server_default=text("0")),
+    )
+    locked_until: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    password_reset_requested_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )

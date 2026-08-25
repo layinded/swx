@@ -1,87 +1,60 @@
-"""
-Refresh Token Model
--------------------
-This module defines the RefreshToken model used for handling authentication tokens.
-
-Features:
-- Stores refresh tokens securely.
-- Tracks token expiration and user association.
-- Supports creating, updating, and publicly exposing refresh tokens.
-
-Schemas:
-- `RefreshToken`: Main database model.
-- `RefreshTokenCreate`: Schema for creating refresh tokens.
-- `RefreshTokenUpdate`: Schema for updating refresh tokens.
-- `RefreshTokenPublic`: Public representation of the refresh token.
-"""
-
+from dataclasses import dataclass
 import uuid
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Optional, cast
 
-from sqlalchemy import Column, DateTime, func
+from sqlalchemy import Column, DateTime, String, func
 from sqlmodel import Field
 
 from swx_core.models.base import Base
 from swx_core.utils.time import utc_now
 
+
 class RefreshTokenBase(Base):
-    """
-    Base model for refresh tokens.
-
-    Attributes:
-        token (str): The refresh token.
-        expires_at (datetime): Expiration time of the token.
-        created_at (datetime): Timestamp of when the token was issued.
-    """
-
-    token: str = Field(..., nullable=False)  # Required refresh token
+    token: str = Field(..., nullable=False)
     expires_at: datetime = Field(
         sa_column=Column(DateTime(timezone=True), nullable=False),
-    )  # Expiry timestamp
+    )
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
     )
 
+
 class RefreshToken(RefreshTokenBase, table=True):
-    """
-    RefreshToken model for storing issued refresh tokens.
-
-    Attributes:
-        id (uuid.UUID): Unique identifier for each token.
-        user_email (str): Email associated with the token.
-    """
-
     __tablename__ = cast(Any, "swx_refresh_token")
     __table_args__ = cast(Any, {"extend_existing": True})
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    user_email: str = Field(index=True)  # Indexed for efficient lookups
+    user_email: str = Field(index=True)
+    device_info: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
+    ip_address: str | None = Field(default=None, sa_column=Column(String(45), nullable=True))
+    last_activity_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+
 
 class RefreshTokenCreate(RefreshTokenBase):
-    """
-    Schema for creating a new refresh token.
-
-    Inherits:
-        RefreshTokenBase: Base fields for refresh tokens.
-    """
     pass
+
 
 class RefreshTokenUpdate(RefreshTokenBase):
-    """
-    Schema for updating an existing refresh token.
-
-    Inherits:
-        RefreshTokenBase: Base fields for refresh tokens.
-    """
     pass
+
 
 class RefreshTokenPublic(RefreshToken):
-    """
-    Public schema for exposing refresh tokens.
-
-    Inherits:
-        RefreshToken: Main refresh token model.
-    """
     pass
+
+
+@dataclass
+class SessionPublic:
+    """Public schema for exposing session info (no token value)."""
+    id: uuid.UUID
+    user_email: str
+    device_info: str | None
+    ip_address: str | None
+    created_at: datetime
+    last_activity_at: datetime | None
+    expires_at: datetime
+    is_expired: bool

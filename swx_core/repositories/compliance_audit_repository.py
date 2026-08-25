@@ -159,3 +159,32 @@ def _apply_log_filters(stmt: Any, filters: dict[str, Any]) -> Any:
     if filters.get("end_date"):
         stmt = stmt.where(AuditLog.timestamp <= filters["end_date"])
     return stmt
+
+
+async def delete_expired_audit_logs(session: AsyncSession, cutoff: datetime) -> int:
+    """Delete audit logs older than the given cutoff datetime."""
+    from sqlalchemy import delete as sql_delete
+    stmt = sql_delete(AuditLog).where(AuditLog.timestamp < cutoff)
+    result = await session.execute(stmt)
+    await session.commit()
+    return int(result.rowcount or 0)
+
+
+async def delete_expired_refresh_tokens(session: AsyncSession, cutoff: datetime) -> int:
+    """Delete refresh tokens older than the given cutoff datetime."""
+    from sqlalchemy import delete as sql_delete
+    from swx_core.models.refresh_token import RefreshToken
+    stmt = sql_delete(RefreshToken).where(RefreshToken.created_at < cutoff)
+    result = await session.execute(stmt)
+    await session.commit()
+    return int(result.rowcount or 0)
+
+
+async def delete_expired_data_exports(session: AsyncSession, cutoff: datetime) -> int:
+    """Delete data export records older than the given cutoff datetime."""
+    from sqlalchemy import delete as sql_delete
+    from swx_core.models.data_export import DataExport
+    stmt = sql_delete(DataExport).where(DataExport.created_at < cutoff)
+    result = await session.execute(stmt)
+    await session.commit()
+    return int(result.rowcount or 0)

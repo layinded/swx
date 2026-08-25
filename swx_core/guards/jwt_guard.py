@@ -68,7 +68,7 @@ class JWTGuard(BaseGuard):
         """
         self.secret_key = secret_key or settings.SECRET_KEY
         self.algorithm = algorithm or getattr(settings, 'PASSWORD_SECURITY_ALGORITHM', 'HS256')
-        self.access_token_expire = access_token_expire or getattr(settings, 'ACCESS_TOKEN_EXPIRE_MINUTES', 10080)
+        self.access_token_expire = access_token_expire or getattr(settings, 'ACCESS_TOKEN_EXPIRE_MINUTES', 15)
         self.refresh_token_expire = refresh_token_expire or getattr(settings, 'REFRESH_TOKEN_EXPIRE_DAYS', 30)
         self.token_blacklist = token_blacklist
         self.default_audience = default_audience

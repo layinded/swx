@@ -279,7 +279,7 @@ class SettingsService:
     def _get_safe_default(self, key: str) -> Any:
         """Get safe default for critical settings."""
         defaults = {
-            "ACCESS_TOKEN_EXPIRE_MINUTES": 60 * 24 * 7,  # 7 days
+            "ACCESS_TOKEN_EXPIRE_MINUTES": 15,
             "REFRESH_TOKEN_EXPIRE_DAYS": 30,
             "SECRET_KEY": "",  # Should never happen
         }
@@ -325,7 +325,7 @@ async def get_setting(
     Convenience function to get a setting.
     
     Usage:
-        value = await get_setting(session, "ACCESS_TOKEN_EXPIRE_MINUTES", default=10080)
+        value = await get_setting(session, "ACCESS_TOKEN_EXPIRE_MINUTES", default=15)
     """
     service = get_settings_service(session)
     return await service.get(key, default, value_type)

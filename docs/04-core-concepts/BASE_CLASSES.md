@@ -129,6 +129,37 @@ When no `session` is provided (default):
 - Auto-commit on success, auto-rollback on exception
 - Behavior is identical to pre-v2.7.22
 
+#### Session Context Warning: DB-Read-Then-HTTP Pattern
+
+`BaseRepository.find_by()` with an injected `SessionDep` starts a transaction
+on the request-scoped session. If the route handler then makes an **outbound
+HTTP call** (e.g. to a payment provider), the DB connection is held open
+for the duration of that call — causing connection pool exhaustion under load.
+
+**Do NOT** do this:
+```python
+@router.post("/dangerous")
+async def dangerous_route(session: SessionDep, current_user: UserDep):
+    repo = BaseRepository(model=Plan, session=session)
+    plan = await repo.find_by(key="pro_v1")
+    result = await httpx.post("https://api.paystack.co/...")  # connection held!
+```
+
+**Do** this instead — use `with_read_session()` for the DB read, close it,
+then make the HTTP call:
+```python
+from swx_core.database.session_helpers import with_read_session
+
+async def my_controller(plan_key, provider, ...):
+    async with with_read_session() as session:
+        plan = await billing_service.get_plan_by_key(session, plan_key)
+        plan_amount = plan.amount
+    # Session closed — safe to make the HTTP call
+    return await get_local_payment_provider(provider).initialize_payment(...)
+```
+
+See [Session Management](./SESSION_MANAGEMENT.md) for full documentation.
+
 #### Shared Session Example
 
 ```python

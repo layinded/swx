@@ -4,9 +4,14 @@
 
 Replaces the previous BaseHTTPMiddleware implementation which buffered
 response bodies and broke Server-Sent Events streaming.
+
+SOC 2 CC7.1: Adds X-Request-ID for request correlation, CSP-Report-Only
+for violation reporting, and a settings toggle for enabling/disabling
+all security headers.
 """
 
 import os
+import uuid
 from dataclasses import dataclass, field
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -25,6 +30,9 @@ class SecurityHeadersConfig:
     corp_for_sse: str = "cross-origin"
     corp_default: str = "same-origin"
     csp_api: str = "default-src 'none'; frame-ancestors 'none'"
+    csp_report_only: str = "default-src 'none'; frame-ancestors 'none'; report-uri /api/utils/csp-report"
+    enabled: bool = True
+    request_id_header: str = "X-Request-ID"
     environment: str = field(default_factory=lambda: os.getenv("ENVIRONMENT", "local").lower())
 
 
@@ -41,6 +49,10 @@ class SecurityHeadersMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        if not self.config.enabled:
             await self.app(scope, receive, send)
             return
 
@@ -65,6 +77,13 @@ def _inject_headers(message: Message, config: SecurityHeadersConfig, scope: Scop
     """
     existing: list[tuple[bytes, bytes]] = list(message.get("headers", []))
     existing_keys = {k.lower() for k, _ in existing}
+
+    # X-Request-ID for request correlation (SOC 2 CC7.1)
+    request_id_header = config.request_id_header.lower().encode()
+    if request_id_header not in existing_keys:
+        request_id = str(uuid.uuid4())
+        existing.append((request_id_header, request_id.encode()))
+        scope.setdefault("state", {})[config.request_id_header.lower()] = request_id
 
     if config.content_type_nosniff and b"x-content-type-options" not in existing_keys:
         existing.append((b"x-content-type-options", b"nosniff"))
@@ -96,6 +115,10 @@ def _inject_headers(message: Message, config: SecurityHeadersConfig, scope: Scop
     if not _is_docs_path(path) and b"content-security-policy" not in existing_keys:
         existing.append((b"content-security-policy", config.csp_api.encode()))
 
+    # CSP-Report-Only for violation reporting (SOC 2 CC7.1)
+    if config.csp_report_only and b"content-security-policy-report-only" not in existing_keys:
+        existing.append((b"content-security-policy-report-only", config.csp_report_only.encode()))
+
     if config.environment == "production":
         if b"strict-transport-security" not in existing_keys:
             parts = [f"max-age={config.hsts_max_age}"]
@@ -123,3 +146,10 @@ def setup_security_headers(app: ASGIApp, config: SecurityHeadersConfig | None = 
         app.add_middleware(SecurityHeadersMiddleware, config=config)
     else:
         raise TypeError(f"Expected FastAPI app, got {type(app).__name__}")
+
+
+def apply_middleware(app: ASGIApp) -> None:
+    """Apply security headers middleware via the dynamic middleware loader."""
+    from swx_core.config.settings import settings
+    config = SecurityHeadersConfig(enabled=settings.SECURITY_HEADERS_ENABLED)
+    setup_security_headers(app, config)

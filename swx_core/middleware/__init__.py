@@ -26,6 +26,12 @@ from swx_core.middleware.sentry_middleware import (
     setup_sentry_middleware,
     apply_middleware as apply_sentry_middleware,
 )
+from swx_core.middleware.security_headers_middleware import (
+    SecurityHeadersMiddleware,
+    SecurityHeadersConfig,
+    setup_security_headers,
+    apply_middleware as apply_security_headers_middleware,
+)
 from swx_core.middleware.tenant_middleware import TenantContextMiddleware
 
 try:
@@ -83,6 +89,12 @@ __all__ = [
     # Sentry
     "setup_sentry_middleware",
     "apply_sentry_middleware",
+    
+    # Security Headers
+    "SecurityHeadersMiddleware",
+    "SecurityHeadersConfig",
+    "setup_security_headers",
+    "apply_security_headers_middleware",
     
     # Tenant Context
     "TenantContextMiddleware",

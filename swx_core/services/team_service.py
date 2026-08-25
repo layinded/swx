@@ -10,6 +10,7 @@ from swx_core.models.team_role import TeamRole
 from swx_core.repositories import team_repository, user_repository
 from swx_core.events.dispatcher import event_bus, Event
 from swx_core.services.billing.subscription_service import SubscriptionService
+from swx_core.services.audit_logger import AuditLogger, ActorType, AuditOutcome, AuditAction
 
 
 async def list_teams_service(session: AsyncSession, skip: int = 0, limit: int = 100) -> List[Team]:
@@ -68,7 +69,17 @@ async def create_team_service(
             **({"context": event_context} if event_context is not None else {}),
         },
     ))
-    
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.TEAM_CREATED,
+        actor_type=ActorType.USER,
+        resource_type="team",
+        resource_id=str(team.id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"name": team.name},
+    )
+
     return team
 
 
@@ -99,7 +110,17 @@ async def update_team_service(
             **({"context": event_context} if event_context is not None else {}),
         },
     ))
-    
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.TEAM_UPDATED,
+        actor_type=ActorType.USER,
+        resource_type="team",
+        resource_id=str(team_id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"old_values": old_values, "new_values": new_values},
+    )
+
     return team
 
 
@@ -152,7 +173,7 @@ async def delete_team_service(
         )
          
     await team_repository.delete_team(session, team)
-    
+
     await event_bus.emit(Event(
         name="team.deleted",
         payload={
@@ -161,6 +182,16 @@ async def delete_team_service(
             **({"context": event_context} if event_context is not None else {}),
         },
     ))
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.TEAM_DELETED,
+        actor_type=ActorType.USER,
+        resource_type="team",
+        resource_id=str(team_id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"name": team.name},
+    )
 
 
 async def add_team_member_service(
@@ -187,7 +218,7 @@ async def add_team_member_service(
         return existing
         
     member = await team_repository.add_team_member(session, member_in)
-    
+
     await event_bus.emit(Event(
         name="team.member_added",
         payload={
@@ -196,7 +227,17 @@ async def add_team_member_service(
             **({"context": event_context} if event_context is not None else {}),
         },
     ))
-    
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.TEAM_MEMBER_ADDED,
+        actor_type=ActorType.USER,
+        resource_type="team_member",
+        resource_id=str(member.id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"team_id": str(member_in.team_id), "user_id": str(member_in.user_id)},
+    )
+
     return member
 
 
@@ -210,7 +251,7 @@ async def remove_team_member_service(
         raise HTTPException(status_code=404, detail="Team member not found")
     
     await team_repository.remove_team_member(session, member)
-    
+
     await event_bus.emit(Event(
         name="team.member_removed",
         payload={
@@ -219,6 +260,16 @@ async def remove_team_member_service(
             **({"context": event_context} if event_context is not None else {}),
         },
     ))
+
+    audit = AuditLogger(session)
+    await audit.log_event(
+        action=AuditAction.TEAM_MEMBER_REMOVED,
+        actor_type=ActorType.USER,
+        resource_type="team_member",
+        resource_id=str(member_id),
+        outcome=AuditOutcome.SUCCESS,
+        context={"team_id": str(member.team_id), "user_id": str(member.user_id)},
+    )
 
 
 async def list_team_members_service(session: AsyncSession, team_id: UUID) -> List[TeamMember]:

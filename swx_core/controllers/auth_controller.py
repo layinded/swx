@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from swx_core.models.common import Message
 from swx_core.models.user import User, UserCreate, UserNewPassword
-from swx_core.models.token import Token, TokenRefreshRequest
+from swx_core.models.token import Token, TokenRefreshRequest, LoginResponse
 from swx_core.services.auth_service import (
     login_user_service,
     refresh_access_token_service,
@@ -34,13 +34,23 @@ from swx_core.services.auth_service import (
     recover_password_service,
     reset_password_service,
     login_social_user_service,
+    verify_mfa_challenge_service,
 )
+from swx_core.services.auth.mfa_service import step_up
+from swx_core.services.auth.email_verification_service import (
+    request_email_verification,
+    verify_email,
+    resend_email_verification,
+)
+from swx_core.models.mfa import MfaStepUpResponse
+from swx_core.models.user import UserPublic
+from swx_core.models.common import Message
 from swx_core.core.hooks import registration_hooks
 
 
 async def login_controller(
     session: AsyncSession, form_data: OAuth2PasswordRequestForm, request: Request = None
-) -> Token:
+) -> LoginResponse:
     """
     Handles user login using email and password authentication.
 
@@ -50,7 +60,7 @@ async def login_controller(
         request (Request, optional): The HTTP request object.
 
     Returns:
-        Token: A dictionary containing the access token, refresh token, and token type.
+        LoginResponse: Tokens or MFA challenge token depending on MFA status.
     """
     return await login_user_service(session, form_data, request)
 
@@ -169,3 +179,54 @@ async def reset_password_controller(
         Message: A success message indicating that the password has been reset.
     """
     return await reset_password_service(session, body, request)
+
+
+async def verify_mfa_challenge_controller(
+    session: AsyncSession, mfa_token: str, code: str, request: Request = None
+) -> Token:
+    """
+    Verify an MFA challenge after password authentication.
+
+    Args:
+        session: The database session.
+        mfa_token: The short-lived MFA challenge token from login.
+        code: The TOTP or recovery code provided by the user.
+        request: The HTTP request object.
+
+    Returns:
+        Token: Full access and refresh tokens upon successful verification.
+    """
+    return await verify_mfa_challenge_service(session, mfa_token, code, request)
+
+
+async def step_up_mfa_controller(
+    session: AsyncSession, user_id, code: str
+) -> MfaStepUpResponse:
+    """Step-up MFA verification for sensitive operations."""
+    from uuid import UUID
+    return await step_up(session, UUID(str(user_id)), code)
+
+
+async def request_email_verification_controller(
+    email: str, session: AsyncSession, request: Request = None
+) -> Message:
+    """Request an email verification link be sent to the given address."""
+    await request_email_verification(session, email, request)
+    return Message(message="Verification email sent")
+
+
+async def verify_email_controller(
+    session: AsyncSession, token: str, request: Request = None
+) -> UserPublic:
+    """Verify a user's email using the verification token."""
+    user = await verify_email(session, token, request)
+    return UserPublic.model_validate(user)
+
+
+async def resend_email_verification_controller(
+    session: AsyncSession, user_id, request: Request = None
+) -> Message:
+    """Resend the verification email for an authenticated user."""
+    from uuid import UUID
+    await resend_email_verification(session, UUID(str(user_id)), request)
+    return Message(message="Verification email resent")
