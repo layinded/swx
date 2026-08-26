@@ -373,6 +373,13 @@ async def get_user_with_profile(session: AsyncSession, user_id: UUID) -> dict:
 
 **Use when:** Creating new models that share common fields like timestamps, soft delete, or audit trails.
 
+> **⚠️ v2.23.4 Breaking Change:** Mixins no longer use `sa_column=Column(...)` directly.
+> This fixes a bug where two `table=True` models inheriting the same mixin would
+> crash with `Column object already assigned to Table 'X'`. Mixins now use pure
+> `Field()` (Python-side defaults only). For `server_default`, `onupdate`, or
+> `index=True`, use the exported factory functions (`make_id()`, `make_created_at()`,
+> etc.) directly in each model's class body.
+
 ### Available Mixins
 
 | Mixin | Fields Provided | Use Case |
@@ -381,74 +388,112 @@ async def get_user_with_profile(session: AsyncSession, user_id: UUID) -> dict:
 | `SoftDeleteMixin` | `is_deleted`, `deleted_at` + `soft_delete()` / `restore()` | Models supporting soft delete |
 | `UUIDPrimaryKeyMixin` | `id: UUID` | Models needing UUID primary keys |
 | `ActiveMixin` | `is_active` + `activate()` / `deactivate()` | Models needing active/inactive toggle |
-| `SlugMixin` | `slug` (unique, indexed) | Models needing URL-friendly identifiers |
-| `TitleMixin` | `title` (indexed, max 255) | Models needing a title field |
+| `SlugMixin` | `slug` | Models needing URL-friendly identifiers |
+| `TitleMixin` | `title` | Models needing a title field |
 | `DescriptionMixin` | `description` (optional) | Models needing a description |
-| `MetadataMixin` | `metadata` (JSON dict) | Models needing flexible metadata |
+| `MetadataMixin` | `metadata_` (mapped to `metadata` column) | Models needing flexible metadata |
 | `CreatedByMixin` | `created_by_id` | Models tracking who created them |
 | `UpdatedByMixin` | `updated_by_id` | Models tracking who last updated them |
 | `AuditMixin` | `created_at`, `updated_at`, `created_by_id`, `updated_by_id` | Full audit trail |
 | `FullModelMixin` | `id`, `created_at`, `updated_at`, `is_active` | Standard model with UUID + timestamps + active |
 | `AuditedModelMixin` | `id`, `created_at`, `updated_at`, `is_active`, `created_by_id`, `updated_by_id` | Full model with audit tracking |
 
-### Basic Usage
+### Simple Usage (Python-side defaults only)
+
+Mixins provide Python-side defaults via `Field()`. This is safe for multiple
+`table=True` models because each `Field()` call creates a new `FieldInfo`:
 
 ```python
 from swx_core.utils.mixins import FullModelMixin
-from sqlmodel import Field
-from typing import Optional
+from sqlmodel import SQLModel, Field
 
-class Product(FullModelMixin, table=True):
-    __tablename__ = "product"
+# Both models inherit the same mixin — no Column-sharing errors
+class ProductA(FullModelMixin, SQLModel, table=True):
+    __tablename__ = "products_a"
+    name: str = Field(default='a')
 
-    name: str = Field(max_length=255, index=True)
-    price: float = Field(ge=0)
-    description: Optional[str] = None
+class ProductB(FullModelMixin, SQLModel, table=True):
+    __tablename__ = "products_b"
+    name: str = Field(default='b')
 ```
 
-This gives `Product` an `id` (UUID), `created_at`, `updated_at`, and `is_active` field without extra boilerplate.
+### Full Usage (with server_default, onupdate, index)
 
-### Combining Mixins
+For production models that need database-level defaults, auto-updating
+timestamps, or indexed columns, override the mixin fields with factory
+functions in the model's own class body. Each `make_*()` call creates a
+**fresh** `Column` instance, so there's no sharing across models:
 
-Compose mixins to include only the fields you need:
+```python
+from sqlmodel import SQLModel, Field
+from swx_core.utils.mixins import (
+    FullModelMixin,
+    make_id, make_created_at, make_updated_at, make_is_active,
+)
+from swx_core.utils.time import utc_now
+import uuid
+from datetime import datetime
+
+class Product(FullModelMixin, SQLModel, table=True):
+    __tablename__ = "products"
+
+    # Override mixin fields with full Column kwargs:
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_active: bool = Field(default=True, sa_column=make_is_active())
+
+    name: str = Field(max_length=255)
+    price: float = Field(gt=0)
+```
+
+### Other Mixin Examples
 
 ```python
 from swx_core.utils.mixins import (
-    UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, CreatedByMixin
+    UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, CreatedByMixin,
+    make_id, make_created_at, make_updated_at, make_is_deleted, make_deleted_at,
+    make_created_by_id, make_updated_by_id, make_slug, make_metadata,
 )
 
-class Order(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, table=True):
-    __tablename__ = "order"
+# Model with soft delete (server_default for is_deleted)
+class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, SQLModel, table=True):
+    __tablename__ = "users"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_deleted: bool = Field(default=False, sa_column=make_is_deleted())
+    deleted_at: datetime | None = Field(default=None, sa_column=make_deleted_at())
+    email: str = Field(unique=True)
+    name: str = Field(max_length=255)
 
-    total: float = Field(ge=0)
-    status: str = Field(default="pending", max_length=50)
-```
+# Model with slug (unique index)
+class Article(SlugMixin, TimestampMixin, SQLModel, table=True):
+    __tablename__ = "articles"
+    slug: str = Field(sa_column=make_slug())
+    title: str = Field(max_length=255)
+    content: str
 
-This gives `Order`: `id`, `created_at`, `updated_at`, `is_deleted`, `deleted_at`.
-
-### With Audit Trail
-
-```python
-from swx_core.utils.mixins import AuditedModelMixin
-
-class AuditLog(AuditedModelMixin, table=True):
+# Audited model
+class AuditLog(AuditedModelMixin, SQLModel, table=True):
     __tablename__ = "app_audit_log"
-
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_active: bool = Field(default=True, sa_column=make_is_active())
+    created_by_id: uuid.UUID | None = Field(default=None, sa_column=make_created_by_id())
+    updated_by_id: uuid.UUID | None = Field(default=None, sa_column=make_updated_by_id())
     action: str = Field(max_length=100)
     resource_type: str = Field(max_length=50)
-    resource_id: str = Field(max_length=36)
-    details: dict = Field(default_factory=dict)
 ```
-
-This gives `AuditLog`: `id`, `created_at`, `updated_at`, `is_active`, `created_by_id`, `updated_by_id`.
 
 ### Soft Delete Pattern
 
 When using `SoftDeleteMixin`, use the helper methods and filter deleted records:
 
 ```python
-from swx_core.utils.mixins import FullModelMixin
-from sqlmodel import select
+from swx_core.utils.mixins import FullModelMixin, make_is_deleted
+from sqlmodel import select, SQLModel, Field
 
 # Soft delete a record
 product.soft_delete()
@@ -460,20 +505,21 @@ product.restore()
 stmt = select(Product).where(Product.is_deleted == False)
 ```
 
-### Slug Pattern
+### Available Factory Functions
 
 ```python
-from swx_core.utils.mixins import SlugMixin, TimestampMixin
-
-class Article(SlugMixin, TimestampMixin, table=True):
-    __tablename__ = "article"
-
-    # slug field is automatically provided
-    title: str = Field(max_length=255)
-    content: str
-
-# Generate slug before insert
-article = Article(slug="my-first-article", title="My First Article", content="...")
+from swx_core.utils.mixins import (
+    make_id,               # UUID PK with default
+    make_created_at,        # server_default=func.now()
+    make_updated_at,        # server_default=func.now(), onupdate=func.now()
+    make_is_deleted,        # server_default="false", index=True
+    make_deleted_at,        # nullable DateTime
+    make_created_by_id,     # nullable UUID with index
+    make_updated_by_id,     # nullable UUID with index
+    make_is_active,         # server_default="true", index=True
+    make_slug,              # String(255), unique, indexed
+    make_metadata,          # JSON column named "metadata"
+)
 ```
 
 ---

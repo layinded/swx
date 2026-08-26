@@ -30,6 +30,53 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 
 ## Version History
 
+### Version 2.23.4 (2026-08-26)
+
+**Mixin shared-Column bug fix & FK name mismatch fix**
+
+#### Fixed
+
+1. **Mixin shared-Column bug** — Mixin classes previously used `sa_column=Column(...)` directly in class bodies, which caused `Column object already assigned to Table 'X'` errors when two `table=True` models inherited the same mixin. All mixins now use pure `Field()` (Python-side defaults only). Factory functions (`make_id()`, `make_created_at()`, etc.) are exported for models that need `server_default`, `onupdate`, or `index=True`.
+
+2. **FK name mismatch** — `wallet_adjustment.py` referenced `swx_admin_users.id` instead of the correct `swx_admin_user.id`. Fixed in model and migration `v2_22_8`.
+
+#### Breaking Changes
+
+- Models that relied on mixin-provided `server_default`, `onupdate`, or `index=True` must now override those fields with the corresponding `make_*()` factory function in their own class body. Pure `Field()` defaults (Python-side only) continue to work without changes.
+
+### Version 2.23.3 (2026-08-26)
+
+**SWX-021: Payment Confirm-and-Apply Endpoint**
+
+#### Added
+
+1. **`POST /payments/confirm`** — New endpoint for idempotent payment confirmation and wallet top-up. Accepts a `payment_reference`, verifies the transaction with the provider (Paystack/Flutterwave), and applies the payment to the user's wallet in a single atomic operation.
+
+2. **`payment_confirmation_service.py`** — Shared service containing `apply_payment()`, `parse_reference_prefix()`, and `find_user_by_email()`.
+
+3. **Redis-based idempotency** — Prevents double-application of the same payment reference. Falls back to database check when Redis is unavailable.
+
+4. **Webhook refactoring** — Both Paystack and Flutterwave webhooks now use the shared `apply_payment()` / `parse_reference_prefix()` / `find_user_by_email()` functions.
+
+5. **19 unit tests** — Full coverage for parse logic, payment application, confirm endpoint, idempotency, rollback on failure, and no-Redis fallback.
+
+### Version 2.23.2 (2026-08-25)
+
+**Migration UUID fix**
+
+#### Fixed
+
+1. **Migration UUID type** — Changed `sa.String(36)` to `sa.Uuid()` in migration `v2_22_8` for proper UUID column types.
+
+### Version 2.23.1 (2026-08-25)
+
+**SWX-024: Missing import & pyright fixes**
+
+#### Fixed
+
+1. **Missing `Any` import** — Added missing `Any` import in billing types.
+2. **Pyright fixes** — Resolved false positives on SQLAlchemy `InstrumentedAttribute` with `# type: ignore[union-attr]`.
+
 ### Version 2.19.16 (2026-08-11)
 
 **Entitlement Resolver — scalar_one_or_none() crash fix & code-clarity refactor**

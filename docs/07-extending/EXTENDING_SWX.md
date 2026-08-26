@@ -206,13 +206,29 @@ class UserProfile(SQLModel, table=True):
 
 ### Pattern 2: Composition with Mixins
 
-Use framework mixins for common fields on new models:
+Use framework mixins for common fields on new models. For production models
+that need `server_default`, `onupdate`, or indexed columns, override mixin
+fields with factory functions:
 
 ```python
-from swx_core.utils.mixins import FullModelMixin
+from sqlmodel import SQLModel, Field
+from swx_core.utils.mixins import (
+    FullModelMixin,
+    make_id, make_created_at, make_updated_at, make_is_active,
+)
+from swx_core.utils.time import utc_now
+import uuid
+from datetime import datetime
 
-class Product(FullModelMixin, table=True):
+class Product(FullModelMixin, SQLModel, table=True):
     __tablename__ = "product"
+
+    # Override mixin fields with factory functions for full Column kwargs:
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_active: bool = Field(default=True, sa_column=make_is_active())
+
     name: str = Field(max_length=255)
     price: float = Field(ge=0)
 ```

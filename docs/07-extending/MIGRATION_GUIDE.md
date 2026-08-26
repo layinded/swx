@@ -297,14 +297,30 @@ class Product(Base, table=True):
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
-# v2.0 - Use model mixins
-from swx_core.utils.mixins import FullModelMixin
+# v2.0 - Use model mixins with factory functions for full Column kwargs
+from swx_core.utils.mixins import (
+    FullModelMixin,
+    make_id, make_created_at, make_updated_at, make_is_active,
+)
+from sqlmodel import SQLModel, Field
+from swx_core.utils.time import utc_now
+import uuid
+from datetime import datetime
 
-class Product(FullModelMixin, table=True):
-    # Automatically includes: id, created_at, updated_at, is_deleted
+class Product(FullModelMixin, SQLModel, table=True):
+    __tablename__ = "products"
+    # Override mixin fields with factory functions for server_default, onupdate, index:
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_active: bool = Field(default=True, sa_column=make_is_active())
     name: str
     price: float
 ```
+
+> **⚠️ v2.23.4 Breaking Change:** Mixins no longer use `sa_column=Column(...)` directly.
+> Use factory functions (`make_id()`, `make_created_at()`, etc.) in each model's
+> class body for `server_default`, `onupdate`, or `index=True`.
 
 ### Step 3: Migrate Repositories
 

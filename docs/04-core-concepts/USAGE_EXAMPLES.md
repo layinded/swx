@@ -56,8 +56,11 @@ if __name__ == "__main__":
 ```python
 # my_app/models/product.py
 from sqlmodel import SQLModel, Field
-from swx_core.models.base import Base
-from swx_core.utils.mixins import FullModelMixin
+from swx_core.utils.mixins import (
+    FullModelMixin,
+    make_id, make_created_at, make_updated_at, make_is_active,
+)
+from swx_core.utils.time import utc_now
 from uuid import UUID, uuid4
 from datetime import datetime
 
@@ -68,9 +71,15 @@ class ProductBase(SQLModel):
     description: str | None = None
     is_active: bool = Field(default=True)
 
-class Product(FullModelMixin, ProductBase, table=True):
-    """Product model with automatic id, timestamps, and soft delete."""
+class Product(FullModelMixin, ProductBase, SQLModel, table=True):
+    """Product model with automatic id, timestamps, and is_active."""
     __tablename__ = "products"
+
+    # Override mixin fields with factory functions for full Column kwargs:
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_active: bool = Field(default=True, sa_column=make_is_active())
 
 class ProductCreate(SQLModel):
     name: str

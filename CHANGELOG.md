@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.23.4] - 2026-08-26
+
+### Fixed
+
+- **Mixin shared-Column bug** — Mixin classes previously used `sa_column=Column(...)`
+  directly in class bodies, which caused `Column object already assigned to Table 'X'`
+  errors when two `table=True` models inherited the same mixin. All mixins now use
+  pure `Field()` (Python-side defaults only). Factory functions (`make_id()`,
+  `make_created_at()`, `make_updated_at()`, `make_is_deleted()`, `make_deleted_at()`,
+  `make_created_by_id()`, `make_updated_by_id()`, `make_is_active()`, `make_slug()`,
+  `make_metadata()`) are exported for models that need `server_default`, `onupdate`,
+  or `index=True` Column kwargs.
+
+- **FK name mismatch** — `wallet_adjustment.py` referenced `swx_admin_users.id` instead
+  of the correct `swx_admin_user.id`. Fixed in model and migration `v2_22_8`.
+
+### Breaking Changes (v2.23.4)
+
+- **Mixin `sa_column=Column(...)` removed** — Models that relied on mixin-provided
+  `server_default`, `onupdate`, or `index=True` must now override those fields with
+  the corresponding `make_*()` factory function in their own class body. Pure
+  `Field()` defaults (Python-side only) continue to work without changes.
+
+## [2.23.3] - 2026-08-26
+
+### Added — SWX-021: Payment Confirm-and-Apply Endpoint
+
+- **`POST /payments/confirm`** — New endpoint for idempotent payment confirmation
+  and wallet top-up. Accepts a `payment_reference`, verifies the transaction with
+  the provider (Paystack/Flutterwave), and applies the payment to the user's wallet
+  in a single atomic operation.
+
+- **`payment_confirmation_service.py`** — Shared service containing:
+  - `apply_payment()` — Atomic wallet top-up with transaction logging
+  - `parse_reference_prefix()` — Extracts provider prefix from payment references
+  - `find_user_by_email()` — Resolves user from payer email
+
+- **Redis-based idempotency** — Prevents double-application of the same payment
+  reference. Falls back to database check when Redis is unavailable.
+
+- **Webhook refactoring** — Both Paystack and Flutterwave webhooks now use the
+  shared `apply_payment()` / `parse_reference_prefix()` / `find_user_by_email()`
+  functions, eliminating duplicated logic.
+
+- **19 unit tests** — Full coverage for parse logic, payment application,
+  confirm endpoint, idempotency, rollback on failure, and no-Redis fallback.
+
 ## [2.23.0] - 2026-08-25
 
 ### SOC 2 Type I Compliance — Full Implementation

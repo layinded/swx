@@ -436,20 +436,38 @@ class ExtendedUserService(CoreUserService):
 
 ### Pattern 4: Using Custom Mixins
 
-Create user tables using framework mixins:
+Create user tables using framework mixins. For production models that need
+`server_default`, `onupdate`, or indexed columns, override mixin fields with
+factory functions:
 
 ```python
-from swx_core.utils.mixins import FullModelMixin, AuditedModelMixin
-from sqlmodel import Field
-from typing import Optional
+from swx_core.utils.mixins import (
+    FullModelMixin, AuditedModelMixin,
+    make_id, make_created_at, make_updated_at, make_is_active,
+)
+from sqlmodel import SQLModel, Field
+from swx_core.utils.time import utc_now
+import uuid
+from datetime import datetime
 
-class Product(FullModelMixin, table=True):
+class Product(FullModelMixin, SQLModel, table=True):
     __tablename__ = "product"
-    
+
+    # Override mixin fields with factory functions for full Column kwargs:
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_active: bool = Field(default=True, sa_column=make_is_active())
+
     name: str = Field(max_length=255, index=True)
     price: float = Field(gt=0)
-    description: Optional[str] = None
+    description: str | None = None
 ```
+
+> **⚠️ v2.23.4:** Mixins now use pure `Field()` — no `sa_column=Column(...)`.
+> For `server_default`, `onupdate`, or `index=True`, use factory functions
+> (`make_id()`, `make_created_at()`, etc.) in each model's class body.
+> See [Extending Models](./EXTENDING_MODELS.md#pattern-2-composition-with-mixins) for details.
 
 ### Available Mixins
 
@@ -460,7 +478,7 @@ class Product(FullModelMixin, table=True):
 | `UUIDPrimaryKeyMixin` | `id: UUID` |
 | `CreatedByMixin` | `created_by_id` |
 | `UpdatedByMixin` | `updated_by_id` |
-| `FullModelMixin` | UUID + Timestamps + SoftDelete |
+| `FullModelMixin` | UUID + Timestamps + Active |
 | `AuditedModelMixin` | FullModel + CreatedBy + UpdatedBy |
 
 ### Foreign Key References to Framework Tables
