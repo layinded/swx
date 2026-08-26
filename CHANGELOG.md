@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.23.5] - 2026-08-26
+
+### Fixed
+
+- **Sync engine async URL crash** — `_sync_database_url()` only stripped `+asyncpg`
+  when `TESTING=True`. In production, `DATABASE_URL=postgresql+asyncpg://...` would
+  pass the async URL to the sync engine, causing `QueuePool cannot be used with
+  asyncio engine`. Added `DatabaseSettingsMixin._strip_async_drivers()` as the
+  single source of truth for driver stripping; `_sync_database_url()` now delegates
+  to it.
+
+- **Duplicate endpoints in Swagger** — Auto-discovery registered both aggregated
+  package routers (from `__init__.py`) and individual sub-module routers, causing
+  every endpoint to appear twice. Fixed by: (1) including route packages in
+  `dynamic_import()` return dict (removed `is_route_dir and is_pkg` filter),
+  (2) adding `_dedup_aggregated_packages()` which identifies packages with
+  `__path__` that have `router`/`websocket_router` and skips their sub-modules,
+  and (3) extracting `_load_routes_dict()` helper to apply dedup consistently
+  across core, versioned, and user route loading.
+
+### Added
+
+- **WebSocket auto-discovery** — `router_module()` now discovers `module.websocket_router`
+  alongside `module.router`. Modules can expose a `websocket_router` attribute
+  (an `APIRouter` with `@router.websocket(...)` handlers) and it will be
+  auto-mounted with the same prefix/tag resolution as HTTP routers.
+
 ## [2.23.4] - 2026-08-26
 
 ### Fixed

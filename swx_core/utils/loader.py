@@ -186,9 +186,7 @@ def dynamic_import(base_path: str, package_name: str, recursive: bool = False) -
                 sys.modules[full_module_name] = module
                 logger.info(f"Loaded new module: {full_module_name}")
 
-            is_route_dir = ".routes." in full_module_name
-            if not (is_route_dir and is_pkg):
-                imported_modules[full_module_name] = sys.modules[full_module_name]
+            imported_modules[full_module_name] = sys.modules[full_module_name]
 
             if recursive and is_pkg:
                 subdir_path = package_path / full_module_name.split(".")[-1]

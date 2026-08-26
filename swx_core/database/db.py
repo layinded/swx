@@ -61,10 +61,7 @@ def _async_database_url() -> str:
 
 def _sync_database_url() -> str:
     if settings.TESTING and settings.TEST_DATABASE_URL:
-        url = settings.TEST_DATABASE_URL
-        if url.startswith("postgresql+asyncpg://"):
-            url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
-        return url
+        return settings._strip_async_drivers(settings.TEST_DATABASE_URL)
     return str(settings.SQLALCHEMY_DATABASE_URI)
 
 

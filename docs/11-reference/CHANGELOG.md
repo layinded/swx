@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.21.4  
-**Last Updated:** 2026-08-18
+**Version:** 2.23.5
+**Last Updated:** 2026-08-26
 
 ---
 
@@ -29,6 +29,20 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.23.5 (2026-08-26)
+
+**Sync engine async URL crash fix, duplicate endpoint dedup, WebSocket auto-discovery**
+
+#### Fixed
+
+1. **Sync engine async URL crash** — `_sync_database_url()` only stripped `+asyncpg` when `TESTING=True`. In production, `DATABASE_URL=postgresql+asyncpg://...` would crash the sync engine with `QueuePool cannot be used with asyncio engine`. Added `DatabaseSettingsMixin._strip_async_drivers()` as single source of truth; `_sync_database_url()` now delegates to it.
+
+2. **Duplicate endpoints in Swagger** — Auto-discovery registered both aggregated package routers (from `__init__.py`) and individual sub-module routers. Fixed with `_dedup_aggregated_packages()` which skips sub-modules of packages that have `__path__` and a `router`/`websocket_router` attribute.
+
+#### Added
+
+3. **WebSocket auto-discovery** — `router_module()` now discovers `module.websocket_router` alongside `module.router`. Extracted `_register_router()` helper for DRY prefix/tag resolution across both HTTP and WebSocket routers.
 
 ### Version 2.23.4 (2026-08-26)
 

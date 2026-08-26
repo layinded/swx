@@ -117,7 +117,8 @@ class DatabaseSettingsMixin(BaseSettings):
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
         if self.DATABASE_URL:
-            return self._inject_ssl_mode(self.DATABASE_URL)
+            url = self._strip_async_drivers(self.DATABASE_URL)
+            return self._inject_ssl_mode(url)
 
         db_host = self.DB_HOST
 
@@ -127,6 +128,26 @@ class DatabaseSettingsMixin(BaseSettings):
             return f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}@{db_host}:{self.DB_PORT}/{self.DB_NAME}"
         base = f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD}@{db_host}:{self.DB_PORT}/{self.DB_NAME}"
         return self._inject_ssl_mode(base)
+
+    @staticmethod
+    def _strip_async_drivers(url: str) -> str:
+        """Remove async driver suffixes from a database URL.
+
+        Strips ``+asyncpg``, ``+aiosqlite``, ``+asyncmy`` so the URL
+        is safe for a synchronous SQLAlchemy engine.  This is the inverse
+        of :pyattr:`ASYNC_SQLALCHEMY_DATABASE_URI` which *adds* those
+        suffixes.
+        """
+        # postgresql+asyncpg:// → postgresql://
+        url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        # mysql+asyncmy:// → mysql://
+        url = url.replace("mysql+asyncmy://", "mysql://", 1)
+        # sqlite+aiosqlite:// → sqlite://
+        url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
+        # Also handle the legacy ``postgres://`` shorthand which may carry
+        # an async driver that was appended by an operator or CI config.
+        url = url.replace("postgres+asyncpg://", "postgresql://", 1)
+        return url
 
     def _inject_ssl_mode(self, url: str) -> str:
         if self.DATABASE_TYPE not in ("postgres", "postgresql") or self.DATABASE_SSL_MODE == "prefer":
