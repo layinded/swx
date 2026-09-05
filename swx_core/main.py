@@ -203,16 +203,47 @@ async def lifespan(app: FastAPI):  # noqa
 
     # Step 12: Start Redis event bridge for cross-worker broadcasting
     from swx_core.container.container import get_container
-    from swx_core.events.redis_bridge import RedisEventBridge
+    from swx_core.events.dispatcher import event_bus
 
-    container = get_container()
-    bridge: RedisEventBridge | None = None
-    if container.bound("event_bridge"):
-        bridge = container.make("event_bridge")
+    bridge = None
+
+    if settings.REDIS_ENABLED and settings.EVENT_BRIDGE_ENABLED:
+        container = get_container()
+
+        # Case A: bootstrap_app() was called and event_bridge is in the container
+        if container.bound("event_bridge"):
+            try:
+                bridge = container.make("event_bridge")
+            except Exception as exc:
+                logger.warning("Failed to create event bridge from container: %s", exc)
+
+        # Case B: Container is empty (no providers registered) or bridge not bound —
+        # create it directly if Redis is reachable
+        if bridge is None:
+            try:
+                redis_client = None
+                if container.bound("redis.client"):
+                    redis_client = container.make("redis.client")
+
+                if redis_client is not None:
+                    from swx_core.events.redis_bridge import RedisEventBridge
+
+                    bridge = RedisEventBridge(
+                        event_bus=event_bus,
+                        redis_client=redis_client,
+                        channel_prefix=settings.EVENT_BRIDGE_CHANNEL_PREFIX,
+                        app_name=RedisEventBridge.default_app_name(settings.PROJECT_NAME),
+                    )
+                    bridge.patch_dispatch()
+                    logger.info("Redis event bridge created directly (container had no providers).")
+            except Exception as exc:
+                logger.warning("Could not create event bridge directly: %s", exc)
+
+    if bridge is not None:
         await bridge.start()
         logger.info("Redis event bridge started — cross-worker event broadcasting active.")
     else:
-        logger.debug("Redis event bridge skipped (REDIS_ENABLED=False or EVENT_BRIDGE_ENABLED=False). Events stay in-process.")
+        logger.debug("Redis event bridge skipped (Redis unavailable or bridge disabled). Events stay in-process.")
 
     # Yield control to the application (it will run until shutdown)
     yield

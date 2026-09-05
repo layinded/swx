@@ -81,6 +81,11 @@ class RedisEventBridge:
     #: Maximum reconnect attempts before giving up (None = unlimited).
     MAX_RECONNECT_ATTEMPTS: Optional[int] = None
 
+    @staticmethod
+    def default_app_name(project_name: Optional[str] = None) -> str:
+        """Derive the app name from a project name, falling back to 'swx'."""
+        return project_name.lower().replace(" ", "_") if project_name else "swx"
+
     def __init__(
         self,
         event_bus: Any,
@@ -212,7 +217,11 @@ class RedisEventBridge:
 
         Safe to call multiple times — subsequent calls are no-ops.
         """
-        if self._redis is None or self._running:
+        if self._redis is None:
+            logger.warning("Redis event bridge not started — no Redis client available. Events stay in-process.")
+            return
+
+        if self._running:
             return
 
         self._running = True

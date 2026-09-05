@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.25.0
+**Version:** 2.25.2
 **Last Updated:** 2026-09-05
 
 ---
@@ -30,7 +30,19 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 
 ## Version History
 
-### Version 2.25.0 (2026-09-05)
+### Version 2.25.2 (2026-09-05)
+
+**Event bridge Redis client and multi-worker fixes**
+
+#### Fixed
+
+1. **Event bridge fails when Redis client is unavailable** — `EventBridgeServiceProvider` now guards against `redis.client` being `None` or unbound. Returns `None` gracefully instead of crashing.
+
+2. **Event bridge broken in multi-worker deployments** — When `bootstrap_app()` hasn't been called or the container is empty (Gunicorn workers), the bridge now creates itself directly from the Redis client instead of requiring the IoC container.
+
+3. **Bridge startup log level** — Changed "bridge skipped" from `info` to `debug` for cleaner dev logs.
+
+### Version 2.25.1 (2026-09-05)
 
 **Redis Pub/Sub event broadcasting for multi-worker deployments**
 

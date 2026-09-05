@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.25.2] - 2026-09-05
+
+### Fixed
+
+- **Event bridge fails when Redis client is unavailable** — `EventBridgeServiceProvider`
+  now guards against `redis.client` being `None` or unbound in the container, returning
+  `None` gracefully instead of crashing. The lifespan start/stop handles `bridge=None`
+  by skipping silently (debug-level log).
+
+- **Event bridge broken in multi-worker deployments** — When `bootstrap_app()` hasn't
+  been called or the container is empty (e.g., Gunicorn workers with lazy initialization),
+  the bridge now creates itself directly from the Redis client instead of requiring the
+  IoC container. Both paths (container-provided and direct) are supported in the lifespan.
+
+- **Bridge startup log level** — Changed "bridge skipped" from `info` to `debug` so
+  single-worker dev setups don't see a confusing message.
+
+### Changed (code-clarity)
+
+- Removed unused `RateLimitServiceProvider` import from `main.py` Case B bridge creation.
+- Replaced `_s12_settings` alias with direct `settings` reference (already imported at module level).
+- Extracted `RedisEventBridge.default_app_name()` static method to DRY the app-name computation
+  between `event_bridge_provider.py` and `main.py`.
+- Made `EventBridgeServiceProvider.boot()` use `self.app` consistently instead of `get_container()`.
+- Added early-return `RedisEventBridge.start()` warning when `_redis is None`.
+
+## [2.25.1] - 2026-09-05
+
+### Fixed
+
+- **Bridge startup log message** — Changed from `info` to `debug` level for the
+  intentional skip case ("Redis event bridge skipped") so single-worker dev
+  setups don't see a confusing "not available" message at startup.
+
 ## [2.25.0] - 2026-09-05
 
 ### Added
