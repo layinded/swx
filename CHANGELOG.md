@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.24.0] - 2026-09-05
+
+### Fixed
+
+- **BaseHTTPMiddleware breaks SSE streaming** — Five middleware classes
+  (`LoggingMiddleware`, `AuditMiddleware`, `RateLimitMiddleware`,
+  `TenantContextMiddleware`, `MetricsMiddleware`) extended
+  `starlette.middleware.base.BaseHTTPMiddleware`, which consumes the entire
+  response body before forwarding it. For SSE (`text/event-stream`) responses,
+  this caused indefinite buffering: connections appeared open (HTTP 200) but
+  zero events reached the client. All five have been converted to pure ASGI
+  middleware that intercepts `http.response.start` messages instead, preserving
+  the streaming response body. The conversion follows the pattern already
+  established by `SecurityHeadersMiddleware` and `CSRFMiddleware`.
+
+- **Duplicate `set_app_info` in metrics_middleware** — Removed the duplicate
+  function definition that was present in the original file.
+
+### Changed
+
+- `LoggingMiddleware` — Now pure ASGI. Logs on `http.response.start` instead of
+  after `call_next()`. Extracts request context from `scope` instead of `Request`.
+  Added `_extract_header()` and `_get_state_attr()` helpers.
+
+- `AuditMiddleware` — Now pure ASGI. Sets `request_id` in `scope["state"]` before
+  calling the app. Injects `X-Request-ID` header via `send` wrapper.
+
+- `RateLimitMiddleware` — Now pure ASGI. Pre-request rate limit checks run from
+  `scope`/headers before calling the app. Rejected requests send 429 directly via
+  ASGI. Allowed requests inject `X-RateLimit-*` headers via `send` wrapper.
+
+- `TenantContextMiddleware` — Now pure ASGI. Extracts headers from `scope["headers"]`,
+  sets context variables before the app call, clears them in a `finally` block.
+
+- `MetricsMiddleware` — Now pure ASGI. Captures status code from
+  `http.response.start`. Tracks active request gauge with `inc()`/`dec()`
+  around the app call. Records error metrics in exception handler.
+
 ## [2.23.5] - 2026-08-26
 
 ### Fixed

@@ -1,7 +1,7 @@
 # Changelog
 
-**Version:** 2.23.5
-**Last Updated:** 2026-08-26
+**Version:** 2.24.0
+**Last Updated:** 2026-09-05
 
 ---
 
@@ -29,6 +29,24 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.24.0 (2026-09-05)
+
+**BaseHTTPMiddleware SSE streaming fix — all middleware converted to pure ASGI**
+
+#### Fixed
+
+1. **BaseHTTPMiddleware breaks SSE streaming** — Five middleware classes (`LoggingMiddleware`, `AuditMiddleware`, `RateLimitMiddleware`, `TenantContextMiddleware`, `MetricsMiddleware`) extended `BaseHTTPMiddleware`, which consumes the entire response body before forwarding it. For SSE (`text/event-stream`) responses, this caused indefinite buffering: connections appeared open (HTTP 200) but zero events reached the client. All five have been converted to pure ASGI middleware that intercept `http.response.start` messages instead, preserving the streaming response body.
+
+2. **Duplicate `set_app_info` in metrics_middleware** — Removed the duplicate function definition.
+
+#### Changed
+
+- `LoggingMiddleware` — Pure ASGI. Logs on `http.response.start`. Uses `scope` instead of `Request`.
+- `AuditMiddleware` — Pure ASGI. Sets `request_id` in `scope["state"]`. Injects `X-Request-ID` via `send` wrapper.
+- `RateLimitMiddleware` — Pure ASGI. Pre-request checks from `scope`/headers. 429 sent directly via ASGI.
+- `TenantContextMiddleware` — Pure ASGI. Headers from `scope["headers"]`. Context cleared in `finally`.
+- `MetricsMiddleware` — Pure ASGI. Status from `http.response.start`. Gauge tracked around app call.
 
 ### Version 2.23.5 (2026-08-26)
 

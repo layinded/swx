@@ -1,13 +1,24 @@
+# pyright: reportAny=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnusedCallResult=false
+
+"""SOC 2 CC7.2 structured logging middleware — pure ASGI, SSE-safe.
+
+Captures request_id, user_id, ip, method, path, status_code, and duration_ms
+for every HTTP request.
+
+Replaces the previous BaseHTTPMiddleware implementation which buffered
+response bodies and broke Server-Sent Events streaming.
+"""
+
 import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from typing import Any
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from swx_core.config.settings import settings
 
@@ -91,55 +102,100 @@ logger.addHandler(file_handler)
 logging.captureWarnings(True)
 
 
-class LoggingMiddleware(BaseHTTPMiddleware):
-    """SOC 2 CC7.2 structured logging middleware.
+def _extract_header(headers: list[tuple[bytes, bytes]], name: bytes) -> str | None:
+    """Extract a header value by lowercase name match."""
+    for k, v in headers:
+        if k.lower() == name:
+            return v.decode("latin-1")
+    return None
+
+
+def _get_state_attr(state: object, name: str) -> str | None:
+    """Read an attribute from scope state, handling both dict and namespace objects."""
+    if isinstance(state, dict):
+        val = state.get(name)
+        return str(val) if val is not None else None
+    val = getattr(state, name, None)
+    return str(val) if val is not None else None
+
+
+class LoggingMiddleware:
+    """SOC 2 CC7.2 structured logging middleware — pure ASGI, SSE-safe.
 
     Captures request_id, user_id, ip, method, path, status_code,
     and duration_ms for every HTTP request.
+
+    Replaces the previous BaseHTTPMiddleware implementation which buffered
+    response bodies and broke Server-Sent Events streaming.
     """
 
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
         start_time = time.time()
+        headers_list: list[tuple[bytes, bytes]] = scope.get("headers", [])
+        request_id = _extract_header(headers_list, b"x-request-id") or str(uuid.uuid4())
 
-        response = await call_next(request)
+        state = scope.setdefault("state", {})
+        if isinstance(state, dict):
+            state["request_id"] = request_id
+        else:
+            setattr(state, "request_id", request_id)
 
-        duration_ms = round((time.time() - start_time) * 1000, 2)
-        request_id = getattr(request.state, "request_id", None) or request.headers.get("x-request-id")
-        user_id = getattr(request.state, "user_id", None) if hasattr(request.state, "user_id") else None
-        ip = request.client.host if request.client else None
+        method = scope.get("method", "")
+        path = scope.get("path", "")
+        client = scope.get("client")
+        ip = client[0] if client else None
 
-        log_data: dict[str, Any] = {
-            "method": request.method,
-            "path": request.url.path,
-            "status_code": response.status_code,
-            "duration_ms": duration_ms,
-        }
-        if request_id:
-            log_data["request_id"] = request_id
-        if user_id:
-            log_data["user_id"] = str(user_id)
-        if ip:
-            log_data["ip"] = ip
+        async def send_with_logging(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 0)
+                duration_ms = round((time.time() - start_time) * 1000, 2)
 
-        level = logging.CRITICAL
-        if response.status_code < 400:
-            level = logging.INFO
-        elif response.status_code < 500:
-            level = logging.WARNING
+                headers = list(message.get("headers", []))
+                headers.append((b"x-request-id", request_id.encode("latin-1")))
+                message = {**message, "headers": headers}
 
-        if level >= logging.CRITICAL or ENVIRONMENT != "production":
-            record = logger.makeRecord(
-                name="SwX-API",
-                level=level,
-                fn="",
-                lno=0,
-                msg=json.dumps(log_data),
-                args=(),
-                exc_info=None,
-            )
-            for key, val in log_data.items():
-                setattr(record, key, val)
-            logger.handle(record)
+                log_data: dict[str, Any] = {
+                    "method": method,
+                    "path": path,
+                    "status_code": status_code,
+                    "duration_ms": duration_ms,
+                }
+                if request_id:
+                    log_data["request_id"] = request_id
 
-        response.headers["X-Request-ID"] = request_id or ""
-        return response
+                user_id = _get_state_attr(scope.get("state", {}), "user_id")
+                if user_id:
+                    log_data["user_id"] = user_id
+                if ip:
+                    log_data["ip"] = ip
+
+                level = logging.CRITICAL
+                if status_code < 400:
+                    level = logging.INFO
+                elif status_code < 500:
+                    level = logging.WARNING
+
+                if level >= logging.CRITICAL or ENVIRONMENT != "production":
+                    record = logger.makeRecord(
+                        name="SwX-API",
+                        level=level,
+                        fn="",
+                        lno=0,
+                        msg=json.dumps(log_data),
+                        args=(),
+                        exc_info=None,
+                    )
+                    for key, val in log_data.items():
+                        setattr(record, key, val)
+                    logger.handle(record)
+
+            await send(message)
+
+        await self.app(scope, receive, send_with_logging)
