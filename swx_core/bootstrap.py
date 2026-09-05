@@ -210,6 +210,7 @@ def bootstrap_app(
     app=None,
     providers: Optional[List[str]] = None,
     discover_user_providers: bool = True,
+    register_middleware: bool = True,
 ) -> Container:
     """Bootstrap the application with all service providers.
 
@@ -220,6 +221,10 @@ def bootstrap_app(
         app: FastAPI application instance (optional).
         providers: Additional provider class paths to register.
         discover_user_providers: Whether to auto-discover user providers.
+        register_middleware: Whether to apply the canonical middleware
+            stack.  Pass ``False`` when middleware is already applied
+            (e.g. by ``create_swx_app()``).  Defaults to ``True`` so
+            that standalone ``bootstrap_app()`` calls get middleware.
 
     Returns:
         Configured container instance.
@@ -306,6 +311,18 @@ def bootstrap_app(
             logger.error("Failed to boot %s: %s", name, e)
             result.stage_errors[f"provider_boot.{name}"] = e
     _log_stage(BootstrapStage.PROVIDER_BOOT, time.monotonic() - stage_start)
+
+    # ---- Stage: Middleware setup -----------------------------------------
+    stage_start = time.monotonic()
+    if register_middleware and app is not None:
+        from swx_core.middleware.stack import apply_middleware_stack
+        apply_middleware_stack(app)
+        logger.info("Applied canonical middleware stack")
+    elif not register_middleware:
+        logger.debug("Middleware setup skipped (register_middleware=False)")
+    elif app is None:
+        logger.warning("Middleware setup skipped (no app instance)")
+    _log_stage(BootstrapStage.MIDDLEWARE_SETUP, time.monotonic() - stage_start)
 
     # ---- Stage: Default hooks -------------------------------------------
     _register_default_hooks()

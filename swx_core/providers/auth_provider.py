@@ -6,6 +6,11 @@ Registers authentication services including:
 - JWT guard
 - API key guard
 - Token blacklist
+
+Guards are resolved lazily inside the ``_create_guard_manager`` factory
+so that the dependency chain (guard_manager → jwt_guard → token_blacklist
+→ redis.client) is only traversed at runtime, not during provider boot.
+This avoids RecursionError when auth is booted before redis.
 """
 
 import logging
@@ -22,73 +27,27 @@ class AuthServiceProvider(ServiceProvider):
 
     def register(self) -> None:
         """Register auth bindings."""
-        # Token blacklist (singleton)
         self.singleton("auth.token_blacklist", self._create_token_blacklist)
-
-        # Guards
         self.singleton("auth.jwt_guard", self._create_jwt_guard)
         self.singleton("auth.api_key_guard", self._create_api_key_guard)
-
-        # Guard manager (singleton)
         self.singleton("auth.guard_manager", self._create_guard_manager)
-
         self.alias("auth.jwt_guard", "auth.guard")
 
     def boot(self) -> None:
-        """Configure guards from settings."""
-        try:
-            from swx_core.config.settings import settings
-
-            container = self.app
-
-            if not container.bound("auth.guard_manager"):
-                logger.debug("AuthServiceProvider: auth.guard_manager not bound, skipping boot")
-                return
-
-            logger.debug("AuthServiceProvider: resolving auth.guard_manager")
-            manager = container.make("auth.guard_manager")
-
-            guards_config = getattr(
-                settings,
-                "AUTH_GUARDS",
-                {
-                    "api": "jwt",
-                    "admin": "jwt",
-                    "internal": "api_key",
-                },
-            )
-
-            if "jwt" in guards_config.values() and container.bound("auth.jwt_guard"):
-                logger.debug("AuthServiceProvider: resolving auth.jwt_guard")
-                jwt_guard = container.make("auth.jwt_guard")
-                manager.register("jwt", jwt_guard)
-
-            if "api_key" in guards_config.values() and container.bound(
-                "auth.api_key_guard"
-            ):
-                logger.debug("AuthServiceProvider: resolving auth.api_key_guard")
-                api_key_guard = container.make("auth.api_key_guard")
-                manager.register("api_key", api_key_guard)
-
-            default_guard = getattr(settings, "DEFAULT_AUTH_GUARD", "jwt")
-            if manager.has_guard(default_guard):
-                manager.set_default(default_guard)
-
-            logger.info("AuthServiceProvider booted successfully")
-        except RecursionError:
-            logger.warning("Recursion detected in AuthServiceProvider boot, skipping")
-        except Exception as exc:
-            logger.warning("AuthServiceProvider boot failed: %s", exc)
+        """No-op: guards are resolved lazily by the factory."""
+        logger.info("AuthServiceProvider booted (guards resolve on first request)")
 
     def _create_token_blacklist(self, app):
-        """Create token blacklist."""
-        from swx_core.security.token_blacklist import RedisTokenBlacklist
+        """Create token blacklist with graceful Redis fallback."""
         from swx_core.config.settings import settings
+        from swx_core.security.token_blacklist import RedisTokenBlacklist
 
-        # Try to get Redis client
         redis_client = None
         if app.bound("redis.client"):
-            redis_client = app.make("redis.client")
+            try:
+                redis_client = app.make("redis.client")
+            except Exception:
+                redis_client = None
 
         if redis_client:
             return RedisTokenBlacklist(
@@ -97,15 +56,13 @@ class AuthServiceProvider(ServiceProvider):
                 user_prefix="user_revoked:",
             )
 
-        # Fallback to in-memory for development
         from swx_core.security.token_blacklist import InMemoryTokenBlacklist
-
         return InMemoryTokenBlacklist()
 
     def _create_jwt_guard(self, app):
         """Create JWT guard."""
-        from swx_core.guards.jwt_guard import JWTGuard
         from swx_core.config.settings import settings
+        from swx_core.guards.jwt_guard import JWTGuard
 
         token_blacklist = app.make("auth.token_blacklist")
 
@@ -127,9 +84,37 @@ class AuthServiceProvider(ServiceProvider):
         )
 
     def _create_guard_manager(self, app):
-        """Create guard manager."""
-        from swx_core.guards.guard_manager import GuardManager
+        """Create guard manager and register configured guards.
+
+        Resolves guards lazily: this factory only runs when
+        ``container.make("auth.guard_manager")`` is first called (at
+        runtime), by which point all providers have finished registering.
+        """
         from swx_core.config.settings import settings
+        from swx_core.guards.guard_manager import GuardManager
 
         default_guard = getattr(settings, "DEFAULT_AUTH_GUARD", "jwt")
-        return GuardManager(default_guard=default_guard)
+        manager = GuardManager(default_guard=default_guard)
+
+        guards_config = getattr(
+            settings,
+            "AUTH_GUARDS",
+            {"api": "jwt", "admin": "jwt", "internal": "api_key"},
+        )
+
+        if "jwt" in guards_config.values() and app.bound("auth.jwt_guard"):
+            try:
+                manager.register("jwt", app.make("auth.jwt_guard"))
+            except Exception as exc:
+                logger.warning("Failed to resolve JWT guard: %s", exc)
+
+        if "api_key" in guards_config.values() and app.bound("auth.api_key_guard"):
+            try:
+                manager.register("api_key", app.make("auth.api_key_guard"))
+            except Exception as exc:
+                logger.warning("Failed to resolve API key guard: %s", exc)
+
+        if manager.has_guard(default_guard):
+            manager.set_default(default_guard)
+
+        return manager

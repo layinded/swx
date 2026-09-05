@@ -13,7 +13,7 @@ Features:
 """
 
 import time
-from typing import Optional
+from typing import Optional, Union
 from datetime import datetime, timezone
 from enum import Enum
 from swx_core.utils.time import utc_now
@@ -25,6 +25,19 @@ class LimitWindow(str, Enum):
     MINUTE = "1m"
     HOUR = "1h"
     DAY = "24h"
+
+_WINDOW_SECONDS: dict[LimitWindow, int] = {
+    LimitWindow.MINUTE: 60,
+    LimitWindow.HOUR: 3600,
+    LimitWindow.DAY: 86400,
+}
+
+_INT_TO_WINDOW: dict[int, LimitWindow] = {
+    60: LimitWindow.MINUTE,
+    3600: LimitWindow.HOUR,
+    86400: LimitWindow.DAY,
+}
+
 
 class RateLimitResult:
     """Result of a rate limit check."""
@@ -42,6 +55,35 @@ class RateLimitResult:
         self.reset_at = reset_at
         self.retry_after = retry_after
 
+
+def _normalise_window(window: Union[LimitWindow, int]) -> tuple[LimitWindow, int]:
+    """Convert a window value to (LimitWindow, seconds).
+
+    Accepts either a :class:`LimitWindow` enum member or a raw integer
+    (60, 3600, 86400).  Returns the matching enum and its duration in
+    seconds.
+
+    Raises:
+        ValueError: If *window* is an unrecognised integer.
+    """
+    if isinstance(window, LimitWindow):
+        return window, _WINDOW_SECONDS[window]
+
+    if isinstance(window, int):
+        enum_val = _INT_TO_WINDOW.get(window)
+        if enum_val is not None:
+            return enum_val, window
+        raise ValueError(
+            f"Unsupported rate-limit window: {window}s. "
+            f"Expected one of {sorted(_INT_TO_WINDOW)} seconds, "
+            f"or a LimitWindow enum member."
+        )
+
+    raise TypeError(
+        f"window must be LimitWindow or int, got {type(window).__name__}"
+    )
+
+
 class RateLimiter:
     """
     Redis-backed rate limiter using sliding window algorithm.
@@ -58,19 +100,17 @@ class RateLimiter:
             redis_client: Redis client (aioredis or redis.asyncio)
         """
         self.redis = redis_client
-        self._window_seconds = {
-            LimitWindow.MINUTE: 60,
-            LimitWindow.HOUR: 3600,
-            LimitWindow.DAY: 86400,
-        }
+        self._window_seconds = _WINDOW_SECONDS
 
-    def _fail_result(self, limit: int, window: LimitWindow) -> RateLimitResult:
+    def _fail_result(self, limit: int, window: Union[LimitWindow, int]) -> RateLimitResult:
         """Return a result based on RATE_LIMIT_FAIL_OPEN setting."""
         from swx_core.config.settings import settings
 
+        _, window_secs = _normalise_window(window)
+        now = utc_now()
+
         if getattr(settings, "RATE_LIMIT_FAIL_OPEN", False):
             logger.warning("Redis unavailable, rate limit check allowed (fail-open)")
-            now = utc_now()
             return RateLimitResult(
                 allowed=True,
                 limit=limit,
@@ -78,21 +118,21 @@ class RateLimiter:
                 reset_at=now,
                 retry_after=None,
             )
+
         logger.warning("Redis unavailable, rate limit check denied (fail-closed)")
-        now = utc_now()
         return RateLimitResult(
             allowed=False,
             limit=limit,
             remaining=0,
             reset_at=now,
-            retry_after=self._window_seconds[window],
+            retry_after=window_secs,
         )
     
     async def check_limit(
         self,
         key: str,
         limit: int,
-        window: LimitWindow = LimitWindow.MINUTE
+        window: Union[LimitWindow, int] = LimitWindow.MINUTE
     ) -> RateLimitResult:
         """
         Check if request is within rate limit.
@@ -102,17 +142,17 @@ class RateLimiter:
         Args:
             key: Redis key for this limit (e.g., "rate_limit:user:123:api_requests:read:1m")
             limit: Maximum requests allowed in window
-            window: Time window (1m, 1h, 24h)
+            window: Time window — :class:`LimitWindow` enum or raw seconds
+                (60, 3600, 86400).
         
         Returns:
             RateLimitResult with allowed status and metadata
         """
         if not self.redis:
-            # Fail closed: if Redis unavailable, deny
             return self._fail_result(limit, window)
         
         try:
-            window_seconds = self._window_seconds[window]
+            window_enum, window_seconds = _normalise_window(window)
             now = time.time()
             window_start = now - window_seconds
             
@@ -152,20 +192,19 @@ class RateLimiter:
             
         except Exception as e:
             logger.error(f"Error checking rate limit: {e}", exc_info=True)
-            # Fail closed
             return self._fail_result(limit, window)
     
     async def get_usage(
         self,
         key: str,
-        window: LimitWindow = LimitWindow.MINUTE
+        window: Union[LimitWindow, int] = LimitWindow.MINUTE
     ) -> int:
         """
         Get current usage count for a limit key.
         
         Args:
             key: Redis key
-            window: Time window
+            window: Time window — :class:`LimitWindow` enum or raw seconds.
         
         Returns:
             Current usage count
@@ -174,7 +213,7 @@ class RateLimiter:
             return 0
         
         try:
-            window_seconds = self._window_seconds[window]
+            _, window_seconds = _normalise_window(window)
             now = time.time()
             window_start = now - window_seconds
             

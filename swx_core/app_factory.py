@@ -341,7 +341,7 @@ def create_swx_app(
 
     # --- Bootstrap (providers, hooks, listeners) ---
     from swx_core.bootstrap import bootstrap_app
-    bootstrap_app(app, providers=providers, discover_user_providers=discover_user_providers)
+    bootstrap_app(app, providers=providers, discover_user_providers=discover_user_providers, register_middleware=False)
 
     # Root endpoint
     @app.get("/")
