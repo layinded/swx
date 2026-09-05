@@ -1,6 +1,6 @@
 # Changelog
 
-**Version:** 2.24.0
+**Version:** 2.25.0
 **Last Updated:** 2026-09-05
 
 ---
@@ -29,6 +29,28 @@ This document tracks **version history and changes** for SwX-API. All notable ch
 ---
 
 ## Version History
+
+### Version 2.25.0 (2026-09-05)
+
+**Redis Pub/Sub event broadcasting for multi-worker deployments**
+
+#### Added
+
+1. **Redis Pub/Sub event broadcasting** — New `RedisEventBridge` class that extends the in-process `EventBus` to broadcast events across multiple worker processes. When `REDIS_ENABLED=True` and `EVENT_BRIDGE_ENABLED=True` (default), every `event_bus.dispatch()` call runs local listeners immediately and publishes the event to Redis so all workers receive it.
+
+2. **`EventBridgeServiceProvider`** — IoC container provider (priority 35) that creates the bridge and patches `event_bus.dispatch` for transparent broadcasting.
+
+3. **`EVENT_BRIDGE_ENABLED`** setting (default: `True`) — Toggle for cross-worker event broadcasting.
+
+4. **`EVENT_BRIDGE_CHANNEL_PREFIX`** setting (default: `"swx:events"`) — Configurable Redis channel prefix.
+
+5. **Extensibility** — `set_broadcast_filter()`, `add_exclude_prefix()`, `subscribe()`/`unsubscribe()` for custom channels, `get_stats()` for health checks.
+
+6. **Documentation** — `docs/04-core-concepts/EVENT_BROADCASTING.md` with configuration, usage, SSE integration, and deployment guide.
+
+#### Fixed
+
+1. **pyright type error in `main.py`** — Fixed `list[asyncio.Task]` → `list[asyncio.Task[None]]`.
 
 ### Version 2.24.0 (2026-09-05)
 

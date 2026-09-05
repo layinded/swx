@@ -19,6 +19,7 @@ CORE_PROVIDERS = [
     "swx_core.providers.event_provider.EventServiceProvider",
     "swx_core.providers.auth_provider.AuthServiceProvider",
     "swx_core.providers.rate_limit_provider.RateLimitServiceProvider",
+    "swx_core.providers.event_bridge_provider.EventBridgeServiceProvider",
     "swx_core.providers.billing_provider.BillingServiceProvider",
 ]
 

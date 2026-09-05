@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.25.0] - 2026-09-05
+
+### Added
+
+- **Redis Pub/Sub event broadcasting** — New `RedisEventBridge` class
+  (`swx_core.events.redis_bridge`) that extends the in-process `EventBus`
+  to broadcast events across multiple worker processes via Redis Pub/Sub.
+  When `REDIS_ENABLED=True` and `EVENT_BRIDGE_ENABLED=True` (the default),
+  every `event_bus.dispatch()` call now:
+  1. Runs local in-process listeners immediately (zero latency).
+  2. Publishes the event to Redis so ALL workers receive it.
+
+  Features:
+  - Automatic activation — no code changes to existing `dispatch()` calls.
+  - Loop prevention via `_broadcast_source="redis"` marker.
+  - Configurable broadcast filter (`set_broadcast_filter()`) to select which
+    events cross the wire.
+  - Exclude prefixes (`add_exclude_prefix()`) for internal-only events.
+  - Custom channel subscriptions (`subscribe()`/`unsubscribe()`) for
+    SSE fan-out, WebSocket push, and notification systems.
+  - Auto-reconnecting subscriber with configurable retry.
+  - Health-check stats via `get_stats()`.
+
+- **`EventBridgeServiceProvider`** — Registers `RedisEventBridge` in the IoC
+  container (priority 35, after `RateLimitServiceProvider`) and patches
+  `event_bus.dispatch` for transparent broadcasting.
+
+- **`EVENT_BRIDGE_ENABLED`** setting (default: `True`) — Opt-in/opt-out
+  toggle for cross-worker event broadcasting.
+
+- **`EVENT_BRIDGE_CHANNEL_PREFIX`** setting (default: `"swx:events"`) —
+  Configurable Redis channel prefix for environment isolation.
+
+- **Lifecycle integration** — Bridge starts in `main.py` lifespan Step 12
+  and stops gracefully on shutdown.
+
+- **`docs/04-core-concepts/EVENT_BROADCASTING.md`** — Complete user guide
+  covering automatic activation, filtering, custom channels, SSE integration,
+  and multi-worker deployment.
+
+### Fixed
+
+- **pyright type error in `main.py`** — Fixed `list[asyncio.Task]` missing
+  type argument to `list[asyncio.Task[None]]`.
+
 ## [2.24.0] - 2026-09-05
 
 ### Fixed

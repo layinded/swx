@@ -181,7 +181,7 @@ async def lifespan(app: FastAPI):  # noqa
 
     # Step 9: Start SIEM batch flush worker (SOC 2 CC7.2)
     import asyncio
-    _bg_tasks: list[asyncio.Task] = []
+    _bg_tasks: list[asyncio.Task[None]] = []
 
     if settings.SIEM_ENABLED:  # pyright: ignore[reportAttributeAccessIssue]
         from swx_core.services.compliance.siem_service import siem_batch_loop
@@ -201,6 +201,19 @@ async def lifespan(app: FastAPI):  # noqa
     _bg_tasks.append(_session_task)
     logger.info("Idle session cleanup worker started (interval=%ss).", settings.SESSION_IDLE_CLEANUP_INTERVAL_SECONDS)
 
+    # Step 12: Start Redis event bridge for cross-worker broadcasting
+    from swx_core.container.container import get_container
+    from swx_core.events.redis_bridge import RedisEventBridge
+
+    container = get_container()
+    bridge: RedisEventBridge | None = None
+    if container.bound("event_bridge"):
+        bridge = container.make("event_bridge")
+        await bridge.start()
+        logger.info("Redis event bridge started (cross-worker broadcasting active).")
+    else:
+        logger.info("Redis event bridge not available (Redis disabled or EVENT_BRIDGE_ENABLED=False).")
+
     # Yield control to the application (it will run until shutdown)
     yield
 
@@ -210,6 +223,11 @@ async def lifespan(app: FastAPI):  # noqa
     if _bg_tasks:
         await asyncio.gather(*_bg_tasks, return_exceptions=True)
         logger.info("Cancelled %d background tasks.", len(_bg_tasks))
+
+    # Stop Redis event bridge
+    if bridge is not None:
+        await bridge.stop()
+        logger.info("Redis event bridge stopped.")
 
     await audit_queue.stop()
     logger.info("Shutting down application...")

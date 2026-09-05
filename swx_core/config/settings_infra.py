@@ -288,3 +288,13 @@ class InfraSettingsMixin(BaseSettings):
         default=500,
         description="Maximum entries in process-local L1 cache for settings",
     )
+
+    # Event Bridge Configuration (Redis Pub/Sub)
+    EVENT_BRIDGE_ENABLED: bool = Field(
+        default=True,
+        description="Enable cross-worker event broadcasting via Redis Pub/Sub (requires REDIS_ENABLED)",
+    )
+    EVENT_BRIDGE_CHANNEL_PREFIX: str = Field(
+        default="swx:events",
+        description="Redis channel prefix for event broadcasting (default: 'swx:events')",
+    )

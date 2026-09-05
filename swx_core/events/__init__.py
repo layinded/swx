@@ -23,6 +23,7 @@ from swx_core.events.debug import (
     get_listener_count,
     verify_listener_registered,
 )
+from swx_core.events.redis_bridge import RedisEventBridge
 
 __all__ = [
     # Core classes
@@ -48,4 +49,7 @@ __all__ = [
     "print_event_bus_status",
     "get_listener_count",
     "verify_listener_registered",
+
+    # Redis bridge
+    "RedisEventBridge",
 ]
