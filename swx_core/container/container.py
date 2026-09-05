@@ -136,8 +136,12 @@ class Container:
         self._scoped_contexts: List[Dict[str, Any]] = []
         
         # P0 Thread Safety: Locks for concurrent access
-        self._singleton_lock = threading.Lock()
-        self._scoped_lock = threading.RLock()  # Reentrant for nested resolution
+        # RLock (reentrant) is required because factory functions resolved via
+        # make() may call container.make() again for nested dependencies — e.g.
+        # resolving "auth.jwt_guard" needs "auth.token_blacklist" which needs
+        # "redis.client". A non-reentrant Lock deadlocks on the same thread.
+        self._singleton_lock = threading.RLock()
+        self._scoped_lock = threading.RLock()
 
     # =====================
     # BINDING METHODS
@@ -641,6 +645,26 @@ class Container:
             bool: True if bound
         """
         return abstract in self._bindings or abstract in self._aliases
+
+    def override(self, abstract: str, concrete: any) -> None:
+        """Replace an existing binding with a new concrete implementation.
+
+        This is the supported mechanism for applications to swap framework
+        services (e.g. replacing the email provider).  It clears any cached
+        singleton instance so subsequent ``make()`` calls resolve the new
+        concrete.
+
+        Args:
+            abstract: The binding name to replace.
+            concrete: The new implementation (class, factory, or instance).
+        """
+        if abstract in self._instances:
+            del self._instances[abstract]
+        self._bindings[abstract] = Binding(
+            concrete=concrete,
+            binding_type=BindingType.TRANSIENT,
+        )
+        logger.info("container.overridden abstract=%s", abstract)
     
     def forget(self, abstract: str) -> None:
         """

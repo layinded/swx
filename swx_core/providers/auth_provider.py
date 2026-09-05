@@ -32,20 +32,20 @@ class AuthServiceProvider(ServiceProvider):
         # Guard manager (singleton)
         self.singleton("auth.guard_manager", self._create_guard_manager)
 
-        # Default guard (alias)
-        self.alias("auth.guard", "auth.jwt_guard")
+        self.alias("auth.jwt_guard", "auth.guard")
 
     def boot(self) -> None:
         """Configure guards from settings."""
         try:
-            from swx_core.container.container import get_container
             from swx_core.config.settings import settings
 
-            container = get_container()
+            container = self.app
 
             if not container.bound("auth.guard_manager"):
+                logger.debug("AuthServiceProvider: auth.guard_manager not bound, skipping boot")
                 return
 
+            logger.debug("AuthServiceProvider: resolving auth.guard_manager")
             manager = container.make("auth.guard_manager")
 
             guards_config = getattr(
@@ -59,22 +59,26 @@ class AuthServiceProvider(ServiceProvider):
             )
 
             if "jwt" in guards_config.values() and container.bound("auth.jwt_guard"):
+                logger.debug("AuthServiceProvider: resolving auth.jwt_guard")
                 jwt_guard = container.make("auth.jwt_guard")
                 manager.register("jwt", jwt_guard)
 
             if "api_key" in guards_config.values() and container.bound(
                 "auth.api_key_guard"
             ):
+                logger.debug("AuthServiceProvider: resolving auth.api_key_guard")
                 api_key_guard = container.make("auth.api_key_guard")
                 manager.register("api_key", api_key_guard)
 
             default_guard = getattr(settings, "DEFAULT_AUTH_GUARD", "jwt")
             if manager.has_guard(default_guard):
                 manager.set_default(default_guard)
+
+            logger.info("AuthServiceProvider booted successfully")
         except RecursionError:
             logger.warning("Recursion detected in AuthServiceProvider boot, skipping")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("AuthServiceProvider boot failed: %s", exc)
 
     def _create_token_blacklist(self, app):
         """Create token blacklist."""

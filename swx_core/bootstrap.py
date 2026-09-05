@@ -1,10 +1,33 @@
 """
-SwX Application Bootstrap.
+SwX Application Bootstrap
+---------------------------
+Deterministic startup/shutdown lifecycle with stage logging and timing.
 
-Registers all providers and boots the application with the service container.
-Uses configurable discovery for app paths instead of hardcoded swx_app.
+The bootstrap process follows a fixed sequence of stages, each logged with
+structured timing data.  Circular provider dependencies are detected and
+reported clearly.  Applications use ``bootstrap_app()`` to initialise the
+container, providers, and routes; ``create_swx_app()`` to create the full
+FastAPI application with lifespan management.
+
+Usage (thin application entry point)::
+
+    from swx_core import create_swx_app, bootstrap_app
+
+    app = create_swx_app(title="My App", app_name="my_app")
+    container = bootstrap_app(app)
+
+Usage (manual control)::
+
+    from swx_core.bootstrap import bootstrap_app
+
+    app = FastAPI(...)
+    container = bootstrap_app(app, providers=[...])
 """
 
+from __future__ import annotations
+
+import time
+from enum import Enum
 from typing import List, Optional, Type
 
 from swx_core.config.discovery import discovery
@@ -13,7 +36,92 @@ from swx_core.middleware.logging_middleware import logger
 from swx_core.providers.base import ServiceProvider
 from swx_core.router import router as core_router
 
+
+# ---------------------------------------------------------------------------
+# Bootstrap stages — deterministic, logged, timed
+# ---------------------------------------------------------------------------
+
+
+class BootstrapStage(str, Enum):
+    """Ordered stages of the bootstrap process."""
+
+    MODULE_DISCOVERY = "module_discovery"
+    PROVIDER_REGISTRATION = "provider_registration"
+    PROVIDER_BOOT = "provider_boot"
+    CONTAINER_INITIALIZATION = "container_initialization"
+    ROUTE_DISCOVERY = "route_discovery"
+    MIDDLEWARE_SETUP = "middleware_setup"
+    LIFECYCLE_SERVICES = "lifecycle_services"
+    BACKGROUND_SERVICES = "background_services"
+    APPLICATION_READY = "application_ready"
+
+
+class BootstrapResult:
+    """Timings and metadata produced by ``bootstrap_app()``."""
+
+    def __init__(self, container: Container) -> None:
+        self.container = container
+        self.stage_timings: dict[str, float] = {}
+        self.stage_errors: dict[str, Exception] = {}
+        self.provider_names: list[str] = []
+
+    @property
+    def success(self) -> bool:
+        return not self.stage_errors
+
+
+# ---------------------------------------------------------------------------
+# Circular dependency detection
+# ---------------------------------------------------------------------------
+
+
+class CircularProviderError(Exception):
+    """Raised when circular provider dependencies are detected."""
+
+    def __init__(self, chain: list[str], cycle_start: str) -> None:
+        self.chain = chain
+        self.cycle_start = cycle_start
+        cycle = " -> ".join(chain + [cycle_start])
+        super().__init__(f"Circular provider dependency detected: {cycle}")
+
+
+def _validate_provider_dependencies(
+    provider_classes: list[Type[ServiceProvider]],
+) -> None:
+    """Check declared ``depends`` lists for cycles.
+
+    ``ServiceProvider.depends`` is a list of provider class names that must
+    register before this provider.  This function validates that the
+    dependency graph has no cycles using a simple DFS cycle detection.
+    """
+    name_map: dict[str, Type[ServiceProvider]] = {}
+    for cls in provider_classes:
+        name_map[cls.__name__] = cls
+
+    visited: set[str] = set()
+    stack: set[str] = set()
+
+    def dfs(name: str, path: list[str]) -> None:
+        if name in stack:
+            raise CircularProviderError(path, name)
+        if name in visited:
+            return
+        visited.add(name)
+        stack.add(name)
+        cls = name_map.get(name)
+        if cls and hasattr(cls, "depends"):
+            for dep in cls.depends:
+                dfs(dep, path + [name])
+        stack.discard(name)
+
+    for cls in provider_classes:
+        dfs(cls.__name__, [])
+
+
+# ---------------------------------------------------------------------------
 # Core providers (in registration order)
+# ---------------------------------------------------------------------------
+
 CORE_PROVIDERS = [
     "swx_core.providers.database_provider.DatabaseServiceProvider",
     "swx_core.providers.event_provider.EventServiceProvider",
@@ -25,37 +133,21 @@ CORE_PROVIDERS = [
 
 
 def _load_provider_class(class_path: str) -> Type[ServiceProvider]:
-    """
-    Dynamically load a provider class.
-
-    Args:
-        class_path: Full module path to provider class
-
-    Returns:
-        Provider class
-    """
+    """Dynamically load a provider class from its full module path."""
     module_path, class_name = class_path.rsplit(".", 1)
     module = __import__(module_path, fromlist=[class_name])
     return getattr(module, class_name)
 
 
 def _discover_user_providers() -> List[str]:
-    """
-    Discover user-defined providers in app/providers/.
-
-    Uses configurable discovery to find the providers directory.
-    Returns empty list if app directory doesn't exist or no providers found.
-
-    Returns:
-        List of provider class paths
-    """
+    """Discover user-defined providers in ``app/providers/``."""
     import pkgutil
 
-    providers = []
+    providers: list[str] = []
     providers_path = discovery.app_providers_path
 
     if not providers_path.exists():
-        logger.debug(f"App providers directory not found: {providers_path}")
+        logger.debug("App providers directory not found: %s", providers_path)
         return providers
 
     for finder, name, is_pkg in pkgutil.iter_modules([str(providers_path)]):
@@ -72,34 +164,46 @@ def _discover_user_providers() -> List[str]:
                     ):
                         providers.append(f"{module_path}.{attr_name}")
             except Exception as e:
-                logger.warning(f"Failed to load provider {module_path}: {e}")
+                logger.warning("Failed to load provider %s: %s", module_path, e)
 
     return providers
 
 
-def _extract_route_paths(router_obj) -> set:
-    """
-    Extract all path strings from a router or app, handling _IncludedRouter wrappers.
-
-    FastAPI 0.115.0+ wraps included sub-routers in ``_IncludedRouter`` objects that
-    lack a ``.path`` attribute but expose the original router via ``.original_router``.
-    This function recursively drills into those wrappers so that no real route is
-    silently skipped.
-
-    Args:
-        router_obj: A FastAPI app, APIRouter, or any object with a ``.routes`` list.
-
-    Returns:
-        Set of path strings for every concrete route found.
-    """
-    paths: set = set()
+def _extract_route_paths(router_obj: object) -> set[str]:
+    """Extract all path strings from a router or app, handling _IncludedRouter."""
+    paths: set[str] = set()
     for route in getattr(router_obj, "routes", []):
         if hasattr(route, "path"):
             paths.add(route.path)
         elif hasattr(route, "original_router"):
-            # _IncludedRouter in FastAPI 0.115.0+
             paths.update(_extract_route_paths(route.original_router))
     return paths
+
+
+# ---------------------------------------------------------------------------
+# Stage logging helper
+# ---------------------------------------------------------------------------
+
+
+def _log_stage(stage: BootstrapStage, elapsed: float, extra: dict | None = None) -> None:
+    """Emit a structured log record for a completed bootstrap stage."""
+    log_extra: dict = {
+        "bootstrap_stage": stage.value,
+        "duration_ms": round(elapsed * 1000, 2),
+    }
+    if extra:
+        log_extra.update(extra)
+    logger.info(
+        "bootstrap.%s elapsed=%.2fs",
+        stage.value,
+        elapsed,
+        extra=log_extra,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 def bootstrap_app(
@@ -107,146 +211,143 @@ def bootstrap_app(
     providers: Optional[List[str]] = None,
     discover_user_providers: bool = True,
 ) -> Container:
-    """
-    Bootstrap the application with all service providers.
+    """Bootstrap the application with all service providers.
 
-    This is the main entry point for initializing the SwX framework.
+    This is the main entry point for initialising the SwX framework.
+    Each stage is logged with timing data for observability.
 
     Args:
-        app: FastAPI application instance (optional)
-        providers: Optional list of additional provider paths
-        discover_user_providers: Whether to auto-discover user providers
+        app: FastAPI application instance (optional).
+        providers: Additional provider class paths to register.
+        discover_user_providers: Whether to auto-discover user providers.
 
     Returns:
-        Configured container instance
-
-    Usage:
-        # In main.py
-        from swx_core.bootstrap import bootstrap_app
-
-        app = FastAPI(lifespan=lifespan)
-        container = bootstrap_app(app)
-
-        # Later, access services
-        from swx_core.container.container import get_container
-
-        container = get_container()
-        rate_limiter = container.make("rate_limiter")
+        Configured container instance.
     """
-    # Create or get container
-    container = get_container()
+    result = BootstrapResult(get_container())
+    total_start = time.monotonic()
 
-    # Store container in app state if provided
+    # ---- Stage: Container initialisation --------------------------------
+    stage_start = time.monotonic()
+    container = result.container
     if app is not None:
         app.state.container = container
+    _log_stage(BootstrapStage.CONTAINER_INITIALIZATION, time.monotonic() - stage_start)
 
-        # Register core routes if not already registered (check app routes directly)
+    # ---- Stage: Route discovery (register core routes) ------------------
+    stage_start = time.monotonic()
+    if app is not None:
         existing_route_paths = _extract_route_paths(app)
-
         if core_router.routes:
-            # Check if any routes from core_router are already in app
             core_paths = _extract_route_paths(core_router)
             if not core_paths.issubset(existing_route_paths):
                 app.include_router(core_router)
                 logger.info("Registered core routes with app")
             else:
-                logger.info(
-                    "Core routes already registered, skipping duplicate registration"
-                )
+                logger.info("Core routes already registered, skipping duplicate registration")
+    _log_stage(BootstrapStage.ROUTE_DISCOVERY, time.monotonic() - stage_start)
 
-    # Load core providers
+    # ---- Stage: Provider registration ------------------------------------
+    stage_start = time.monotonic()
     all_providers = CORE_PROVIDERS[:]
-
-    # Add user providers (if app exists and discovery enabled)
     if discover_user_providers and discovery.app_exists():
         user_providers = _discover_user_providers()
         all_providers.extend(user_providers)
-
-    # Add additional providers passed in
     if providers:
         all_providers.extend(providers)
 
-    # Load provider classes
-    provider_classes = []
+    provider_classes: list[Type[ServiceProvider]] = []
     for provider_path in all_providers:
         try:
-            provider_class = _load_provider_class(provider_path)
-            provider_classes.append(provider_class)
+            provider_classes.append(_load_provider_class(provider_path))
         except Exception as e:
-            logger.warning(f"Failed to load provider {provider_path}: {e}")
+            logger.warning("Failed to load provider %s: %s", provider_path, e)
 
-    # Sort by priority (lower = earlier)
     provider_classes.sort(key=lambda p: getattr(p, "priority", 100))
 
-    # Instantiate providers
-    provider_instances = []
+    # Validate dependency graph before registration.
+    try:
+        _validate_provider_dependencies(provider_classes)
+    except CircularProviderError as exc:
+        logger.critical("bootstrap.circular_dependency %s", exc)
+        raise
+
+    provider_instances: list[ServiceProvider] = []
     for provider_class in provider_classes:
         try:
             provider = provider_class(container)
             provider_instances.append(provider)
         except Exception as e:
-            logger.error(
-                f"Failed to instantiate provider {provider_class.__name__}: {e}"
-            )
-            continue
+            logger.error("Failed to instantiate provider %s: %s", provider_class.__name__, e)
 
-    # Phase 1: Register all bindings
-    logger.info("Registering service providers...")
     for provider in provider_instances:
+        name = provider.__class__.__name__
         try:
             provider.register()
-            logger.debug(f"Registered: {provider.__class__.__name__}")
+            logger.debug("Registered: %s", name)
         except Exception as e:
-            logger.error(f"Failed to register {provider.__class__.__name__}: {e}")
+            logger.error("Failed to register %s: %s", name, e)
 
-    # Phase 2: Boot all providers
-    logger.info("Booting service providers...")
+    result.provider_names = [p.__class__.__name__ for p in provider_instances]
+    _log_stage(
+        BootstrapStage.PROVIDER_REGISTRATION,
+        time.monotonic() - stage_start,
+        extra={"providers": result.provider_names},
+    )
+
+    # ---- Stage: Provider boot -------------------------------------------
+    stage_start = time.monotonic()
     for provider in provider_instances:
+        name = provider.__class__.__name__
         try:
             provider.boot()
-            logger.debug(f"Booted: {provider.__class__.__name__}")
+            logger.info("Booted: %s", name)
         except Exception as e:
-            logger.error(f"Failed to boot {provider.__class__.__name__}: {e}")
+            logger.error("Failed to boot %s: %s", name, e)
+            result.stage_errors[f"provider_boot.{name}"] = e
+    _log_stage(BootstrapStage.PROVIDER_BOOT, time.monotonic() - stage_start)
 
-    # Phase 2.5: Register default registration hooks
+    # ---- Stage: Default hooks -------------------------------------------
     _register_default_hooks()
 
-    # Phase 3: Register user event listeners from app/listeners/
+    # ---- Stage: Event listeners -----------------------------------------
     app_exists = discovery.app_exists()
     has_listeners = discovery.has_listeners()
-    
+
     if app_exists and has_listeners:
         logger.info("Registering event listeners...")
         try:
             register_event_listeners(container)
         except Exception as e:
-            logger.error(f"Failed to register event listeners: {e}")
-    elif not app_exists:
-        logger.debug(
-            f"Skipping listener registration: app directory not found at {discovery.app_base}"
-        )
-    elif not has_listeners:
-        logger.debug(
-            f"Skipping listener registration: listeners directory not found at {discovery.app_listeners_path}"
-        )
+            logger.error("Failed to register event listeners: %s", e)
 
-    logger.info(f"Application bootstrapped with {len(provider_instances)} providers")
+    # ---- Stage: Application ready ---------------------------------------
+    total_elapsed = time.monotonic() - total_start
+    _log_stage(
+        BootstrapStage.APPLICATION_READY,
+        total_elapsed,
+        extra={
+            "providers_count": len(provider_instances),
+            "success": not result.stage_errors,
+        },
+    )
+    result.stage_timings[BootstrapStage.APPLICATION_READY.value] = total_elapsed
+    logger.info(
+        "Application bootstrapped with %d providers in %.2fs",
+        len(provider_instances),
+        total_elapsed,
+    )
 
     return container
 
 
 def bootstrap(*args, **kwargs) -> Container:
-    """Alias for bootstrap_app()."""
+    """Alias for ``bootstrap_app()``."""
     return bootstrap_app(*args, **kwargs)
 
 
 def register_webhook_routes(app) -> None:
-    """
-    Register webhook routes with the FastAPI app.
-
-    Args:
-        app: FastAPI application instance
-    """
+    """Register webhook routes with the FastAPI app."""
     from swx_core.webhooks.flutterwave_webhook import (
         router as flutterwave_webhook_router,
     )
@@ -260,25 +361,16 @@ def register_webhook_routes(app) -> None:
 
 
 def register_event_listeners(container: Container) -> None:
-    """
-    Register user event listeners from app/listeners/.
-
-    Uses configurable discovery to find the listeners directory.
-    Does nothing if app directory doesn't exist.
-
-    Args:
-        container: Container instance
-    """
+    """Register user event listeners from ``app/listeners/``."""
     import pkgutil
 
     from swx_core.events.dispatcher import event_bus
     from swx_core.events.listener import Listener
 
-    # Use configurable path
     listeners_path = discovery.app_listeners_path
 
     if not listeners_path.exists():
-        logger.debug(f"App listeners directory not found: {listeners_path}")
+        logger.debug("App listeners directory not found: %s", listeners_path)
         return
 
     for finder, name, is_pkg in pkgutil.iter_modules([str(listeners_path)]):
@@ -286,8 +378,6 @@ def register_event_listeners(container: Container) -> None:
             module = __import__(
                 f"{discovery.app_listeners_module}.{name}", fromlist=[name]
             )
-
-            # Find Listener subclasses
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
                 if (
@@ -303,51 +393,29 @@ def register_event_listeners(container: Container) -> None:
                         queueable=getattr(listener_instance, "queueable", False),
                     )
                     logger.info(
-                        f"Registered listener: {attr_name} -> '{listener_instance.event}' "
-                        f"(priority={getattr(listener_instance, 'priority', 50)}, "
-                        f"queueable={getattr(listener_instance, 'queueable', False)})"
+                        "Registered listener: %s -> '%s' (priority=%s, queueable=%s)",
+                        attr_name,
+                        listener_instance.event,
+                        getattr(listener_instance, "priority", 50),
+                        getattr(listener_instance, "queueable", False),
                     )
-
         except Exception as e:
-            logger.error(f"Failed to load listener {name}: {e}", exc_info=True)
+            logger.error("Failed to load listener %s: %s", name, e, exc_info=True)
 
 
 def get_registered_services() -> dict:
-    """
-    Get all registered services in the container.
-
-    Returns:
-        Dictionary of service names and their binding types
-    """
+    """Return all registered services in the container."""
     container = get_container()
-    bindings = {}
-
-    for name, binding in container.get_bindings().items():
-        bindings[name] = binding.binding_type.value
-
-    return bindings
+    return {name: binding.binding_type.value for name, binding in container.get_bindings().items()}
 
 
 def resolve(name: str):
-    """
-    Convenience function to resolve a service from the container.
-
-    Args:
-        name: Service name
-
-    Returns:
-        Resolved service instance
-    """
+    """Convenience function to resolve a service from the container."""
     return get_container().make(name)
 
 
 def diagnose_discovery() -> dict:
-    """
-    Diagnose discovery configuration for debugging.
-    
-    Returns:
-        Dict with discovery status for app and listeners.
-    """
+    """Diagnose discovery configuration for debugging."""
     return {
         "app_name": discovery.app_name,
         "app_base": str(discovery.app_base),
@@ -369,12 +437,12 @@ def _register_default_hooks() -> None:
 
     if settings.AUTO_ASSIGN_DEFAULT_ROLE:
         registration_hooks.add_post_register(assign_default_role)
-        logger.info(f"Default registration hook: assign role '{settings.DEFAULT_USER_ROLE}'")
+        logger.info("Default registration hook: assign role '%s'", settings.DEFAULT_USER_ROLE)
 
     if settings.AUTO_CREATE_BILLING_ACCOUNT and settings.BILLING_ENABLED:
         registration_hooks.add_post_register(create_billing_account)
         logger.info("Default registration hook: create billing account")
 
-    if getattr(settings, 'AUTO_CREATE_PERSONAL_TEAM', True):
+    if getattr(settings, "AUTO_CREATE_PERSONAL_TEAM", True):
         registration_hooks.add_post_register(create_personal_team)
         logger.info("Default registration hook: create personal team")

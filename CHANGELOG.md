@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.25.3] - 2026-09-05
+
+### Fixed
+
+- **Startup hang caused by container deadlock** — `Container._singleton_lock` was
+  `threading.Lock()` (non-reentrant). When `AuthServiceProvider.boot()` called
+  `container.make("auth.jwt_guard")`, which internally resolved
+  `auth.token_blacklist` → `redis.client`, the nested `make()` tried to acquire
+  the same lock on the same thread, causing a deadlock. Changed to
+  `threading.RLock()` (reentrant) so nested singleton resolution works correctly.
+
+- **Infinite recursion in auth guard alias** — `self.alias("auth.guard", "auth.jwt_guard")`
+  had inverted parameters. The `alias()` method stores `_aliases[alias] = abstract`,
+  so `"auth.jwt_guard"` was stored as an alias pointing to `"auth.guard"`, which had
+  no binding. This made `make("auth.jwt_guard")` resolve to `"auth.guard"` →
+  infinite recursion. Fixed to `self.alias("auth.jwt_guard", "auth.guard")`.
+
+- **Silently swallowed errors in AuthServiceProvider.boot()** — Replaced
+  `except Exception: pass` with `except Exception as exc: logger.warning(...)`.
+  The old code hid all boot errors including configuration mistakes and import failures.
+
+- **Silently swallowed errors in BillingServiceProvider.boot()** — Added early
+  return when `BILLING_ENABLED=False` or when `billing.feature_registry` is not
+  bound, with debug-level logging for both cases.
+
+- **APIKeyGuard was abstract — could not be instantiated** — `BaseGuard` declared
+  `create_token()` and `revoke_token()` as abstract methods, but `APIKeyGuard`
+  didn't implement them. Added `create_token()` (raises `NotImplementedError`
+  since API keys aren't JWT tokens) and `revoke_token()` (validates the key
+  then deactivates it via the repository layer). This was previously hidden by
+  `except Exception: pass` in `AuthServiceProvider.boot()`.
+
+- **AuthServiceProvider.boot() used get_container() instead of self.app** —
+  Changed to `self.app` for consistency, same fix as `EventBridgeServiceProvider`
+  in v2.25.2. Using `get_container()` could return a different container instance
+  than the one the provider was registered with.
+
+### Changed
+
+- `Container._singleton_lock` is now `threading.RLock()` instead of `threading.Lock()`.
+- `AuthServiceProvider.boot()` logs each resolution step at debug level for startup
+  diagnostics. Success logged at info level.
+- `BillingServiceProvider.boot()` logs resolution steps at debug level and success at
+  info level.
+- `bootstrap_app()` logs each provider boot at info level (previously debug).
+
 ## [2.25.2] - 2026-09-05
 
 ### Fixed

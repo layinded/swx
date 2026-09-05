@@ -30,13 +30,23 @@ class BillingServiceProvider(ServiceProvider):
     def boot(self) -> None:
         """Boot billing services."""
         from swx_core.container.container import get_container
+        from swx_core.config.settings import settings
+        from swx_core.middleware.logging_middleware import logger
+
+        if not settings.BILLING_ENABLED:
+            logger.debug("BillingServiceProvider: billing disabled, skipping boot")
+            return
 
         container = get_container()
 
-        # Register default features
-        if container.bound("billing.feature_registry"):
-            registry = container.make("billing.feature_registry")
-            self._register_default_features(registry)
+        if not container.bound("billing.feature_registry"):
+            logger.debug("BillingServiceProvider: billing.feature_registry not bound, skipping boot")
+            return
+
+        logger.debug("BillingServiceProvider: resolving billing.feature_registry")
+        registry = container.make("billing.feature_registry")
+        self._register_default_features(registry)
+        logger.info("BillingServiceProvider booted successfully")
 
     def _create_billing_provider(self, app):
         """

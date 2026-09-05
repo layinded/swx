@@ -79,6 +79,24 @@ class APIKeyGuard(BaseGuard):
                 return {"valid": False, "key_prefix": token[:8] if token else ""}
             return {"valid": True, "key_prefix": key_public.key_prefix, "key_id": str(key_public.id)}
 
+    async def create_token(self, user: Any, audience: Optional[str] = None, **claims) -> str:
+        """API keys are not created as tokens — use the API key management endpoints instead."""
+        raise NotImplementedError("APIKeyGuard does not create tokens. Use the API key management endpoints.")
+
+    async def revoke_token(self, token: str) -> bool:
+        """Revoke an API key by validating it first, then deactivating."""
+        from swx_core.database.db import async_session
+        from swx_core.services.auth.api_key_service import validate_api_key
+        from swx_core.repositories import api_key_scope_repository as repo
+
+        async with async_session() as session:
+            key_public = await validate_api_key(session, token)
+            if key_public is None:
+                return False
+            deactivated = await repo.deactivate_api_key(session, key_public.id)
+            await session.commit()
+            return deactivated is not None
+
     async def _extract_key(self, request: Request) -> Optional[str]:
         """Extract API key from request header or query parameter."""
         key = request.headers.get(self.header_name)
