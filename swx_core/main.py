@@ -210,9 +210,9 @@ async def lifespan(app: FastAPI):  # noqa
     if container.bound("event_bridge"):
         bridge = container.make("event_bridge")
         await bridge.start()
-        logger.info("Redis event bridge started (cross-worker broadcasting active).")
+        logger.info("Redis event bridge started — cross-worker event broadcasting active.")
     else:
-        logger.info("Redis event bridge not available (Redis disabled or EVENT_BRIDGE_ENABLED=False).")
+        logger.debug("Redis event bridge skipped (REDIS_ENABLED=False or EVENT_BRIDGE_ENABLED=False). Events stay in-process.")
 
     # Yield control to the application (it will run until shutdown)
     yield
