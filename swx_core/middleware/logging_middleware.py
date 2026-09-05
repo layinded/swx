@@ -45,18 +45,31 @@ logger.setLevel(LOG_LEVEL_MAPPING.get(LOG_LEVEL, logging.WARNING))
 
 
 class StructuredJSONFormatter(logging.Formatter):
-    """JSON log formatter with SOC 2 CC7.2 structured fields."""
+    """JSON log formatter with SOC 2 CC7.2 structured fields.
+
+    Always includes ``environment`` and ``service`` for operational
+    correlation.  Additional fields (``correlation_id``,
+    ``bootstrap_stage``, ``lifecycle_event``) are included when present
+    on the log record.
+    """
+
+    # Static fields set once at import time.
+    _environment: str = settings.ENVIRONMENT
+    _service: str = settings.PROJECT_NAME
 
     def format(self, record: logging.LogRecord) -> str:
         log_record: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "message": record.getMessage(),
+            "environment": self._environment,
+            "service": self._service,
         }
 
         for attr in (
-            "request_id", "user_id", "ip", "path", "method",
-            "status_code", "duration_ms", "file", "line",
+            "request_id", "correlation_id", "user_id", "ip", "path",
+            "method", "status_code", "duration_ms", "file", "line",
+            "bootstrap_stage", "lifecycle_event",
         ):
             value = getattr(record, attr, None)
             if value is not None:
@@ -76,7 +89,11 @@ class TextFormatter(logging.Formatter):
         base = f"{record.levelname:8} {record.getMessage()}"
 
         extras: list[str] = []
-        for attr in ("request_id", "user_id", "ip", "method", "path", "status_code", "duration_ms"):
+        for attr in (
+            "request_id", "correlation_id", "user_id", "ip", "method",
+            "path", "status_code", "duration_ms", "bootstrap_stage",
+            "lifecycle_event",
+        ):
             value = getattr(record, attr, None)
             if value is not None:
                 extras.append(f"{attr}={value}")
@@ -140,12 +157,17 @@ class LoggingMiddleware:
         start_time = time.time()
         headers_list: list[tuple[bytes, bytes]] = scope.get("headers", [])
         request_id = _extract_header(headers_list, b"x-request-id") or str(uuid.uuid4())
+        correlation_id = _extract_header(headers_list, b"x-correlation-id")
 
         state = scope.setdefault("state", {})
         if isinstance(state, dict):
             state["request_id"] = request_id
+            if correlation_id:
+                state["correlation_id"] = correlation_id
         else:
             setattr(state, "request_id", request_id)
+            if correlation_id:
+                setattr(state, "correlation_id", correlation_id)
 
         method = scope.get("method", "")
         path = scope.get("path", "")
@@ -159,6 +181,8 @@ class LoggingMiddleware:
 
                 headers = list(message.get("headers", []))
                 headers.append((b"x-request-id", request_id.encode("latin-1")))
+                if correlation_id:
+                    headers.append((b"x-correlation-id", correlation_id.encode("latin-1")))
                 message = {**message, "headers": headers}
 
                 log_data: dict[str, Any] = {
@@ -169,6 +193,8 @@ class LoggingMiddleware:
                 }
                 if request_id:
                     log_data["request_id"] = request_id
+                if correlation_id:
+                    log_data["correlation_id"] = correlation_id
 
                 user_id = _get_state_attr(scope.get("state", {}), "user_id")
                 if user_id:

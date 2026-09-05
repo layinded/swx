@@ -58,7 +58,12 @@ class HealthChecker:
         self._start_time = utc_now()
         self._checks: Dict[str, Callable] = {}
         self._required_services: List[str] = []
-    
+
+    @property
+    def required_services(self) -> tuple[str, ...]:
+        """Immutable snapshot of required service names."""
+        return tuple(self._required_services)
+
     def add_check(
         self,
         name: str,

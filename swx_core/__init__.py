@@ -52,6 +52,18 @@ from swx_core.events import EventBus
 # Bootstrap
 from swx_core.bootstrap import bootstrap
 
+# Application factory
+from swx_core.app_factory import create_swx_app
+
+# Lifecycle
+from swx_core.lifecycle import LifecycleManager, LifecycleService, LifecycleError
+
+# Background scheduler
+from swx_core.background import BackgroundScheduler
+
+# Production validator
+from swx_core.config.validator import ProductionValidator
+
 # Base classes
 from swx_core.controllers import BaseController
 from swx_core.services import BaseService
@@ -106,6 +118,20 @@ __all__ = [
     
     # Bootstrap
     "bootstrap",
+    
+    # Application factory
+    "create_swx_app",
+    
+    # Lifecycle
+    "LifecycleManager",
+    "LifecycleService",
+    "LifecycleError",
+    
+    # Background scheduler
+    "BackgroundScheduler",
+    
+    # Production validator
+    "ProductionValidator",
     
     # Base classes
     "BaseController",
