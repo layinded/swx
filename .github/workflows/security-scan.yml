@@ -1,0 +1,65 @@
+name: Security - Dependency Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  pip-audit:
+    name: pip-audit CVE scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pip-audit
+          pip install -r requirements.txt || true
+
+      - name: Run pip-audit (block on Critical/High)
+        run: |
+          pip-audit \
+            --desc \
+            --progress-spinner off \
+            --ignore-vuln GHSA-xxxx-xxxx-xxxx \
+            || exit 1
+
+  pip-audit-summary:
+    name: pip-audit summary (all severities)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pip-audit
+          pip install -r requirements.txt || true
+
+      - name: Run pip-audit (all severities, non-blocking)
+        run: |
+          pip-audit --desc --progress-spinner off || true
+
+  hash-verify:
+    name: Verify dependency hashes (uv.lock integrity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Verify uv.lock integrity
+        run: uv lock --check

@@ -8,9 +8,9 @@ import asyncio
 from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime
 from pydantic import BaseModel, Field
+from swx_core.utils.time import utc_now
 
 from swx_core.database.db import get_session
-
 
 class HealthStatus(BaseModel):
     """Health status for a single service."""
@@ -20,11 +20,10 @@ class HealthStatus(BaseModel):
     latency_ms: Optional[float] = None
     details: Optional[Dict[str, Any]] = None
 
-
 class HealthCheckResult(BaseModel):
     """Overall health check result."""
     status: str = Field(description="healthy, unhealthy, or degraded")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: utc_now())
     version: str
     uptime_seconds: float = Field(description="Application uptime in seconds")
     services: Dict[str, HealthStatus] = Field(default_factory=dict)
@@ -33,7 +32,6 @@ class HealthCheckResult(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
-
 
 class HealthChecker:
     """
@@ -57,10 +55,15 @@ class HealthChecker:
             version: Application version
         """
         self.version = version
-        self._start_time = datetime.utcnow()
+        self._start_time = utc_now()
         self._checks: Dict[str, Callable] = {}
         self._required_services: List[str] = []
-    
+
+    @property
+    def required_services(self) -> tuple[str, ...]:
+        """Immutable snapshot of required service names."""
+        return tuple(self._required_services)
+
     def add_check(
         self,
         name: str,
@@ -99,9 +102,9 @@ class HealthChecker:
             )
         
         try:
-            start_time = datetime.utcnow()
+            start_time = utc_now()
             result = await check_func()
-            end_time = datetime.utcnow()
+            end_time = utc_now()
             
             if result.latency_ms is None:
                 result.latency_ms = (end_time - start_time).total_seconds() * 1000
@@ -144,7 +147,7 @@ class HealthChecker:
         return HealthCheckResult(
             status=overall_status,
             version=self.version,
-            uptime_seconds=(datetime.utcnow() - self._start_time).total_seconds(),
+            uptime_seconds=(utc_now() - self._start_time).total_seconds(),
             services=results,
         )
     
@@ -167,7 +170,6 @@ class HealthChecker:
         
         return "healthy"
 
-
 # Pre-defined health check functions
 
 async def check_database() -> HealthStatus:
@@ -189,18 +191,17 @@ async def check_database() -> HealthStatus:
             message=f"Database connection failed: {str(e)}",
         )
 
-
 async def check_redis(redis_url: str = "redis://localhost:6379") -> HealthStatus:
     """Check Redis connectivity."""
     try:
         import redis.asyncio as redis
         
         client = redis.from_url(redis_url)
-        start_time = datetime.utcnow()
+        start_time = utc_now()
         
         await client.ping()
         
-        latency = (datetime.utcnow() - start_time).total_seconds() * 1000
+        latency = (utc_now() - start_time).total_seconds() * 1000
         await client.close()
         
         return HealthStatus(
@@ -223,7 +224,6 @@ async def check_redis(redis_url: str = "redis://localhost:6379") -> HealthStatus
             status="unhealthy",
             message=f"Redis connection failed: {str(e)}",
         )
-
 
 async def check_celery(celery_app=None) -> HealthStatus:
     """Check Celery worker availability."""
@@ -264,7 +264,6 @@ async def check_celery(celery_app=None) -> HealthStatus:
             message=f"Celery check failed: {str(e)}",
         )
 
-
 async def check_external_service(
     name: str,
     url: str,
@@ -284,12 +283,12 @@ async def check_external_service(
     try:
         import httpx
         
-        start_time = datetime.utcnow()
+        start_time = utc_now()
         
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url)
         
-        latency = (datetime.utcnow() - start_time).total_seconds() * 1000
+        latency = (utc_now() - start_time).total_seconds() * 1000
         
         if response.status_code < 400:
             return HealthStatus(
@@ -320,10 +319,8 @@ async def check_external_service(
             message=f"{name} health check failed: {str(e)}",
         )
 
-
 # Default health checker instance
 _default_health_checker: Optional[HealthChecker] = None
-
 
 def get_health_checker(version: str = None) -> HealthChecker:
     """Get or create default health checker."""
@@ -344,7 +341,6 @@ def get_health_checker(version: str = None) -> HealthChecker:
         _default_health_checker.add_check("redis", check_redis)
     
     return _default_health_checker
-
 
 def setup_health_checker(
     version: str,

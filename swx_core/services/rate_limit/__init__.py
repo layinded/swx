@@ -23,6 +23,13 @@ from swx_core.services.rate_limit.abuse_detector import (
     get_abuse_detector,
     set_abuse_detector,
 )
+from swx_core.services.rate_limit.rate_limit_override import (
+    get_override,
+    load_overrides,
+    reload_overrides,
+    is_loaded,
+    clear_overrides,
+)
 
 __all__ = [
     "RateLimiter",
@@ -38,4 +45,9 @@ __all__ = [
     "AbuseDetector",
     "get_abuse_detector",
     "set_abuse_detector",
+    "get_override",
+    "load_overrides",
+    "reload_overrides",
+    "is_loaded",
+    "clear_overrides",
 ]

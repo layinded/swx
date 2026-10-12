@@ -1,7 +1,7 @@
 # Getting Started with SwX-API
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.7.15
+**Last Updated:** 2026-05-29
 
 ---
 
@@ -80,10 +80,19 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install swx-core
+
+# Or install with extras for additional features:
+# - billing: Stripe payment processing
+# - monitoring: Sentry error tracking
+# - jobs: Celery background tasks
+# - ai: Vector embeddings (pgai)
+# - prod: Gunicorn WSGI server
+
+pip install swx-core[billing,monitoring,jobs]
 
 # Or using uv (faster)
-uv pip install -r requirements.txt
+uv pip install swx-core
 ```
 
 ---
@@ -117,9 +126,16 @@ PASSWORD_RESET_SECRET_KEY=your-password-reset-secret-key
 PROJECT_NAME=SwX-API
 ENVIRONMENT=local
 ROUTE_PREFIX=/api
+CORE_ROUTE_PREFIX=  # Empty = core routes at /api/auth, or "/v1" for /api/v1/auth
 ```
 
 ### Optional Variables
+
+**Route Configuration:**
+```env
+CORE_ROUTE_PREFIX=  # Optional: prefix for core routes (see Routing docs)
+API_VERSIONS=v1,v2  # Supported API versions
+```
 
 **Redis:**
 ```env
@@ -155,6 +171,15 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 ```env
 SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
 ```
+
+**Test Configuration (for pytest-asyncio):**
+```env
+TESTING=true
+DB_POOL_CLASS=NullPool
+TEST_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/swx_test
+```
+
+See [Testing Guide](../09-testing/TESTING_GUIDE.md) for the full test-friendly database configuration.
 
 ### Generate Secrets
 
@@ -262,6 +287,46 @@ gunicorn swx_core.main:app \
   --workers 4 \
   --worker-class uvicorn.workers.UvicornWorker \
   --bind 0.0.0.0:8001
+```
+
+---
+
+## Using swx-core in Your Application
+
+### Option 1: Use bootstrap_app() (Recommended)
+
+```python
+# main.py
+from fastapi import FastAPI
+from swx_core.bootstrap import bootstrap_app
+
+app = FastAPI()
+container = bootstrap_app(app)
+
+# Routes are automatically registered:
+# - /api/auth/* (login, register, refresh, revoke)
+# - /api/user/profile/* (current user)
+# - /api/admin/* (admin CRUD)
+# - /api/utils/* (health, language)
+# - etc.
+```
+
+### Option 2: Import swx-core app directly
+
+```python
+# main.py
+from swx_core.main import app  # Use swx-core app directly
+```
+
+### Option 3: Import router into your own app
+
+```python
+# main.py
+from fastapi import FastAPI
+from swx_core.router import router
+
+app = FastAPI()
+app.include_router(router)  # All swx-core routes registered
 ```
 
 ---

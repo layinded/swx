@@ -1,7 +1,7 @@
 # Rate Limiting & Abuse Protection
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.12.0  
+**Last Updated:** 2026-08-03
 
 ---
 
@@ -13,10 +13,14 @@
 4. [Plan-Based Limits](#plan-based-limits)
 5. [Rate Limit Algorithm](#rate-limit-algorithm)
 6. [Skip Paths](#skip-paths)
-7. [Usage Examples](#usage-examples)
-8. [Abuse Detection](#abuse-detection)
-9. [Operational Tuning](#operational-tuning)
-10. [Troubleshooting](#troubleshooting)
+7. [Fail-Open Mode](#fail-open-mode)
+8. [Database-Driven Overrides](#database-driven-overrides)
+9. [Billing Plan Resolution](#billing-plan-resolution)
+10. [Auth Rate Limiting](#auth-rate-limiting)
+11. [Usage Examples](#usage-examples)
+12. [Abuse Detection](#abuse-detection)
+13. [Operational Tuning](#operational-tuning)
+14. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -28,7 +32,7 @@ SwX-API includes a **comprehensive rate limiting system** that protects the API 
 - **Feature-aware** - Different limits for API requests, billing, search, export
 - **Endpoint-aware** - Different limits for read, write, delete operations
 - **Time-windowed** - Burst (1 minute), sustained (1 hour), daily (24 hours)
-- **Fail-closed** - Denies requests if Redis unavailable
+- **Fail-closed** - Denies requests if Redis unavailable (configurable via `RATE_LIMIT_FAIL_OPEN`)
 
 ### Key Features
 
@@ -40,6 +44,10 @@ SwX-API includes a **comprehensive rate limiting system** that protects the API 
 - ✅ **Redis-backed** - Scalable across multiple workers
 - ✅ **Audit logging** - All rate limit events logged
 - ✅ **Abuse detection** - Automatic detection of abuse patterns
+- ✅ **Configurable skip paths** - Custom paths exempt via `RATE_LIMIT_SKIP_PATHS` setting
+- ✅ **Fail-open mode** - `RATE_LIMIT_FAIL_OPEN` for development without Redis
+- ✅ **Database-driven overrides** - Runtime limit overrides via SystemConfig
+- ✅ **Billing plan in JWT** - Plan resolved at login, embedded in token claim
 
 ---
 
@@ -276,6 +284,8 @@ results = await pipe.execute()
 
 ### Default Skip Paths
 
+> **⚠️ Security Notice (v2.7.22):** Previous versions included broad skip paths (`/api/auth`, `/api/admin/`, `/api/user/profile`, `/api/qa_article`, `/api/oauth`) that exempted entire route groups from rate limiting. These have been removed to prevent abuse. Only infrastructure endpoints are now exempt by default.
+
 ```python
 skip_paths = [
     "/api/utils/health-check",
@@ -284,12 +294,6 @@ skip_paths = [
     "/docs",
     "/openapi.json",
     "/redoc",
-    "/api/admin/auth",
-    "/api/auth",
-    "/api/admin/",
-    "/api/user/profile",
-    "/api/qa_article",
-    "/api/oauth",
     "/",
 ]
 ```
@@ -303,7 +307,15 @@ skip_paths = [
 
 ### Customizing Skip Paths
 
-**In middleware:**
+**Via settings (recommended):**
+```python
+# .env
+RATE_LIMIT_SKIP_PATHS=["/api/webhooks","/api/auth/callback"]
+```
+
+Paths from this setting are **appended** to the built-in defaults.
+
+**Programmatically (overrides defaults entirely):**
 ```python
 from swx_core.middleware.rate_limit_middleware import RateLimitMiddleware
 
@@ -315,6 +327,271 @@ app.add_middleware(
     ]
 )
 ```
+
+---
+
+## Fail-Open Mode
+
+### Default Behavior (Fail-Closed)
+
+By default, rate limiting **denies all requests** when Redis is unavailable. This prevents abuse during outages but can cause total service blackout.
+
+### Enabling Fail-Open
+
+For development or non-critical environments:
+
+```python
+# .env
+RATE_LIMIT_FAIL_OPEN=true
+```
+
+When enabled, requests are **allowed through** if Redis is unavailable, with a warning logged. This is useful for:
+- Local development without Redis
+- Staging environments
+- Graceful degradation during Redis maintenance
+
+### Disabling Rate Limiting Entirely
+
+```python
+# .env
+RATE_LIMIT_ENABLED=false
+```
+
+The middleware skips all processing when disabled.
+
+---
+
+## Database-Driven Overrides
+
+### Overview
+
+Rate limits can be overridden at runtime via **SystemConfig** entries without code changes or restarts. This enables per-plan, per-feature, and per-endpoint customization.
+
+### Configuration
+
+Overrides are stored as SystemConfig entries with:
+- **Category:** `RATE_LIMIT`
+- **Key pattern:** `rate_limit.{plan}.{feature}.{endpoint_class}.{limit_type}`
+- **Value type:** `INT`
+- **is_active:** `true` to enable
+
+### Example Overrides
+
+| Key | Value | Effect |
+|-----|-------|--------|
+| `rate_limit.pro.api_requests.read.burst` | `500` | Pro plan: 500 reads/min (was 200) |
+| `rate_limit.free.search.read.daily` | `50000` | Free plan: 50K search reads/day (was 100K) |
+| `rate_limit.team.billing.write.burst` | `100` | Team plan: 100 billing writes/min (was 50) |
+
+### How It Works
+
+1. On first request, the middleware loads all active `RATE_LIMIT` configs from SystemConfig into an in-memory cache
+2. For each rate limit check, the cache is consulted first
+3. If an override exists, it takes precedence over the hardcoded `RATE_LIMITS` registry
+4. If no override exists, the registry default is used
+
+### Managing Overrides
+
+Use the existing admin settings API:
+
+```bash
+# Create an override
+curl -X POST /api/admin/settings \
+  -H "Authorization: Bearer <admin-token>" \
+  -d '{
+    "key": "rate_limit.pro.api_requests.read.burst",
+    "value": "500",
+    "value_type": "int",
+    "category": "rate_limit",
+    "description": "Increase Pro read burst limit"
+  }'
+
+# Reload overrides after manual DB changes
+# (happens automatically on next app restart)
+```
+
+### Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `RATE_LIMIT_OVERRIDE_ENABLED` | `true` | Enable/disable DB-driven overrides |
+
+---
+
+## Billing Plan Resolution
+
+### How Plans Are Resolved
+
+The rate-limit middleware resolves each user's billing plan via the JWT `billing_plan` claim:
+
+1. **At login** — `auth_service.py` calls `get_user_plan_key(session, user_id)` which queries `BillingAccount → Subscription → Plan` via the repository layer
+2. **In JWT** — The plan key (e.g., `"pro"`, `"enterprise"`) is embedded as a `billing_plan` claim in the access token
+3. **At request time** — The middleware decodes the JWT and reads the `billing_plan` claim to select the correct rate limit tier
+
+Both code paths in the middleware now resolve the plan from the JWT claim:
+- `_actor_from_bearer()` — used when route dependencies have not yet set `request.state` (middleware runs first)
+- `_get_user_billing_plan()` — used when `request.state.current_user` is already set by a prior dependency
+
+> **v2.14.4 fix:** `_get_user_billing_plan()` was previously a stub that hardcoded `return "free"`, causing Pro/Enterprise users to be rate-limited as `free` when their user object was resolved before the middleware ran. It now decodes the JWT claim, consistent with `_actor_from_bearer()`.
+
+### Plan Resolution Chain
+
+```
+User → BillingAccount (owner_id, type=USER)
+     → Subscription (status in ACTIVE/TRIALING/PAST_DUE, not expired)
+     → Plan.key (e.g., "free", "pro", "team", "enterprise")
+```
+
+### Fallback Behavior
+
+- No BillingAccount → `"free"`
+- No active Subscription → `"free"`
+- Expired Subscription → `"free"`
+- JWT without `billing_plan` claim (old tokens) → `"free"`
+- Any error → `"free"`
+
+---
+
+## Per-Route Rate Limit Enforcement (v2.15.3+)
+
+For routes where the rate limit namespace cannot be inferred from the URL path alone (e.g., business context like `detection:detect:public` vs `detection:detect:team`), use the `enforce_limit()` API:
+
+```python
+from swx_core.services.rate_limit.enforce import enforce_limit
+
+@router.post("/detect/public")
+async def detect_public(request: Request):
+    await enforce_limit(request, namespace="detection:detect:public")
+    ...
+
+@router.post("/detect/team")
+async def detect_team(request: Request, user=Depends(get_current_user)):
+    await enforce_limit(request, namespace="detection:detect:team")
+    ...
+```
+
+`enforce_limit()` resolves the actor from the request (JWT claim or `request.state`), looks up the limit from the registry, checks Redis, and raises `HTTPException(429)` with standard rate limit headers if exceeded.
+
+### Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `request` | required | FastAPI request object |
+| `namespace` | required | Application-specific namespace (e.g., `"detection:detect:public"`) |
+| `feature` | `"api_requests"` | Feature bucket for limit lookup |
+| `endpoint_class` | `"read"` | Endpoint class for limit lookup |
+| `limit_type` | `"burst"` | Which limit to check (`"burst"`, `"sustained"`, `"daily"`) |
+| `window` | `LimitWindow.MINUTE` | Time window for the counter |
+| `actor_id` | auto | Override actor ID (defaults to JWT sub or IP) |
+| `actor_type` | auto | Override actor type (defaults to JWT-derived type) |
+| `billing_plan` | auto | Override billing plan (defaults to JWT claim) |
+| `custom_limit` | `None` | Override the limit value entirely (bypasses registry lookup) |
+
+### Returns
+
+Remaining requests in the window (int). Raises `HTTPException(429)` if exceeded.
+
+### Preventing Double Counting (v2.15.5+)
+
+When using `enforce_limit()` on a route, the middleware will also rate limit the same request — causing double counting. To prevent this, pass `exempt_namespaces` to the middleware so it skips those routes:
+
+```python
+RateLimitMiddleware(
+    app,
+    exempt_namespaces=["/api/detection/*", "/api/chat/*"],
+)
+```
+
+Routes matching these glob patterns skip middleware rate limiting entirely. `enforce_limit()` handles them exclusively. The middleware sets `request.state.rate_limit_handled = True` on exempt routes.
+
+### String-Based Rate Limit API (v2.16.1+)
+
+For routes that need human-readable rate limits without looking up the registry:
+
+```python
+from swx_core.services.rate_limit.enforce import enforce_rate_limit
+
+@router.post("/login")
+async def login(request: Request):
+    await enforce_rate_limit(request, limit="5/minute", namespace="auth:login")
+    ...
+```
+
+Supported formats: `"5/second"`, `"100/minute"`, `"1000/hour"`, `"10000/day"`.
+
+Also available as a standalone parser:
+
+```python
+from swx_core.services.rate_limit.enforce import parse_rate_limit
+
+max_requests, window_seconds = parse_rate_limit("5/minute")  # (5, 60)
+```
+
+---
+
+## Auth Rate Limiting
+
+The **Auth Rate Limit Middleware** (`swx_core/middleware/auth_rate_limit.py`) provides declarative, per-path rate limiting for authentication endpoints. It's a pure-ASGI implementation that works correctly with SSE streaming.
+
+### Key Features
+
+- **Declarative rules** — define rate limits as a JSON configuration
+- **Per-namespace tracking** — each rule has a unique namespace for independent counting
+- **Sliding window** — in-memory sliding window counter with per-IP granularity
+- **Path matching** — prefix or exact path matching with HTTP method filtering
+- **SSE-compatible** — pure ASGI, doesn't buffer response bodies
+- **Opt-in** — when no rules are configured, the middleware is a no-op
+
+### Configuration
+
+```bash
+# .env
+SWX_AUTH_RATE_LIMIT_RULES=[
+  {"namespace":"auth:login","path_prefix":"/api/auth/login","methods":["POST"],"max_requests":5,"window_seconds":60},
+  {"namespace":"auth:register","path_prefix":"/api/auth/register","methods":["POST"],"max_requests":3,"window_seconds":3600},
+  {"namespace":"auth:refresh","exact_path":"/api/auth/refresh","methods":["POST"],"max_requests":10,"window_seconds":60},
+  {"namespace":"auth:password","path_prefix":"/api/auth/password-recover","methods":["POST"],"max_requests":3,"window_seconds":3600}
+]
+```
+
+### RateLimitRule Reference
+
+| Field | Type | Description |
+|---|---|---|
+| `namespace` | `str` | Unique name (e.g., `"auth:login"`) |
+| `path_prefix` | `str` | Path prefix to match (e.g., `"/api/auth/login"`) |
+| `exact_path` | `str` | Exact path to match |
+| `methods` | `tuple` | HTTP methods to limit (empty = all) |
+| `max_requests` | `int` | Max requests in the window (default: 5) |
+| `window_seconds` | `int` | Time window in seconds (default: 60) |
+
+### 429 Response Format
+
+```json
+{
+    "success": false,
+    "error": {
+        "code": "RATE_LIMIT_EXCEEDED",
+        "message": "Rate limit exceeded for auth:login.",
+        "details": {
+            "namespace": "auth:login",
+            "retry_after": 45
+        }
+    }
+}
+```
+
+### Registration
+
+```python
+from swx_core.middleware.auth_rate_limit import apply_middleware
+from fastapi import FastAPI
+
+app = FastAPI()
+apply_middleware(app)
+```
+
+See [Auth Rate Limiting](AUTH_RATE_LIMITING.md) for full documentation.
 
 ---
 

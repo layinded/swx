@@ -7,6 +7,8 @@ import time
 import click
 from click.core import Context
 
+from swx_core.config.settings import settings
+
 # Import the Base for models registration.
 from swx_core.utils.helper import (
     resolve_base_path,
@@ -389,6 +391,7 @@ def make_from_model(ctx: Context, model_name, module):
     _, file_name, _ = normalize_resource_names(model_name, "model")
     submodule_name = module + "." + file_name
     click.echo(f"DEBUG: Derived submodule name: {submodule_name}")
+    sub_mod: Any = None  # type: ignore[assignment]
     try:
         sub_mod = importlib.import_module(submodule_name)
         sub_mod = importlib.reload(sub_mod)
@@ -406,8 +409,8 @@ def make_from_model(ctx: Context, model_name, module):
                 raise ImportError(
                     f"Cannot create spec for {submodule_name} at {target_model_file}"
                 )
-            sub_mod = module_from_spec(spec)
-            spec.loader.exec_module(sub_mod)
+            sub_mod = module_from_spec(spec)  # type: ignore[arg-type]
+            spec.loader.exec_module(sub_mod)  # type: ignore[union-attr]
             sys.modules[submodule_name] = sub_mod
             click.echo(
                 f"DEBUG: Successfully manually loaded submodule: {submodule_name}"
@@ -639,10 +642,11 @@ def migration(model_name, existing, new):
     # Construct the migration message.
     message = f"Migration for model {model_name}"
 
+    command: list[str] = []
     if existing:
-        command = ["alembic", "revision", "--autogenerate", "-m", message]
+        command = ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, "revision", "--autogenerate", "-m", message]
     elif new:
-        command = ["alembic", "revision", "-m", message]
+        command = ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, "revision", "-m", message]
 
     click.echo(f"Running command: {' '.join(command)}")
     result = subprocess.run(command, capture_output=True, text=True)
@@ -787,10 +791,11 @@ def resource(resource_name, module, columns, migration, existing, base):
         )
         time.sleep(2)  # Ensure DB models are detected before migration
         migration_message = f"Generated CRUD for {resource_name}"
+        config_flag = f'-c "{settings.ALEMBIC_CONFIG_PATH}"'
         command = (
-            f'alembic revision --autogenerate -m "{migration_message}"'
+            f'alembic {config_flag} revision --autogenerate -m "{migration_message}"'
             if os.name == "nt"
-            else f"alembic revision --autogenerate -m '{migration_message}'"
+            else f"alembic {config_flag} revision --autogenerate -m '{migration_message}'"
         )
         click.echo(f"DEBUG: Running migration command: {command}")
         os.system(command)

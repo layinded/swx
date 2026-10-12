@@ -20,22 +20,55 @@ import json
 import os
 from typing import Any, Optional
 from datetime import datetime, timedelta
-from functools import lru_cache
+from swx_core.utils.time import utc_now
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from swx_core.config.settings import settings as env_settings
 from swx_core.models.system_config import (
     SystemConfig,
     SettingValueType,
-    SettingCategory,
 )
 from swx_core.middleware.logging_middleware import logger
 
 # In-memory cache with TTL
 _settings_cache: dict[str, tuple[Any, datetime]] = {}
 _cache_ttl = timedelta(seconds=60)  # 1 minute TTL
+
+# Scalar types whose values should be unwrapped from single-key dicts
+# before conversion (FastPII wrapped-scalar convention: {"threshold": 0.7}).
+_SCALAR_VALUE_TYPES: frozenset[SettingValueType] = frozenset({
+    SettingValueType.INT,
+    SettingValueType.INTEGER,
+    SettingValueType.BOOL,
+    SettingValueType.BOOLEAN,
+    SettingValueType.STRING,
+    SettingValueType.FLOAT,
+})
+
+
+def _unwrap_scalar(value: Any) -> Any:
+    """Unwrap a single-key dict to its scalar contents.
+
+    FastPII wraps scalar config values in single-key JSON objects for
+    namespacing (e.g. ``{"threshold": 0.7}``).  This extracts the inner
+    value so ``int()``/``float()``/``bool()`` succeed instead of
+    silently returning ``0``.  Only single-key dicts are unwrapped.
+    """
+    if isinstance(value, dict) and len(value) == 1:
+        return next(iter(value.values()))
+    return value
+
+
+def _get_redis_client():
+    try:
+        from swx_core.container.container import get_container
+        container = get_container()
+        if container.bound("redis.client"):
+            return container.make("redis.client")
+    except Exception:
+        pass
+    return None
 
 
 class SettingsService:
@@ -44,9 +77,20 @@ class SettingsService:
     
     Provides type-safe access to settings with DB + .env fallback.
     """
-    
-    def __init__(self, session: AsyncSession):
+
+    def __init__(self, session: AsyncSession, model: type = SystemConfig):
+        """
+        Args:
+            session: Async database session.
+            model: SQLModel table class for config storage. Must have
+                ``key`` (str, unique), ``value`` (Any/JSONB), ``value_type``
+                (SettingValueType), and ``is_active`` (bool) fields.
+                Defaults to ``SystemConfig``. Pass a custom model to use
+                a different config table (e.g., a project-specific
+                ``fastpii_system_configs`` table).
+        """
         self.session = session
+        self.model = model
     
     async def get(
         self,
@@ -67,16 +111,40 @@ class SettingsService:
         Returns:
             Setting value (typed)
         """
-        # Check cache first
+        # Check in-process cache first
         if key in _settings_cache:
             value, cached_at = _settings_cache[key]
-            if datetime.utcnow() - cached_at < _cache_ttl:
+            if utc_now() - cached_at < _cache_ttl:
                 return value
-        
+
+        # Check Redis cache (cross-worker)
+        try:
+            redis = _get_redis_client()
+            if redis is not None:
+                import json
+                cached = await redis.get(f"swx:settings:{key}")
+                if cached is not None:
+                    value = json.loads(cached)
+                    _settings_cache[key] = (value, utc_now())
+                    return value
+        except Exception:
+            pass
+
         # Try database
         db_value = await self._get_from_db(key, value_type)
         if db_value is not None:
-            _settings_cache[key] = (db_value, datetime.utcnow())
+            _settings_cache[key] = (db_value, utc_now())
+            try:
+                redis = _get_redis_client()
+                if redis is not None:
+                    import json
+                    await redis.setex(
+                        f"swx:settings:{key}",
+                        int(_cache_ttl.total_seconds()),
+                        json.dumps(db_value, default=str),
+                    )
+            except Exception:
+                pass
             return db_value
         
         # Try environment
@@ -84,7 +152,7 @@ class SettingsService:
         if env_value is not None:
             # Convert based on value_type or infer
             converted = self._convert_value(env_value, value_type)
-            _settings_cache[key] = (converted, datetime.utcnow())
+            _settings_cache[key] = (converted, utc_now())
             return converted
         
         # Use default
@@ -107,6 +175,11 @@ class SettingsService:
         """Get integer setting."""
         value = await self.get(key, default, SettingValueType.INT)
         return int(value) if value is not None else default
+
+    async def get_float(self, key: str, default: float = 0.0) -> float:
+        """Get float setting."""
+        value = await self.get(key, default, SettingValueType.FLOAT)
+        return float(value) if value is not None else default
     
     async def get_bool(self, key: str, default: bool = False) -> bool:
         """Get boolean setting."""
@@ -122,7 +195,11 @@ class SettingsService:
         value = await self.get(key, default, SettingValueType.STRING)
         return str(value) if value is not None else default
     
-    async def get_json(self, key: str, default: Optional[dict] = None) -> dict:
+    async def get_json(
+        self,
+        key: str,
+        default: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Get JSON setting."""
         value = await self.get(key, default, SettingValueType.JSON)
         if isinstance(value, dict):
@@ -132,7 +209,7 @@ class SettingsService:
                 return json.loads(value)
             except json.JSONDecodeError:
                 logger.warning(f"Invalid JSON for {key}: {value}")
-        return default or {}
+        return default if default is not None else {}
     
     async def _get_from_db(
         self,
@@ -141,9 +218,9 @@ class SettingsService:
     ) -> Optional[Any]:
         """Get setting from database."""
         try:
-            stmt = select(SystemConfig).where(
-                SystemConfig.key == key,
-                SystemConfig.is_active == True,
+            stmt = select(self.model).where(
+                self.model.key == key,
+                self.model.is_active == True,
             )
             result = await self.session.execute(stmt)
             config = result.scalar_one_or_none()
@@ -160,50 +237,82 @@ class SettingsService:
             logger.error(f"Error reading setting {key} from DB: {e}")
             return None
     
-    def _convert_value(self, value: str, value_type: Optional[SettingValueType]) -> Any:
-        """Convert string value to appropriate type."""
-        if value_type == SystemConfigValueType.INT:
+    def _convert_value(self, value: Any, value_type: Optional[SettingValueType]) -> Any:
+        """Convert value to appropriate type."""
+        if value_type is None:
+            return value
+
+        # Unwrap single-key dicts for scalar types (FastPII wrapped-scalar convention)
+        if value_type in _SCALAR_VALUE_TYPES:
+            value = _unwrap_scalar(value)
+
+        if value_type in (SettingValueType.INT, SettingValueType.INTEGER):
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
             try:
                 return int(value)
             except (ValueError, TypeError):
                 return 0
-        elif value_type == SystemConfigValueType.BOOL:
+        elif value_type in (SettingValueType.BOOL, SettingValueType.BOOLEAN):
             if isinstance(value, bool):
                 return value
             return str(value).lower() in ("true", "1", "yes", "on")
-        elif value_type == SystemConfigValueType.JSON:
+        elif value_type == SettingValueType.FLOAT:
+            if isinstance(value, float):
+                return value
             try:
-                return json.loads(value)
-            except (ValueError, TypeError, json.JSONDecodeError):
-                return {}
-        else:  # STRING or None
-            return str(value)
+                return float(value)
+            except (ValueError, TypeError):
+                return 0.0
+        elif value_type == SettingValueType.JSON:
+            if isinstance(value, (dict, list)):
+                return value
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    return {}
+            return {}
+        else:
+            return str(value) if value is not None else None
     
     def _get_safe_default(self, key: str) -> Any:
         """Get safe default for critical settings."""
         defaults = {
-            "ACCESS_TOKEN_EXPIRE_MINUTES": 60 * 24 * 7,  # 7 days
+            "ACCESS_TOKEN_EXPIRE_MINUTES": 15,
             "REFRESH_TOKEN_EXPIRE_DAYS": 30,
             "SECRET_KEY": "",  # Should never happen
         }
         return defaults.get(key, None)
     
     @staticmethod
-    def invalidate_cache(key: Optional[str] = None):
-        """Invalidate cache for a key or all keys."""
+    async def invalidate_cache(key: Optional[str] = None) -> None:
+        """Invalidate in-process and Redis cache for a key or all keys.
+
+        When Redis is available, publishes invalidation to other workers
+        so they clear their in-process caches too.
+        """
         global _settings_cache
         if key:
             _settings_cache.pop(key, None)
         else:
             _settings_cache.clear()
+        try:
+            redis = _get_redis_client()
+            if redis is not None:
+                if key:
+                    await redis.delete(f"swx:settings:{key}")
+                else:
+                    async for k in redis.scan_iter("swx:settings:*"):
+                        await redis.delete(k)
+        except Exception:
+            pass
         logger.info(f"Settings cache invalidated for: {key or 'all'}")
-
 
 # Global settings service instance (session-dependent)
 def get_settings_service(session: AsyncSession) -> SettingsService:
     """Get settings service instance."""
     return SettingsService(session)
-
 
 # Convenience function for common settings (uses env_settings as fallback)
 async def get_setting(
@@ -216,7 +325,7 @@ async def get_setting(
     Convenience function to get a setting.
     
     Usage:
-        value = await get_setting(session, "ACCESS_TOKEN_EXPIRE_MINUTES", default=10080)
+        value = await get_setting(session, "ACCESS_TOKEN_EXPIRE_MINUTES", default=15)
     """
     service = get_settings_service(session)
     return await service.get(key, default, value_type)

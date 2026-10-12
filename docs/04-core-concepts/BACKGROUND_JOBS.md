@@ -208,12 +208,14 @@ job = Job(
 
 **1. Check Before Action:**
 ```python
+from swx_core.utils.time import utc_now
+
 async def billing_sync_handler(session: AsyncSession, payload: Dict) -> Dict:
     subscription_id = payload["subscription_id"]
     
     # Check if already synced
     subscription = await get_subscription(session, subscription_id)
-    if subscription.last_synced_at and subscription.last_synced_at > datetime.utcnow() - timedelta(minutes=5):
+    if subscription.last_synced_at and subscription.last_synced_at > utc_now() - timedelta(minutes=5):
         return {"status": "already_synced", "skipped": True}
     
     # Perform sync
@@ -287,12 +289,13 @@ job = await create_job(
 **Scheduled Jobs:**
 ```python
 from datetime import datetime, timedelta
+from swx_core.utils.time import utc_now
 
 job = await create_job(
     session,
     job_type="system.cache.refresh",
     payload={},
-    scheduled_at=datetime.utcnow() + timedelta(hours=1)  # Execute in 1 hour
+    scheduled_at=utc_now() + timedelta(hours=1)  # Execute in 1 hour
 )
 ```
 
@@ -464,7 +467,7 @@ async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]
             if subscription.status != new_status:
                 subscription.status = new_status
                 if new_status == SubscriptionStatus.CANCELED:
-                    subscription.ended_at = datetime.utcnow()
+                    subscription.ended_at = utc_now()
                 session.add(subscription)
                 await session.commit()
     
@@ -520,14 +523,15 @@ async def alert_send_handler(session: AsyncSession, payload: Dict[str, Any]) -> 
 async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """Aggregate audit logs for reporting and analysis."""
     from datetime import datetime, timedelta
+    from swx_core.utils.time import utc_now
     from sqlmodel import func, desc
     
     # Parse date range
     date_from_str = payload.get("date_from")
     date_to_str = payload.get("date_to")
     
-    date_from = datetime.fromisoformat(date_from_str.replace("Z", "+00:00")) if date_from_str else datetime.utcnow() - timedelta(days=7)
-    date_to = datetime.fromisoformat(date_to_str.replace("Z", "+00:00")) if date_to_str else datetime.utcnow()
+    date_from = datetime.fromisoformat(date_from_str.replace("Z", "+00:00")) if date_from_str else utc_now() - timedelta(days=7)
+    date_to = datetime.fromisoformat(date_to_str.replace("Z", "+00:00")) if date_to_str else utc_now()
     
     # Aggregate by action, resource_type, outcome
     stmt = (
@@ -735,13 +739,15 @@ GROUP BY job_type;
    ```
 
 5. **Include useful payload data**
-   ```python
-   # ✅ Good - Complete payload
-   payload = {
-       "subscription_id": str(subscription.id),
-       "action": "sync",
-       "timestamp": datetime.utcnow().isoformat()
-   }
+```python
+from swx_core.utils.time import utc_now
+
+# ✅ Good - Complete payload
+payload = {
+    "subscription_id": str(subscription.id),
+    "action": "sync",
+    "timestamp": utc_now().isoformat()
+}
    ```
 
 ### ❌ DON'T

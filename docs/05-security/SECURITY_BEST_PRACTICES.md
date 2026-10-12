@@ -1,7 +1,7 @@
 # Security Best Practices
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.7.37  
+**Last Updated:** 2026-07-02
 
 ---
 
@@ -275,6 +275,239 @@ This document provides **comprehensive security best practices** for developing,
    # ✅ Good - Rate limit login
    # Prevents brute force attacks
    ```
+
+### Rate Limiting (IMPLEMENTED)
+
+**✅ IMPLEMENTED**: swx-core now includes built-in rate limiting for authentication endpoints using the `@rate_limit_by_ip` decorator.
+
+**Why Rate Limiting is Critical:**
+
+| Endpoint | Risk Without Rate Limiting |
+|----------|----------------------------|
+| `/auth/login` | Brute-force password attacks |
+| `/auth/register` | Account spam, email enumeration |
+| `/auth/password/recover` | SMTP abuse, email enumeration |
+| `/auth/cookie/login` | Brute-force attacks via BFF pattern |
+| `/oauth/{provider}` | OAuth flow abuse |
+| `/admin/auth` | Admin brute-force attacks |
+
+**Implementation (v2.7.37+):**
+
+```python
+from swx_core.utils.rate_limit import rate_limit_by_ip
+
+# Already applied to auth endpoints:
+@router.post("/login")
+@rate_limit_by_ip(max_requests=5, window_seconds=60, action="login")
+async def login(...):
+    ...
+
+@router.post("/register")
+@rate_limit_by_ip(max_requests=3, window_seconds=3600, action="register")
+async def register(...):
+    ...
+
+@router.post("/password/recover/{email}")
+@rate_limit_by_ip(max_requests=3, window_seconds=3600, action="password_recover")
+async def recover_password(...):
+    ...
+
+@router.post("/cookie/login")
+@rate_limit_by_ip(max_requests=5, window_seconds=60, action="cookie_login")
+async def cookie_login(...):
+    ...
+
+@router.post("/cookie/refresh")
+@rate_limit_by_ip(max_requests=10, window_seconds=60, action="cookie_refresh")
+async def cookie_refresh(...):
+    ...
+```
+
+**Configuration:**
+
+```python
+# settings.py - Rate limiting configuration
+RATE_LIMIT_ENABLED: bool = True
+RATE_LIMIT_LOGIN_MAX: int = 5          # 5 requests per minute
+RATE_LIMIT_REGISTER_MAX: int = 3       # 3 requests per hour
+RATE_LIMIT_PASSWORD_RECOVER_MAX: int = 3  # 3 requests per hour
+RATE_LIMIT_COOKIE_AUTH_MAX: int = 5    # 5 requests per minute
+```
+
+**Applied Rate Limits:**
+
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| `/auth/login` | 5 requests | 1 minute |
+| `/auth/register` | 3 requests | 1 hour |
+| `/auth/password/recover` | 3 requests | 1 hour |
+| `/auth/cookie/login` | 5 requests | 1 minute |
+| `/auth/cookie/refresh` | 10 requests | 1 minute |
+
+### CSRF Protection (IMPLEMENTED)
+
+**✅ IMPLEMENTED**: swx-core now includes CSRF protection middleware for cookie-based authentication using the Double Submit Cookie pattern.
+
+**Why CSRF Protection is Critical:**
+
+Cookie-based auth (BFF pattern) uses httpOnly cookies which are automatically sent by the browser. Without CSRF protection:
+
+- Malicious sites can trigger unauthorized requests
+- Login CSRF (force victim to login as attacker's account)
+- Logout CSRF (force victim to logout)
+- State-changing actions without user consent
+
+**Implementation (v2.7.37+):**
+
+CSRF middleware is now included in `swx_core/middleware/csrf_middleware.py`:
+
+```python
+from swx_core.middleware.csrf_middleware import CSRFMiddleware
+
+# Apply to app
+app.add_middleware(
+    CSRFMiddleware,
+    cookie_name="csrf_token",
+    header_name="X-CSRF-Token",
+    exempt_paths={"/health", "/metrics"},
+    exempt_prefixes=["/api/public"]
+)
+```
+
+**CSRF Configuration:**
+
+```python
+# settings.py - CSRF configuration
+CSRF_ENABLED: bool = True                # Enable in production
+CSRF_TOKEN_LENGTH: int = 32              # Token length (bytes)
+CSRF_COOKIE_NAME: str = "csrf_token"     # Cookie name
+CSRF_HEADER_NAME: str = "X-CSRF-Token"   # Header name
+CSRF_COOKIE_MAX_AGE: int = 86400        # 24 hours
+```
+
+**CSRF Token Flow:**
+
+1. Backend generates CSRF token, sets in cookie (httpOnly=False for JS access)
+2. Frontend reads token from cookie
+3. Frontend includes token in request header `X-CSRF-Token`
+4. Backend validates token matches
+5. State-changing requests (POST, PUT, PATCH, DELETE) are protected
+
+**CSRF Helper Functions (v2.14.4+):**
+
+The standalone helpers `get_csrf_token()` and `set_csrf_cookie()` accept an optional `cookie_name` parameter that defaults to `CSRF_COOKIE_NAME`. Pass the same `cookie_name` you configured on the middleware to avoid cookie name mismatches:
+
+```python
+from swx_core.middleware.csrf_middleware import get_csrf_token, set_csrf_cookie
+
+# With a custom cookie name
+token = await get_csrf_token(request, cookie_name="my_csrf_token")
+await set_csrf_cookie(response, token, cookie_name="my_csrf_token")
+```
+
+**Security Headers Middleware (v2.16.1+):**
+
+Adds standard security headers to all HTTP responses:
+
+```python
+from swx_core.middleware.security_headers_middleware import setup_security_headers
+
+setup_security_headers(app)
+```
+
+Headers added:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `X-XSS-Protection: 1; mode=block`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+- `Strict-Transport-Security` (production only, 2-year max-age with preload)
+
+**Trusted Proxy IP Extraction (v2.16.1+):**
+
+For accurate rate limiting behind reverse proxies (nginx, Cloudflare, AWS ALB):
+
+```python
+# settings.py
+TRUSTED_PROXIES=10.0.0.1,10.0.0.2  # Comma-separated proxy IPs
+```
+
+```python
+from swx_core.services.rate_limit.enforce import get_client_ip
+
+# Walks X-Forwarded-For chain backwards to find first untrusted IP
+real_ip = get_client_ip(request)
+```
+
+**SameSite Cookie Attribute (Default Protection):**
+
+swx-core sets `SameSite=Lax` by default (via `COOKIE_SAMESITE` setting):
+
+```python
+# settings.py
+COOKIE_SAMESITE=lax  # Protects against CSRF for most cases
+```
+
+**SameSite=Lax Protection:**
+
+- ✅ Blocks cross-site POST/PUT/DELETE requests
+- ✅ Allows top-level navigations from external sites
+- ❌ Does NOT protect if `SameSite=None` is set
+- ❌ Does NOT protect older browsers (pre-2017)
+
+**Additional CSRF Protection (Recommended):**
+
+For production applications, implement CSRF tokens:
+
+```python
+from fastapi_csrf_protect import CsrfProtect
+
+@CsrfProtect.load_config
+def get_csrf_config():
+    return CsrfSettings(
+        secret_key="csrf-secret-key",
+        cookie_name="csrf_token",
+        header_name="X-CSRF-Token",
+    )
+
+@app.post("/auth/cookie/login")
+async def cookie_login(
+    request: Request,
+    csrf_protect: CsrfProtect = Depends()
+):
+    await csrf_protect.validate_csrf_token(request)
+    # ... authentication logic
+```
+
+**CSRF Token Flow:**
+
+1. Backend generates CSRF token, sets in cookie + header
+2. Frontend reads token from cookie/header
+3. Frontend includes token in request header
+4. Backend validates token matches
+
+**SameSite=None Warning:**
+
+If you set `COOKIE_SAMESITE=none` for cross-origin requests:
+
+```bash
+# ⚠️ DANGER: Requires CSRF protection
+COOKIE_SAMESITE=none  # Must implement CSRF tokens
+COOKIE_SECURE=true     # Required for SameSite=None
+```
+
+**Best Practice:**
+
+```bash
+# Production
+COOKIE_SAMESITE=strict  # Maximum CSRF protection
+COOKIE_SECURE=true
+COOKIE_DOMAIN=yourdomain.com
+
+# Development
+COOKIE_SAMESITE=lax
+COOKIE_SECURE=false
+```
 
 ### ❌ DON'T
 
@@ -680,4 +913,9 @@ This document provides **comprehensive security best practices** for developing,
 
 ---
 
-**Status:** Security best practices documented, ready for implementation.
+**Status:** Security best practices documented and implemented in v2.7.37.
+
+- ✅ Rate limiting applied to all authentication endpoints
+- ✅ CSRF protection middleware created
+- ✅ Configuration settings added for rate limiting and CSRF
+- ⚠️ CSRF middleware registration required in middleware loader

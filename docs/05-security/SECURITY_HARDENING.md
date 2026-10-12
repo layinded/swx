@@ -487,6 +487,8 @@ server {
 
 ### CORS configuration
 
+> **⚠️ Security Notice (v2.7.22):** Default CORS settings changed. `allow_origins` now defaults to `[]` (deny all) and `allow_credentials` defaults to `False`. You must explicitly configure `BACKEND_CORS_ORIGINS` for any cross-origin access.
+
 Do not use `*` origins for authenticated endpoints.
 
 Use explicit origins via `BACKEND_CORS_ORIGINS`:

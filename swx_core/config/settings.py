@@ -1,3 +1,5 @@
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
+
 """
 Application Settings Configuration
 ----------------------------------
@@ -8,221 +10,147 @@ Features:
 - Configures API, database, security, email, and CORS settings.
 - Provides dynamic property-based settings.
 
-Configuration Sections:
-- API Configuration
-- Security & Authentication
-- CORS (Cross-Origin Resource Sharing)
-- Database Configuration
-- Email Settings
-- Superuser Defaults
+The `Settings` class is composed from modular mixins that each define a
+coherent group of settings:
+- ApiSettingsMixin: API, routing, hosts, environment, logging
+- SecuritySettingsMixin: auth tokens, secrets, account lockout
+- EncryptionSettingsMixin: at-rest field encryption
+- DatabaseSettingsMixin: database connection and pooling
+- InfraSettingsMixin: CORS, email, Redis, cookies, rate limiting, CSRF, caches
+- FeaturesSettingsMixin: feature toggles and framework configuration
+- ComplianceSettingsMixin: compliance, SIEM, API key scoping
 """
 
-import secrets
-from typing import Any, List, Literal
-from pydantic import Field, field_validator, computed_field
+from typing import ClassVar
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from swx_core.config.settings_api import ApiSettingsMixin
+from swx_core.config.settings_compliance import ComplianceSettingsMixin
+from swx_core.config.settings_database import DatabaseSettingsMixin
+from swx_core.config.settings_encryption import EncryptionSettingsMixin
+from swx_core.config.settings_features import FeaturesSettingsMixin
+from swx_core.config.settings_infra import InfraSettingsMixin
+from swx_core.config.settings_security import SecuritySettingsMixin
 
-class Settings(BaseSettings):
+
+class Settings(
+    ComplianceSettingsMixin,
+    FeaturesSettingsMixin,
+    InfraSettingsMixin,
+    DatabaseSettingsMixin,
+    EncryptionSettingsMixin,
+    SecuritySettingsMixin,
+    ApiSettingsMixin,
+    BaseSettings,
+):
     """
     Application-wide settings, loaded from environment variables or `.env` file.
 
-    Attributes:
-        PROJECT_NAME (str): Name of the project.
-        ROUTE_PREFIX (str): Base API route prefix.
-        API_VERSIONS (List[str]): List of supported API versions.
-        DEFAULT_API_VERSION (str): Default API version.
-        BACKEND_HOST (str): Backend service host URL.
-        FRONTEND_HOST (str): Frontend application URL.
-        ENVIRONMENT (Literal): Deployment environment (`local`, `staging`, `production`).
-        SECRET_KEY (str): Secret key for signing authentication tokens.
-        ACCESS_TOKEN_EXPIRE_MINUTES (int): Expiry duration of access tokens (in minutes).
-        REFRESH_TOKEN_EXPIRE_DAYS (int): Expiry duration of refresh tokens (in days).
-        BACKEND_CORS_ORIGINS (str | list[str]): Allowed CORS origins.
-        DOCKERIZED (bool): Whether the application runs in a Docker container.
-        DATABASE_TYPE (Literal): Type of database (`sqlite`, `postgres`, `mysql`).
-        DB_HOST (str): Database host address.
-        DB_PORT (int): Database connection port.
-        DB_USER (str): Database username.
-        DB_PASSWORD (str): Database password.
-        DB_NAME (str): Database name.
-        SMTP settings: SMTP configurations for sending emails.
-        FIRST_SUPERUSER (str): Default superuser email.
-        FIRST_SUPERUSER_PASSWORD (str): Default superuser password.
+    Composed from modular mixins; see each mixin's docstring for the fields
+    it contributes. Kept as a single `BaseSettings` subclass so all settings
+    read from `.env` in one pass and expose a unified `settings` instance.
     """
 
-    model_config = SettingsConfigDict(
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         env_ignore_empty=True,
         extra="ignore",
     )
 
-    # API Configuration
-    PROJECT_NAME: str
-    ROUTE_PREFIX: str = Field("/api", description="Base API route prefix")
-    API_VERSIONS: List[str] = Field(["v1", "v2"], description="Supported API versions")
-    DEFAULT_API_VERSION: str = Field("v1", description="Default API version")
-
-    BACKEND_HOST: str = Field("http://localhost:8000", description="Backend API host URL")
-    FRONTEND_HOST: str = Field("http://localhost:5173", description="Frontend application URL")
-    ENVIRONMENT: Literal["local", "staging", "production"] = "local"
-
-    LOG_LEVEL: Literal["debug", "info", "warning", "error", "critical", "production"] = Field(default="warning")
-    
-    @field_validator("LOG_LEVEL", mode="before")
-    def normalize_log_level(cls, v: Any) -> str:
-        """Normalize LOG_LEVEL to lowercase."""
-        if isinstance(v, str):
-            return v.lower()
-        return v
-
-    # Security & Authentication
-    PASSWORD_SECURITY_ALGORITHM: str = Field(default="HS256", description="Algorithm for password security")
-    SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32), description="Secret key for JWT tokens")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # 30 days
-    REFRESH_SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32),
-                                    description="Secret key for refresh tokens")
-    PASSWORD_RESET_SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32),
-                                           description="Secret key for password reset tokens (separate from access tokens)")
-
-    # CORS Settings
-    BACKEND_CORS_ORIGINS: str | list[str] = Field("", description="Allowed CORS origins")
-
-    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
-    def parse_cors_string(cls, v: Any) -> list[str]:
-        """
-        Parses a comma-separated string into a list of CORS origins.
-
-        Args:
-            v (Any): Input value from environment.
-
-        Returns:
-            list[str]: A list of CORS origins.
-
-        Raises:
-            ValueError: If the format is invalid.
-        """
-        if isinstance(v, str):
-            return [i.strip() for i in v.split(",")]
-        elif isinstance(v, list):
-            return v
-        raise ValueError(f"Invalid CORS origin format: {v}")
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def all_cors_origins(self) -> List[str]:
-        """
-        Ensures CORS settings return a valid list.
-
-        Returns:
-            list[str]: List of allowed CORS origins.
-        """
-        return list(set(self.BACKEND_CORS_ORIGINS + [self.FRONTEND_HOST, self.BACKEND_HOST]))
-
-    # Detect Docker Environment
-    DOCKERIZED: bool = Field(default_factory=lambda: False, description="Detects if the app runs inside Docker")
-
-    # Database Configuration
-    DATABASE_TYPE: Literal["sqlite", "postgres", "mysql"] = "postgres"
-    DB_HOST: str = Field(default="localhost", description="Database host")
-    DB_PORT: int = Field(default=5432, description="Database port")
-    DB_USER: str = "swx_user"
-    DB_PASSWORD: str = "changeme"
-    DB_NAME: str = "swx_db"
-    
-    # Allow overriding the database URI directly
-    DATABASE_URL: str | None = Field(default=None, description="Override database URL (takes precedence)")
-    ASYNC_DATABASE_URL: str | None = Field(default=None, description="Override async database URL (takes precedence)")
-
-    @property
-    def ASYNC_SQLALCHEMY_DATABASE_URI(self) -> str:
-        """
-        Generates a dynamic async database connection URL.
-
-        Returns:
-            str: The full async database connection string.
-        """
-        # Allow direct override
-        if self.ASYNC_DATABASE_URL:
-            return self.ASYNC_DATABASE_URL
-        
-        # Use DB_HOST directly - it should be set correctly in all environments
-        # DOCKERIZED is just for informational purposes, not for overriding DB_HOST
-        db_host = self.DB_HOST
-
-        if self.DATABASE_TYPE == "sqlite":
-            return f"sqlite+aiosqlite:///./{self.DB_NAME}.db"
-        elif self.DATABASE_TYPE == "mysql":
-            return f"mysql+asyncmy://{self.DB_USER}:{self.DB_PASSWORD}@{db_host}:{self.DB_PORT}/{self.DB_NAME}"
-        return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{db_host}:{self.DB_PORT}/{self.DB_NAME}"
-
-    @property
-    def SQLALCHEMY_DATABASE_URI(self) -> str:
-        """
-        Generates a dynamic database connection URL.
-
-        Returns:
-            str: The full database connection string.
-        """
-        # Allow direct override
-        if self.DATABASE_URL:
-            return self.DATABASE_URL
-        
-        # Use DB_HOST directly
-        db_host = self.DB_HOST
-
-        if self.DATABASE_TYPE == "sqlite":
-            return f"sqlite:///./{self.DB_NAME}.db"
-        elif self.DATABASE_TYPE == "mysql":
-            return f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}@{db_host}:{self.DB_PORT}/{self.DB_NAME}"
-        return f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD}@{db_host}:{self.DB_PORT}/{self.DB_NAME}"
-
-    # Email Configuration
-    SMTP_TLS: bool = True
-    SMTP_SSL: bool = False
-    SMTP_PORT: int = 587
-    SMTP_HOST: str | None = None
-    SMTP_USER: str | None = None
-    SMTP_PASSWORD: str | None = None
-    EMAILS_FROM_EMAIL: str | None = None
-    EMAILS_FROM_NAME: str | None = None
-    EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 48
-
-    @property
-    def emails_enabled(self) -> bool:
-        """
-        Determines if email sending is enabled.
-
-        Returns:
-            bool: True if email configuration is set correctly, otherwise False.
-        """
-        return all([self.SMTP_HOST, self.SMTP_USER, self.SMTP_PASSWORD, self.EMAILS_FROM_EMAIL])
-
-    # Superuser Configuration
-    FIRST_SUPERUSER: str = "admin@example.com"
-    FIRST_SUPERUSER_PASSWORD: str = "securepassword"
-
-    # Redis Configuration (for rate limiting and caching)
-    REDIS_HOST: str = Field(default="localhost", description="Redis host")
-    REDIS_PORT: int = Field(default=6379, description="Redis port")
-    REDIS_PASSWORD: str | None = Field(default=None, description="Redis password")
-    REDIS_DB: int = Field(default=0, description="Redis database number")
-    REDIS_ENABLED: bool = Field(default=True, description="Enable Redis (disable for development without Redis)")
-
-    @property
-    def REDIS_URL(self) -> str:
-        """
-        Generates Redis connection URL.
-        
-        Returns:
-            str: Redis connection URL
-        """
-        if self.REDIS_PASSWORD:
-            return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
-
 
 # Instantiate settings
-settings = Settings()
+settings = Settings()  # pyright: ignore[reportCallIssue]
+
+# Compliance Audit Settings
+COMPLIANCE_ENABLED: bool = True
+COMPLIANCE_DEFAULT_SEVERITY: str = "info"
+COMPLIANCE_DEFAULT_DATA_CLASSIFICATION: str = "PUBLIC"
+COMPLIANCE_DEFAULT_IP_MASKING: str = "partial"  # full | partial | none
+COMPLIANCE_DEFAULT_RETENTION_DAYS: int = 365
+COMPLIANCE_AUTO_MASK_IP: bool = True
+COMPLIANCE_AUTO_REDACT_FIELDS: bool = True
+COMPLIANCE_DATA_SUBJECT_REQUEST_EXPIRY_DAYS: int = 30
+
+# GDPR Settings
+GDPR_ENABLED: bool = True
+GDPR_DELETION_GRACE_DAYS: int = 30
+GDPR_EXPORT_FORMAT: str = "json"
+GDPR_ANONYMIZE_ON_DELETE: bool = True
+GDPR_SOLE_OWNER_BLOCK: bool = True
+GDPR_EXPORT_EXPIRY_DAYS: int = 7
+GDPR_MIN_VERIFICATION_DAYS: int = 1
+
+# Notification Settings
+NOTIFICATION_ENABLED: bool = True
+NOTIFICATION_DEFAULT_FROM_EMAIL: str = "noreply@example.com"
+NOTIFICATION_DEFAULT_FROM_NAME: str = "SwX App"
+NOTIFICATION_DEFAULT_RETRY_COUNT: int = 3
+NOTIFICATION_DEFAULT_TIMEOUT: int = 30
+NOTIFICATION_PROVIDER_CACHE_TTL: int = 30
+NOTIFICATION_TEMPLATE_CACHE_TTL: int = 30
+NOTIFICATION_RATE_LIMIT_DAILY: int = 100
+NOTIFICATION_RATE_LIMIT_HOURLY: int = 20
+NOTIFICATION_TEMPLATE_DIR: str = settings.NOTIFICATION_TEMPLATE_DIR
+NOTIFICATION_CELERY_TASK_PATH: str = settings.NOTIFICATION_CELERY_TASK_PATH
+
+# API Key Scoping Settings
+API_KEY_ENABLED: bool = True
+API_KEY_DEFAULT_EXPIRY_DAYS: int = 90
+API_KEY_MAX_EXPIRY_DAYS: int = 365
+API_KEY_MAX_INACTIVE_DAYS: int = 180
+API_KEY_ROTATION_GRACE_HOURS: int = 24
+API_KEY_DEFAULT_RATE_LIMIT: int = 60
+API_KEY_CACHE_TTL: int = 300
+
+# Webhook Settings
+WEBHOOK_ENABLED: bool = settings.WEBHOOK_ENABLED
+WEBHOOK_DEFAULT_RETRY_COUNT: int = settings.WEBHOOK_DEFAULT_RETRY_COUNT
+WEBHOOK_DEFAULT_RETRY_DELAY: int = settings.WEBHOOK_DEFAULT_RETRY_DELAY
+WEBHOOK_DEFAULT_TIMEOUT: int = settings.WEBHOOK_DEFAULT_TIMEOUT
+WEBHOOK_MAX_RETRIES: int = settings.WEBHOOK_MAX_RETRIES
+WEBHOOK_CIRCUIT_BREAKER_THRESHOLD: int = settings.WEBHOOK_CIRCUIT_BREAKER_THRESHOLD
+
+# Conversation State Settings
+CONVERSATION_ENABLED: bool = settings.CONVERSATION_ENABLED
+CONVERSATION_DEFAULT_PAGE_SIZE: int = settings.CONVERSATION_DEFAULT_PAGE_SIZE
+CONVERSATION_MAX_MESSAGE_LENGTH: int = settings.CONVERSATION_MAX_MESSAGE_LENGTH
+CONVERSATION_CACHE_TTL: int = settings.CONVERSATION_CACHE_TTL
+
+# AI Safety Settings
+SAFETY_ENABLED: bool = settings.SAFETY_ENABLED
+SAFETY_DEFAULT_ACTION: str = settings.SAFETY_DEFAULT_ACTION
+SAFETY_CACHE_TTL: int = settings.SAFETY_CACHE_TTL
+SAFETY_MAX_CONTENT_LENGTH: int = settings.SAFETY_MAX_CONTENT_LENGTH
+SAFETY_LOG_ALL_CHECKS: bool = settings.SAFETY_LOG_ALL_CHECKS
+
+# Enterprise SSO Settings
+SSO_ENABLED: bool = settings.SSO_ENABLED
+SSO_CACHE_TTL: int = settings.SSO_CACHE_TTL
+SSO_SESSION_TIMEOUT: int = settings.SSO_SESSION_TIMEOUT
+SSO_ALLOW_MULTIPLE_SESSIONS: bool = settings.SSO_ALLOW_MULTIPLE_SESSIONS
+
+# Status Page Settings
+STATUS_ENABLED: bool = settings.STATUS_ENABLED
+STATUS_CACHE_TTL: int = settings.STATUS_CACHE_TTL
+STATUS_DEFAULT_PAGE_SIZE: int = settings.STATUS_DEFAULT_PAGE_SIZE
+
+# Data Transfer Settings
+DATA_TRANSFER_ENABLED: bool = settings.DATA_TRANSFER_ENABLED
+DATA_TRANSFER_CACHE_TTL: int = settings.DATA_TRANSFER_CACHE_TTL
+DATA_EXPORT_EXPIRY_DAYS: int = settings.DATA_EXPORT_EXPIRY_DAYS
+DATA_EXPORT_MAX_RECORDS: int = settings.DATA_EXPORT_MAX_RECORDS
+DATA_IMPORT_MAX_FILE_SIZE: int = settings.DATA_IMPORT_MAX_FILE_SIZE
+
+# Backup Status (SOC 2 CC6.5)
+BACKUP_STATUS_URL: str | None = settings.BACKUP_STATUS_URL
+
+# SIEM Integration (SOC 2 CC7.2)
+SIEM_ENABLED: bool = settings.SIEM_ENABLED
+SIEM_WEBHOOK_URL: str | None = settings.SIEM_WEBHOOK_URL
+SIEM_BATCH_INTERVAL: int = settings.SIEM_BATCH_INTERVAL
+
+# Feature Flag Settings
+FEATURE_FLAG_ENABLED: bool = settings.FEATURE_FLAG_ENABLED
+FEATURE_FLAG_CACHE_TTL: int = settings.FEATURE_FLAG_CACHE_TTL

@@ -28,11 +28,12 @@ def setup_cors_middleware(app):
         - Defaults to allowing all origins (`*`) if no specific origins are set.
         - Enables credentials, all HTTP methods, and all headers.
     """
-    allowed_origins = settings.all_cors_origins if settings.all_cors_origins else ["*"]
+    allowed_origins = settings.all_cors_origins if settings.all_cors_origins else []
+    allow_credentials = bool(settings.all_cors_origins)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
-        allow_credentials=True,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )

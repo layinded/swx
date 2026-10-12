@@ -8,7 +8,7 @@ import shutil
 import json
 import secrets
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 
@@ -19,7 +19,7 @@ TEMPLATE_DIR = Path(__file__).parent.parent / "template" / "project"
 class TemplateRenderer:
     """Renders project templates with variable substitution."""
 
-    def __init__(self, context: dict):
+    def __init__(self, context: dict[str, Any]):
         """
         Initialize renderer with context variables.
 

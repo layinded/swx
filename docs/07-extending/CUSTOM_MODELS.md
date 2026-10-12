@@ -1,7 +1,7 @@
 # Custom Models
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.9.0  
+**Last Updated:** 2026-07-23
 
 ---
 
@@ -19,13 +19,13 @@
 
 ## Overview
 
-SwX-API uses **SQLModel** for database models, combining SQLAlchemy and Pydantic. This guide covers how to create custom models that integrate with the framework.
+SwX-API uses **SQLModel** for database models, combining SQLAlchemy and Pydantic. This guide shows how to create custom models that integrate with the framework.
 
 ### Key Principles
 
 1. **Inherit from Base** - Use `swx_core.models.base.Base`
 2. **Use SQLModel** - Combine database and API models
-3. **Automatic Discovery** - Models automatically registered
+3. **Automatic Discovery** - Models are registered automatically
 4. **Type Safety** - Use type hints throughout
 5. **Follow Patterns** - Use established patterns
 
@@ -42,6 +42,7 @@ from sqlmodel import SQLModel, Field
 from swx_core.models.base import Base
 from uuid import UUID, uuid4
 from datetime import datetime
+from swx_core.utils.time import utc_now
 from typing import Optional
 
 # Base fields (shared between create/update/public)
@@ -56,8 +57,8 @@ class Product(ProductBase, Base, table=True):
     __tablename__ = "product"
     
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     
     # Relationships (if any)
     # user_id: UUID = Field(foreign_key="user.id")
@@ -106,9 +107,9 @@ class Product(ProductBase, Base, table=True):
 ### Model Registration
 
 **Automatic Discovery:**
-- Models in `swx_app/models/` automatically discovered
-- Models in `swx_core/models/` automatically discovered
-- No manual registration needed
+- Models in `swx_app/models/` are discovered automatically
+- Models in `swx_core/models/` are discovered automatically
+- No manual registration is needed
 
 **Export Model:**
 ```python
@@ -131,7 +132,7 @@ class Product(ProductBase, Base, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str
     price: float
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ### Pattern 2: User-Owned Model
@@ -144,7 +145,7 @@ class Product(ProductBase, Base, table=True):
     user_id: UUID = Field(foreign_key="user.id", index=True)
     name: str
     price: float
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ### Pattern 3: Team-Scoped Model
@@ -158,7 +159,7 @@ class Product(ProductBase, Base, table=True):
     user_id: UUID = Field(foreign_key="user.id", index=True)  # Creator
     name: str
     price: float
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ### Pattern 4: Soft Delete
@@ -172,7 +173,7 @@ class Product(ProductBase, Base, table=True):
     price: float
     is_active: bool = Field(default=True)
     deleted_at: Optional[datetime] = None  # Soft delete
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 ```
 
 ---
@@ -280,11 +281,11 @@ alembic current
 ### ✅ DO
 
 1. **Use type hints**
-   ```python
-   # ✅ Good - Type hints
-   name: str = Field(max_length=255)
-   price: float = Field(ge=0)
-   created_at: datetime = Field(default_factory=datetime.utcnow)
+```python
+# ✅ Good - Type hints
+name: str = Field(max_length=255)
+price: float = Field(ge=0)
+created_at: datetime = Field(default_factory=utc_now)
    ```
 
 2. **Use Field constraints**
@@ -303,10 +304,10 @@ alembic current
    ```
 
 4. **Add indexes for queries**
-   ```python
-   # ✅ Good - Indexed fields
-   user_id: UUID = Field(foreign_key="user.id", index=True)
-   created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+```python
+# ✅ Good - Indexed fields
+user_id: UUID = Field(foreign_key="user.id", index=True)
+created_at: datetime = Field(default_factory=utc_now, index=True)
    ```
 
 5. **Use relationships properly**
@@ -346,8 +347,169 @@ alembic current
 
 ---
 
+## Extending SwX Framework Tables
+
+SwX framework tables use the `swx_` prefix to distinguish them from user-defined tables. Do not modify framework tables directly; use one of these patterns instead:
+
+> **For comprehensive step-by-step guides for each extension pattern, see [Extending Models](./EXTENDING_MODELS.md).**
+
+### Framework Tables (swx_ prefix)
+
+All framework tables are prefixed with `swx_`:
+- `swx_users` - User accounts
+- `swx_admin_user` - Admin accounts
+- `swx_role` - Roles
+- `swx_permission` - Permissions
+- `swx_team` - Teams
+- `swx_user_role` - User-role assignments
+- `swx_team_member` - Team memberships
+- `swx_role_permission` - Role-permission mappings
+- `swx_audit_log` - Audit logs
+- `swx_job` - Background jobs
+- `swx_language` - Translations
+- `swx_refresh_token` - Refresh tokens
+- `swx_policy` - ABAC policies
+- `swx_system_config` - System settings
+- `swx_billing_*` - Billing tables
+
+### Pattern 1: One-to-One Extension (Recommended)
+
+Create a separate table linked to the framework table:
+
+```python
+from swx_app/models/user_profile.py
+from sqlmodel import SQLModel, Field
+from uuid import UUID, uuid4
+from typing import Optional
+from datetime import datetime
+
+class UserProfile(SQLModel, table=True):
+    __tablename__ = "user_profile"
+    
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="swx_users.id", unique=True, index=True)
+    
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    phone: Optional[str] = None
+    preferences: dict = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utc_now)
+```
+
+### Pattern 2: Model Inheritance
+
+Extend a framework model with additional fields:
+
+```python
+from swx_app/models/extended_user.py
+from swx_core.models.user import User as BaseUser
+from sqlmodel import Field
+from typing import Optional
+
+class ExtendedUser(BaseUser, table=True):
+    __tablename__ = "extended_user"
+    
+    user_id: UUID = Field(foreign_key="swx_users.id", unique=True)
+    custom_field_1: Optional[str] = None
+    custom_field_2: Optional[int] = None
+```
+
+### Pattern 3: Composition via Service Layer
+
+Add business logic without modifying tables:
+
+```python
+from swx_app/services/user_service.py
+from swx_core.services.user_service import UserService as CoreUserService
+
+class ExtendedUserService(CoreUserService):
+    async def get_user_with_profile(self, db, user_id: UUID) -> dict:
+        user = await self.get(db, user_id)
+        profile = await self.get_profile(db, user_id)
+        return {**user.model_dump(), "profile": profile}
+    
+    async def get_profile(self, db, user_id: UUID):
+        return await db.exec(
+            select(UserProfile).where(UserProfile.user_id == user_id)
+        ).first()
+```
+
+### Pattern 4: Using Custom Mixins
+
+Create user tables using framework mixins. For production models that need
+`server_default`, `onupdate`, or indexed columns, override mixin fields with
+factory functions:
+
+```python
+from swx_core.utils.mixins import (
+    FullModelMixin, AuditedModelMixin,
+    make_id, make_created_at, make_updated_at, make_is_active,
+)
+from sqlmodel import SQLModel, Field
+from swx_core.utils.time import utc_now
+import uuid
+from datetime import datetime
+
+class Product(FullModelMixin, SQLModel, table=True):
+    __tablename__ = "product"
+
+    # Override mixin fields with factory functions for full Column kwargs:
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_active: bool = Field(default=True, sa_column=make_is_active())
+
+    name: str = Field(max_length=255, index=True)
+    price: float = Field(gt=0)
+    description: str | None = None
+```
+
+> **⚠️ v2.23.4:** Mixins now use pure `Field()` — no `sa_column=Column(...)`.
+> For `server_default`, `onupdate`, or `index=True`, use factory functions
+> (`make_id()`, `make_created_at()`, etc.) in each model's class body.
+> See [Extending Models](./EXTENDING_MODELS.md#pattern-2-composition-with-mixins) for details.
+
+### Available Mixins
+
+| Mixin | Fields Provided |
+|-------|-----------------|
+| `TimestampMixin` | `created_at`, `updated_at` |
+| `SoftDeleteMixin` | `is_deleted`, `deleted_at` |
+| `UUIDPrimaryKeyMixin` | `id: UUID` |
+| `CreatedByMixin` | `created_by_id` |
+| `UpdatedByMixin` | `updated_by_id` |
+| `FullModelMixin` | UUID + Timestamps + Active |
+| `AuditedModelMixin` | FullModel + CreatedBy + UpdatedBy |
+
+### Foreign Key References to Framework Tables
+
+Always reference framework tables with the `swx_` prefix:
+
+```python
+class Order(SQLModel, table=True):
+    __tablename__ = "order"
+    
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="swx_users.id", index=True)
+    product_id: UUID = Field(foreign_key="product.id", index=True)
+    total: float
+```
+
+### Migration for Extending Users
+
+If you need to track additional user data, create a new table rather than modifying `swx_users`:
+
+1. Create a model with foreign key to `swx_users.id`
+2. Generate migration: `swx db revision -m "add_user_profile"`
+3. Apply migration: `swx db migrate`
+
+This approach keeps framework tables isolated and supports upgrades without data loss.
+
+---
+
 ## Next Steps
 
+- Read [Extending Models](./EXTENDING_MODELS.md) for the complete extension patterns guide with step-by-step examples
 - Read [Adding Features](./ADDING_FEATURES.md) for feature development
 - Read [Extending Guide](./EXTENDING_SWX.md) for extension patterns
 - Read [Architecture Documentation](../03-architecture/ARCHITECTURE.md) for system design

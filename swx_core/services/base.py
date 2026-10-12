@@ -13,10 +13,10 @@ Usage:
 """
 
 import uuid
-from typing import TypeVar, Generic, Dict, Any, Optional, List
+from typing import TypeVar, Generic, Dict, Any, Optional, List, Sequence
 
 from swx_core.repositories.base import BaseRepository
-from swx_core.events import EventBus, Event
+from swx_core.events import event_bus, Event
 from swx_core.models.base import Base
 
 
@@ -65,7 +65,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
             repository: The repository instance for data access
         """
         self.repository = repository
-        self.event_bus = EventBus()
+        self.event_bus = event_bus
     
     # =========================================================================
     # Read Operations
@@ -104,6 +104,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         limit: int = 100,
         order_by: str = "created_at",
         descending: bool = True,
+        eager_loads: Optional[Sequence[str]] = None,
     ) -> List[ModelType]:
         """
         List all records with pagination.
@@ -113,6 +114,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
             limit: Maximum number of records to return
             order_by: Field to order by
             descending: Sort descending if True
+            eager_loads: Optional list of relationship names to eager-load
             
         Returns:
             List of model instances
@@ -122,12 +124,14 @@ class BaseService(Generic[ModelType, RepositoryType]):
             limit=limit,
             order_by=order_by,
             descending=descending,
+            eager_loads=eager_loads,
         )
     
     async def find_by(
         self,
         skip: int = 0,
         limit: int = 100,
+        eager_loads: Optional[Sequence[str]] = None,
         **filters: Dict[str, Any],
     ) -> List[ModelType]:
         """
@@ -136,12 +140,13 @@ class BaseService(Generic[ModelType, RepositoryType]):
         Args:
             skip: Number of records to skip
             limit: Maximum number of records to return
+            eager_loads: Optional list of relationship names to eager-load
             **filters: Field-value pairs to filter by
             
         Returns:
             List of model instances
         """
-        return await self.repository.find_by(skip=skip, limit=limit, **filters)
+        return await self.repository.find_by(skip=skip, limit=limit, eager_loads=eager_loads, **filters)
     
     async def find_one_by(self, **filters: Dict[str, Any]) -> Optional[ModelType]:
         """
@@ -185,6 +190,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         data: Dict[str, Any],
         emit_event: bool = True,
         validate: bool = True,
+        event_context: Dict[str, Any] | None = None,
     ) -> ModelType:
         """
         Create a new record.
@@ -193,9 +199,27 @@ class BaseService(Generic[ModelType, RepositoryType]):
             data: Dictionary of field values
             emit_event: Whether to emit a creation event
             validate: Whether to run validation hooks
+            event_context: Additional context to include in event payload
             
         Returns:
             The created model instance
+            
+        Example:
+            user = await user_service.create(
+                data={"email": "user@example.com", "password": "secret"},
+                event_context={
+                    "user_type": "patient",
+                    "hospital_id": hospital_id,
+                    "registration_source": "mobile_app",
+                },
+            )
+            
+            # Emits: user.created with payload:
+            # {
+            #     "id": "uuid",
+            #     "data": {"email": "...", "password": "***"},
+            #     "context": {"user_type": "patient", ...}
+            # }
         """
         # Pre-create hook
         data = await self.before_create(data)
@@ -213,10 +237,15 @@ class BaseService(Generic[ModelType, RepositoryType]):
         # Emit event
         if emit_event:
             model_name = self.repository.model.__name__.lower()
+            payload = {"id": str(instance.id), "data": data}
+            if event_context:
+                payload["context"] = event_context
+            payload = await self.before_emit(f"{model_name}.created", payload, instance)
             await self.event_bus.emit(Event(
                 name=f"{model_name}.created",
-                payload={"id": str(instance.id), "data": data},
+                payload=payload,
             ))
+            await self.after_emit(f"{model_name}.created", payload, instance)
         
         return instance
     
@@ -226,6 +255,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         data: Dict[str, Any],
         emit_event: bool = True,
         validate: bool = True,
+        event_context: Dict[str, Any] | None = None,
     ) -> Optional[ModelType]:
         """
         Update a record.
@@ -235,6 +265,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
             data: Dictionary of fields to update
             emit_event: Whether to emit an update event
             validate: Whether to run validation hooks
+            event_context: Additional context to include in event payload
             
         Returns:
             The updated model instance or None
@@ -264,14 +295,19 @@ class BaseService(Generic[ModelType, RepositoryType]):
         # Emit event
         if emit_event and updated:
             model_name = self.repository.model.__name__.lower()
+            payload = {
+                "id": str(id),
+                "old_values": old_values,
+                "new_values": data,
+            }
+            if event_context:
+                payload["context"] = event_context
+            payload = await self.before_emit(f"{model_name}.updated", payload, updated)
             await self.event_bus.emit(Event(
                 name=f"{model_name}.updated",
-                payload={
-                    "id": str(id),
-                    "old_values": old_values,
-                    "new_values": data,
-                },
+                payload=payload,
             ))
+            await self.after_emit(f"{model_name}.updated", payload, updated)
         
         return updated
     
@@ -279,6 +315,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         self,
         id: uuid.UUID,
         emit_event: bool = True,
+        event_context: Dict[str, Any] | None = None,
     ) -> bool:
         """
         Delete a record (hard delete).
@@ -286,6 +323,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         Args:
             id: The record ID
             emit_event: Whether to emit a deletion event
+            event_context: Additional context to include in event payload
             
         Returns:
             True if deleted, False if not found
@@ -308,10 +346,15 @@ class BaseService(Generic[ModelType, RepositoryType]):
         # Emit event
         if emit_event and success:
             model_name = self.repository.model.__name__.lower()
+            payload = {"id": str(id)}
+            if event_context:
+                payload["context"] = event_context
+            payload = await self.before_emit(f"{model_name}.deleted", payload, instance)
             await self.event_bus.emit(Event(
                 name=f"{model_name}.deleted",
-                payload={"id": str(id)},
+                payload=payload,
             ))
+            await self.after_emit(f"{model_name}.deleted", payload, instance)
         
         return success
     
@@ -319,6 +362,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         self,
         id: uuid.UUID,
         emit_event: bool = True,
+        event_context: Dict[str, Any] | None = None,
     ) -> Optional[ModelType]:
         """
         Soft delete a record.
@@ -328,6 +372,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         Args:
             id: The record ID
             emit_event: Whether to emit a deletion event
+            event_context: Additional context to include in event payload
             
         Returns:
             The soft-deleted model instance or None
@@ -349,10 +394,15 @@ class BaseService(Generic[ModelType, RepositoryType]):
         # Emit event
         if emit_event and updated:
             model_name = self.repository.model.__name__.lower()
+            payload = {"id": str(id)}
+            if event_context:
+                payload["context"] = event_context
+            payload = await self.before_emit(f"{model_name}.soft_deleted", payload, updated)
             await self.event_bus.emit(Event(
                 name=f"{model_name}.soft_deleted",
-                payload={"id": str(id)},
+                payload=payload,
             ))
+            await self.after_emit(f"{model_name}.soft_deleted", payload, updated)
         
         return updated
     
@@ -360,6 +410,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         self,
         id: uuid.UUID,
         emit_event: bool = True,
+        event_context: Dict[str, Any] | None = None,
     ) -> Optional[ModelType]:
         """
         Restore a soft-deleted record.
@@ -367,6 +418,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         Args:
             id: The record ID
             emit_event: Whether to emit a restoration event
+            event_context: Additional context to include in event payload
             
         Returns:
             The restored model instance or None
@@ -381,10 +433,15 @@ class BaseService(Generic[ModelType, RepositoryType]):
         # Emit event
         if emit_event and restored:
             model_name = self.repository.model.__name__.lower()
+            payload = {"id": str(id)}
+            if event_context:
+                payload["context"] = event_context
+            payload = await self.before_emit(f"{model_name}.restored", payload, restored)
             await self.event_bus.emit(Event(
                 name=f"{model_name}.restored",
-                payload={"id": str(id)},
+                payload=payload,
             ))
+            await self.after_emit(f"{model_name}.restored", payload, restored)
         
         return restored
     
@@ -396,6 +453,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         self,
         data_list: List[Dict[str, Any]],
         emit_event: bool = True,
+        event_context: Dict[str, Any] | None = None,
     ) -> List[ModelType]:
         """
         Create multiple records at once.
@@ -403,6 +461,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         Args:
             data_list: List of dictionaries with field values
             emit_event: Whether to emit events
+            event_context: Additional context to include in event payload
             
         Returns:
             List of created model instances
@@ -422,10 +481,15 @@ class BaseService(Generic[ModelType, RepositoryType]):
         # Emit event
         if emit_event:
             model_name = self.repository.model.__name__.lower()
+            payload = {"count": len(instances)}
+            if event_context:
+                payload["context"] = event_context
+            payload = await self.before_emit(f"{model_name}.bulk_created", payload, None)
             await self.event_bus.emit(Event(
                 name=f"{model_name}.bulk_created",
-                payload={"count": len(instances)},
+                payload=payload,
             ))
+            await self.after_emit(f"{model_name}.bulk_created", payload, None)
         
         return instances
     
@@ -479,6 +543,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
         per_page: int = 20,
         order_by: str = "created_at",
         descending: bool = True,
+        eager_loads: Optional[Sequence[str]] = None,
         **filters: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
@@ -489,6 +554,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
             per_page: Records per page
             order_by: Field to order by
             descending: Sort descending if True
+            eager_loads: Optional list of relationship names to eager-load
             **filters: Field-value pairs to filter by
             
         Returns:
@@ -499,6 +565,7 @@ class BaseService(Generic[ModelType, RepositoryType]):
             per_page=per_page,
             order_by=order_by,
             descending=descending,
+            eager_loads=eager_loads,
             **filters,
         )
     
@@ -621,5 +688,63 @@ class BaseService(Generic[ModelType, RepositoryType]):
         
         Args:
             instance: The restored model instance
+        """
+        pass
+    
+    # =========================================================================
+    # Event Emission Hooks (Override in subclasses)
+    # =========================================================================
+    
+    async def before_emit(
+        self,
+        event_name: str,
+        payload: Dict[str, Any],
+        instance: ModelType | None = None,
+    ) -> Dict[str, Any]:
+        """
+        Hook called before event emission. Override in subclasses.
+        
+        Use this to enhance event payload with computed/async context:
+        
+        class UserService(BaseService[User]):
+            async def before_emit(self, event_name, payload, instance):
+                if event_name == "user.created" and instance:
+                    payload["context"] = {
+                        **payload.get("context", {}),
+                        "user_type": await self._determine_user_type(instance),
+                        "hospital_id": await self._get_hospital_id(instance),
+                    }
+                return payload
+        
+        Args:
+            event_name: The event name (e.g., "user.created")
+            payload: The event payload to enhance
+            instance: The model instance (if applicable)
+            
+        Returns:
+            Modified payload dictionary
+        """
+        return payload
+    
+    async def after_emit(
+        self,
+        event_name: str,
+        payload: Dict[str, Any],
+        instance: ModelType | None = None,
+    ) -> None:
+        """
+        Hook called after event emission. Override in subclasses.
+        
+        Use this for side effects after event is emitted:
+        
+        class OrderService(BaseService[Order]):
+            async def after_emit(self, event_name, payload, instance):
+                if event_name == "order.created":
+                    await self._send_notification(instance)
+        
+        Args:
+            event_name: The event name (e.g., "user.created")
+            payload: The emitted event payload
+            instance: The model instance (if applicable)
         """
         pass

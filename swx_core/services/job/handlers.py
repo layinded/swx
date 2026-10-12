@@ -8,15 +8,23 @@ Register these handlers at application startup.
 
 import uuid
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, and_
+from swx_core.utils.time import utc_now
 
 from swx_core.middleware.logging_middleware import logger
 from swx_core.models.billing import BillingAccount, Subscription, SubscriptionStatus
 from swx_core.services.billing.stripe_provider import get_stripe_provider
 from swx_core.services.billing.subscription_service import SubscriptionService
 
+SUBSCRIPTION_SYNC_EVENT_TYPES = {
+    "customer.subscription.created",
+    "customer.subscription.updated",
+}
+
+def _utc_now_naive() -> datetime:
+    return utc_now()
 
 async def billing_sync_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -56,7 +64,7 @@ async def billing_sync_handler(session: AsyncSession, payload: Dict[str, Any]) -
     
     try:
         # Sync with Stripe
-        provider = get_stripe_provider()
+        _ = get_stripe_provider()
         # In a real implementation, we would fetch subscription from Stripe
         # and update local status if needed
         # For now, we'll just log the sync
@@ -72,7 +80,6 @@ async def billing_sync_handler(session: AsyncSession, payload: Dict[str, Any]) -
         logger.error(f"Failed to sync billing account {account_id}: {e}")
         return {"status": "error", "message": str(e), "account_id": str(account_id)}
 
-
 async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handler for billing.webhook jobs.
@@ -86,67 +93,61 @@ async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]
     try:
         subscription_service = SubscriptionService(session)
         
-        # Handle different webhook event types
-        if event_type == "customer.subscription.updated":
-            stripe_subscription_id = event_data.get("id")
-            status = event_data.get("status")
-            
-            # Find subscription by Stripe ID
-            stmt = select(Subscription).where(
-                Subscription.stripe_subscription_id == stripe_subscription_id
-            )
-            result = await session.execute(stmt)
-            subscription = result.scalar_one_or_none()
-            
-            if subscription:
-                # Map Stripe status to our status
-                status_map = {
-                    "active": SubscriptionStatus.ACTIVE,
-                    "canceled": SubscriptionStatus.CANCELED,
-                    "past_due": SubscriptionStatus.PAST_DUE,
-                    "unpaid": SubscriptionStatus.CANCELED,
-                }
-                new_status = status_map.get(status, SubscriptionStatus.ACTIVE)
-                
-                if subscription.status != new_status:
-                    subscription.status = new_status
-                    if new_status == SubscriptionStatus.CANCELED:
-                        subscription.ended_at = datetime.utcnow()
-                    session.add(subscription)
-                    await session.commit()
-                    logger.info(f"Updated subscription {subscription.id} status to {new_status}")
-        
+        if event_type in SUBSCRIPTION_SYNC_EVENT_TYPES:
+            await subscription_service.sync_stripe_subscription(event_data)
+
         elif event_type == "customer.subscription.deleted":
             stripe_subscription_id = event_data.get("id")
-            
-            # Find and cancel subscription
+
             stmt = select(Subscription).where(
                 Subscription.stripe_subscription_id == stripe_subscription_id
             )
             result = await session.execute(stmt)
             subscription = result.scalar_one_or_none()
-            
+
             if subscription:
                 subscription.status = SubscriptionStatus.CANCELED
-                subscription.ended_at = datetime.utcnow()
+                subscription.ended_at = _utc_now_naive()
                 session.add(subscription)
                 await session.commit()
                 logger.info(f"Cancelled subscription {subscription.id}")
-        
+
+        elif event_type == "checkout.session.completed":
+            stripe_subscription_id = event_data.get("subscription")
+            if not isinstance(stripe_subscription_id, str) or not stripe_subscription_id:
+                logger.warning("Checkout session completed without subscription ID")
+                return {
+                    "processed": False,
+                    "event_type": event_type,
+                    "error": "Missing subscription ID",
+                }
+
+            provider = get_stripe_provider()
+            if provider is None:
+                logger.warning("Stripe provider unavailable for checkout session sync")
+                return {
+                    "processed": False,
+                    "event_type": event_type,
+                    "error": "Stripe provider unavailable",
+                }
+
+            subscription_data = await provider.get_subscription(stripe_subscription_id)
+            await subscription_service.sync_stripe_subscription(subscription_data)
+            logger.info(
+                f"Synced subscription {stripe_subscription_id} from checkout completion"
+            )
+
         elif event_type == "invoice.payment_failed":
-            # Handle payment failure - could trigger alerts or grace period
             stripe_subscription_id = event_data.get("subscription")
             logger.warning(f"Payment failed for subscription {stripe_subscription_id}")
-            # Could update subscription to PAST_DUE status here
-        
-        # Trigger alert for important events
+
         if event_type in ("customer.subscription.deleted", "invoice.payment_failed"):
             from swx_core.services.alert_engine import alert_engine
             from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertActorType
             
             await alert_engine.emit(
                 severity=AlertSeverity.WARNING,
-                source=AlertSource.BILLING,
+                source=AlertSource.SYSTEM,
                 event_type=f"BILLING_{event_type.upper()}",
                 message=f"Billing webhook event: {event_type}",
                 actor_type=AlertActorType.SYSTEM,
@@ -157,7 +158,6 @@ async def billing_webhook_handler(session: AsyncSession, payload: Dict[str, Any]
     except Exception as e:
         logger.error(f"Failed to process billing webhook {event_type}: {e}")
         return {"processed": False, "event_type": event_type, "error": str(e)}
-
 
 async def alert_send_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -170,11 +170,9 @@ async def alert_send_handler(session: AsyncSession, payload: Dict[str, Any]) -> 
     logger.info(f"Sending alert {alert_id} via {channel}")
     
     try:
-        from swx_core.services.alert_engine import alert_engine
         from swx_core.services.channels.models import (
             AlertSeverity, AlertSource, AlertActorType, Alert
         )
-        from datetime import datetime
         
         # Extract alert details from payload
         severity = AlertSeverity(payload.get("severity", "INFO"))
@@ -227,14 +225,12 @@ async def alert_send_handler(session: AsyncSession, payload: Dict[str, Any]) -> 
         logger.error(f"Failed to send alert {alert_id} via {channel}: {e}")
         return {"sent": False, "alert_id": alert_id, "channel": channel, "error": str(e)}
 
-
 async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handler for audit.aggregate jobs.
     
     Aggregates audit logs for reporting and analysis.
     """
-    from datetime import datetime, timedelta
     from sqlmodel import func, desc
     
     # Parse date range
@@ -244,12 +240,12 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
     if date_from_str:
         date_from = datetime.fromisoformat(date_from_str.replace("Z", "+00:00"))
     else:
-        date_from = datetime.utcnow() - timedelta(days=7)  # Default: last 7 days
+        date_from = utc_now() - timedelta(days=7)  # Default: last 7 days
     
     if date_to_str:
         date_to = datetime.fromisoformat(date_to_str.replace("Z", "+00:00"))
     else:
-        date_to = datetime.utcnow()
+        date_to = utc_now()
     
     logger.info(f"Aggregating audit logs from {date_from} to {date_to}")
     
@@ -257,12 +253,12 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
         from swx_core.models.audit_log import AuditLog
         
         # Aggregate by action
-        stmt = (
+        stmt = (  # pyright: ignore[reportArgumentType]
             select(
                 AuditLog.action,
                 AuditLog.resource_type,
                 AuditLog.outcome,
-                func.count(AuditLog.id).label("count")
+                func.count(AuditLog.id).label("count")  # pyright: ignore[reportArgumentType]
             )
             .where(
                 and_(
@@ -270,17 +266,17 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
                     AuditLog.timestamp <= date_to
                 )
             )
-            .group_by(AuditLog.action, AuditLog.resource_type, AuditLog.outcome)
+            .group_by(AuditLog.action, AuditLog.resource_type, AuditLog.outcome)  # pyright: ignore[reportArgumentType]
             .order_by(desc("count"))
         )
         result = await session.execute(stmt)
         aggregates = result.all()
         
         # Aggregate by actor type
-        stmt_actor = (
+        stmt_actor = (  # pyright: ignore[reportArgumentType]
             select(
                 AuditLog.actor_type,
-                func.count(AuditLog.id).label("count")
+                func.count(AuditLog.id).label("count")  # pyright: ignore[reportArgumentType]
             )
             .where(
                 and_(
@@ -294,10 +290,10 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
         actor_aggregates = result_actor.all()
         
         # Aggregate by outcome
-        stmt_outcome = (
+        stmt_outcome = (  # pyright: ignore[reportArgumentType]
             select(
                 AuditLog.outcome,
-                func.count(AuditLog.id).label("count")
+                func.count(AuditLog.id).label("count")  # pyright: ignore[reportArgumentType]
             )
             .where(
                 and_(
@@ -311,8 +307,8 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
         outcome_aggregates = result_outcome.all()
         
         # Total count
-        stmt_total = (
-            select(func.count(AuditLog.id))
+        stmt_total = (  # pyright: ignore[reportArgumentType]
+            select(func.count(AuditLog.id))  # pyright: ignore[reportArgumentType]
             .where(
                 and_(
                     AuditLog.timestamp >= date_from,
@@ -364,7 +360,6 @@ async def audit_aggregate_handler(session: AsyncSession, payload: Dict[str, Any]
         logger.error(f"Failed to aggregate audit logs: {e}")
         return {"aggregated": False, "error": str(e), "records": 0}
 
-
 async def cache_refresh_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handler for system.cache.refresh jobs.
@@ -375,11 +370,12 @@ async def cache_refresh_handler(session: AsyncSession, payload: Dict[str, Any]) 
     logger.info(f"Refreshing cache: {cache_type}")
     
     try:
+        from swx_core.services.settings_service import SettingsService
+
         refreshed_items = []
         
         if cache_type == "all" or cache_type == "settings":
             # Refresh settings cache
-            from swx_core.services.settings_service import SettingsService
             SettingsService.invalidate_cache()
             refreshed_items.append("settings")
             logger.info("Invalidated settings cache")
@@ -420,3 +416,53 @@ async def cache_refresh_handler(session: AsyncSession, payload: Dict[str, Any]) 
     except Exception as e:
         logger.error(f"Failed to refresh cache: {e}")
         return {"refreshed": False, "cache_type": cache_type, "error": str(e)}
+
+
+async def compliance_data_subject_delete_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
+    request_id_str = payload.get("request_id")
+    if not request_id_str:
+        raise ValueError("request_id is required")
+
+    from swx_core.services.compliance.erasure_service import process_erasure_for_request
+
+    request_id = uuid.UUID(str(request_id_str))
+    user_id_raw = payload.get("user_id")
+    if not user_id_raw:
+        raise ValueError("user_id is required")
+    user_id = uuid.UUID(str(user_id_raw))
+
+    logger.info(f"Processing data subject deletion for request {request_id}, user {user_id}")
+
+    result = await process_erasure_for_request(session, request_id, user_id)
+
+    logger.info(f"Data subject deletion completed for request {request_id}: {result.get('status')}")
+    return result
+
+
+async def compliance_retention_apply_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
+    resource_type = payload.get("resource_type")
+
+    from swx_core.services.compliance.retention_service import apply_retention
+
+    logger.info(f"Applying retention policy for resource_type={resource_type}")
+    result = await apply_retention(session, resource_type=resource_type)
+    logger.info(f"Retention applied: {result}")
+    return {"status": "completed", "resource_type": resource_type, "result": result}
+
+
+async def compliance_api_key_expired_cleanup_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
+    from swx_core.services.compliance.api_key_lifecycle_service import revoke_expired_api_keys
+
+    logger.info("Running expired API key cleanup (SOC 2 CC6.1)")
+    result = await revoke_expired_api_keys(session)
+    logger.info("Expired API key cleanup completed: %d expired, %d inactive_revoked", result.get("expired_count", 0), result.get("inactive_revoked_count", 0))
+    return result
+
+
+async def compliance_session_idle_cleanup_handler(session: AsyncSession, payload: Dict[str, Any]) -> Dict[str, Any]:
+    from swx_core.services.auth.session_service import expire_idle_sessions
+
+    logger.info("Running idle session cleanup (SOC 2 CC6.1)")
+    count = await expire_idle_sessions(session)
+    logger.info("Idle session cleanup completed: %d sessions expired", count)
+    return {"status": "completed", "sessions_expired": count}

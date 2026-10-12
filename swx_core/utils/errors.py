@@ -177,6 +177,53 @@ class ConfigurationError(SwXError):
         )
 
 
+class EncryptionError(ValueError):
+    """Raised when encryption configuration is invalid or encryption fails."""
+
+    def __init__(self, message: str = "Encryption error"):
+        self.message = message
+        super().__init__(message)
+
+
+class DecryptionError(EncryptionError):
+    """Raised when ciphertext cannot be decrypted safely."""
+
+    def __init__(self, message: str = "Decryption error"):
+        super().__init__(message=message)
+
+
+class QuotaExceededError(SwXError):
+    """Quota or rate limit exceeded error."""
+
+    def __init__(self, resource: str = None, message: str = "Quota exceeded"):
+        details = {}
+        if resource:
+            details["resource"] = resource
+
+        super().__init__(
+            message=message,
+            code="QUOTA_EXCEEDED",
+            details=details,
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+
+class PolicyViolationError(SwXError):
+    """Policy or authorization rule violation error."""
+
+    def __init__(self, policy: str = None, message: str = "Policy violation"):
+        details = {}
+        if policy:
+            details["policy"] = policy
+
+        super().__init__(
+            message=message,
+            code="POLICY_VIOLATION",
+            details=details,
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+
 # HTTP Exception wrappers
 def not_found(resource: str = "Resource", resource_id: str = None) -> HTTPException:
     """Raise HTTP 404 Not Found."""

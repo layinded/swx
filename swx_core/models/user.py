@@ -7,6 +7,7 @@ Features:
 - Stores user authentication details.
 - Supports multiple authentication providers.
 - Includes schemas for user creation, updates, and password management.
+- Includes automatic timestamp tracking (created_at, updated_at).
 
 Schemas:
 - `User`: Represents a stored user in the database.
@@ -22,30 +23,29 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from pydantic import EmailStr
-from sqlalchemy import Column, String, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 
 class UserBase(Base):
-    """
-    Base model for shared user fields.
-
-    Attributes:
-        email (EmailStr): Unique email address.
-        is_active (bool): Indicates if the user account is active.
-        is_superuser (bool): Determines if the user has admin privileges.
-        full_name (Optional[str]): The user's full name (optional).
-        preferred_language (str): Preferred language for UI interaction.
-    """
-
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     is_active: bool = True
     is_superuser: bool = False
     full_name: Optional[str] = Field(default=None, max_length=255)
     preferred_language: str = Field(
         default="en", sa_column=Column(String(5), server_default=text("'en'"))
+    )
+    tenant_id: Optional[uuid.UUID] = Field(
+        default=None,
+        sa_column=Column(
+            PG_UUID(as_uuid=True),
+            index=True,
+            nullable=True,
+        ),
     )
 
 
@@ -59,9 +59,11 @@ class User(UserBase, table=True):
         auth_provider (str): The authentication provider (default: 'local').
         provider_id (Optional[str]): External authentication provider ID.
         avatar_url (Optional[str]): URL to the user's profile picture.
+        created_at (datetime): Timestamp when user was created.
+        updated_at (datetime): Timestamp when user was last updated.
     """
 
-    __tablename__ = "users"
+    __tablename__ = "swx_users"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -69,6 +71,47 @@ class User(UserBase, table=True):
     auth_provider: str = Field(default="local", max_length=50)
     provider_id: Optional[str] = Field(default=None, unique=True, max_length=255)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
+    email_encrypted: Optional[str] = Field(default=None, max_length=1024)
+    full_name_encrypted: Optional[str] = Field(default=None, max_length=1024)
+    deactivated_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    gdpr_deleted_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    anonymous: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")))
+    mfa_enabled: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")))
+    mfa_secret: Optional[str] = Field(default=None, max_length=500)
+    mfa_verified_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    email_verified_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    failed_login_attempts: int = Field(
+        default=0,
+        sa_column=Column(Integer, nullable=False, server_default=text("0")),
+    )
+    locked_until: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    password_reset_requested_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    )
 
 
 class UserCreate(SQLModel):
@@ -113,12 +156,18 @@ class UserPublic(UserBase):
         auth_provider (str): Authentication provider (e.g., 'local', 'google').
         avatar_url (Optional[str]): Profile picture URL.
         preferred_language (str): User's selected language.
+        created_at (datetime): Timestamp when user was created.
+        updated_at (datetime): Timestamp when user was last updated.
     """
 
     id: uuid.UUID
     auth_provider: str
     avatar_url: Optional[str] = None
-    preferred_language: str
+    preferred_language: str  # pyright: ignore[reportGeneralTypeIssues]
+    email_verified_at: Optional[datetime] = None
+    mfa_enabled: bool = False
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

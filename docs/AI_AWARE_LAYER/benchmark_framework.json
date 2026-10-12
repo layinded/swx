@@ -1,0 +1,623 @@
+{
+  "benchmark_framework": {
+    "version": "1.0.0",
+    "purpose": "Measure AI-assisted development improvement with AI-aware layer vs standard FastAPI",
+    "created_at": "2026-03-08T18:37:00Z"
+  },
+
+  "phase_1": {
+    "name": "Control Projects",
+    "description": "Two projects with identical feature sets for fair comparison",
+    "control_project": {
+      "name": "Raw FastAPI Control",
+      "path": "benchmarks/control_fastapi/",
+      "features": {
+        "auth": {
+          "implementation": "Manual JWT implementation",
+          "files": [
+            "app/auth/jwt_handler.py",
+            "app/auth/dependencies.py",
+            "app/middleware/auth.py"
+          ]
+        },
+        "crud": {
+          "implementation": "Manual SQLModel controllers",
+          "files": [
+            "app/models/item.py",
+            "app/api/items.py"
+          ]
+        },
+        "background_job": {
+          "implementation": "Manual asyncio task queue",
+          "files": [
+            "app/jobs/queue.py",
+            "app/jobs/worker.py"
+          ]
+        },
+        "rate_limiting": {
+          "implementation": "Manual in-memory limiter",
+          "files": [
+            "app/middleware/rate_limit.py"
+          ]
+        },
+        "event_dispatch": {
+          "implementation": "Manual observer pattern",
+          "files": [
+            "app/events/base.py",
+            "app/events/dispatcher.py"
+          ]
+        },
+        "plugin_extension": {
+          "implementation": "Manual hook registration",
+          "files": [
+            "app/plugins/manager.py",
+            "app/plugins/hooks.py"
+          ]
+        }
+      },
+      "structure": {
+        "app": {
+          "__init__.py": "FastAPI app factory",
+          "main.py": "App entry point",
+          "config.py": "Configuration"
+        },
+        "api": "API route handlers",
+        "models": "SQLModel definitions",
+        "services": "Business logic",
+        "repositories": "Data access",
+        "middleware": "Request/response middleware",
+        "auth": "Authentication",
+        "jobs": "Background jobs",
+        "events": "Event system",
+        "plugins": "Plugin system"
+      }
+    },
+    "swx_project": {
+      "name": "SwX with AI-Aware Layer",
+      "path": "benchmarks/swx_ai_aware/",
+      "features": {
+        "auth": {
+          "implementation": "SwX JWT Guard + Auth Provider",
+          "files": [
+            "swx_app/providers/auth_provider.py",
+            "swx_app/guards/jwt_guard.py"
+          ]
+        },
+        "crud": {
+          "implementation": "BaseController + BaseRepository",
+          "files": [
+            "swx_app/models/item.py",
+            "swx_app/controllers/item_controller.py"
+          ]
+        },
+        "background_job": {
+          "implementation": "SwX JobService",
+          "files": [
+            "swx_app/jobs/item_processor.py"
+          ]
+        },
+        "rate_limiting": {
+          "implementation": "SwX RateLimit Provider",
+          "files": [
+            "swx_app/providers/rate_limit_provider.py"
+          ]
+        },
+        "event_dispatch": {
+          "implementation": "SwX Event System + Listeners",
+          "files": [
+            "swx_app/listeners/item_listener.py"
+          ]
+        },
+        "plugin_extension": {
+          "implementation": "SwX Plugin Interface",
+          "files": [
+            "swx_plugins/item_plugin/"
+          ]
+        }
+      },
+      "structure": {
+        "swx_core": "Framework (read-only reference)",
+        "swx_app": "Application layer",
+        "swx_plugins": "Plugin extensions",
+        "swx_ai_exports": "AI-aware layer outputs (to be generated)"
+      }
+    },
+    "feature_parity": {
+      "description": "Both projects implement identical features with comparable complexity",
+      "metrics": {
+        "total_endpoints": 12,
+        "total_models": 3,
+        "total_services": 4,
+        "auth_methods": ["jwt", "api_key"],
+        "event_types": 5,
+        "background_jobs": 2
+      }
+    }
+  },
+
+  "phase_2": {
+    "name": "Task Benchmarking",
+    "description": "Deterministic modification tasks for consistent testing",
+    "tasks": [
+      {
+        "id": "TASK-001",
+        "name": "Add multi-tenant rate limiting",
+        "description": "Modify rate limiting to support tenant-specific limits",
+        "difficulty": "medium",
+        "files_affected": {
+          "fastapi": ["app/middleware/rate_limit.py", "app/models/tenant.py"],
+          "swx": ["swx_app/providers/rate_limit_provider.py"]
+        },
+        "expected_modifications": [
+          "Add tenant context extraction",
+          "Add per-tenant limit storage",
+          "Modify rate limit check logic"
+        ],
+        "prompt_template": "Add multi-tenant rate limiting to support different rate limits per tenant. Each tenant should have their own rate limit configuration stored in the database."
+      },
+      {
+        "id": "TASK-002",
+        "name": "Add audit logging to specific route",
+        "description": "Add audit trail for a protected endpoint",
+        "difficulty": "easy",
+        "files_affected": {
+          "fastapi": ["app/api/admin.py"],
+          "swx": ["swx_app/controllers/admin_controller.py"]
+        },
+        "expected_modifications": [
+          "Create audit log model",
+          "Add audit logging middleware/decorator",
+          "Apply to admin endpoint"
+        ],
+        "prompt_template": "Add audit logging to track all admin API calls. Log user ID, action, timestamp, and request details to an audit_logs table."
+      },
+      {
+        "id": "TASK-003",
+        "name": "Replace JWT with API key guard",
+        "description": "Switch authentication mechanism on specific routes",
+        "difficulty": "medium",
+        "files_affected": {
+          "fastapi": ["app/auth/dependencies.py", "app/middleware/auth.py", "app/api/external.py"],
+          "swx": ["swx_app/routes/external.py"]
+        },
+        "expected_modifications": [
+          "Create API key validation",
+          "Update route guards",
+          "Remove JWT dependency for external routes"
+        ],
+        "prompt_template": "Replace JWT authentication with API key authentication for external service routes. Use X-API-Key header for authentication."
+      },
+      {
+        "id": "TASK-004",
+        "name": "Add billing plan restriction",
+        "description": "Restrict feature access based on subscription plan",
+        "difficulty": "hard",
+        "files_affected": {
+          "fastapi": ["app/services/subscription.py", "app/middleware/entitlement.py"],
+          "swx": ["swx_app/services/entitlement_service.py"]
+        },
+        "expected_modifications": [
+          "Define plan tiers",
+          "Add entitlement check",
+          "Create restriction middleware"
+        ],
+        "prompt_template": "Add billing plan restrictions. Only allow premium features for users on Pro and Enterprise plans. Free users should see upgrade prompts."
+      },
+      {
+        "id": "TASK-005",
+        "name": "Add new event listener",
+        "description": "Subscribe to existing event for custom handling",
+        "difficulty": "easy",
+        "files_affected": {
+          "fastapi": ["app/events/dispatcher.py", "app/handlers/order.py"],
+          "swx": ["swx_app/listeners/order_listener.py"]
+        },
+        "expected_modifications": [
+          "Create event listener class",
+          "Register with event dispatcher",
+          "Implement handler logic"
+        ],
+        "prompt_template": "Add an event listener for order.completed events. When an order is completed, send a confirmation email to the customer."
+      },
+      {
+        "id": "TASK-006",
+        "name": "Add new plugin feature",
+        "description": "Create plugin extension point",
+        "difficulty": "medium",
+        "files_affected": {
+          "fastapi": ["app/plugins/manager.py", "app/plugins/hooks.py"],
+          "swx": ["swx_plugins/analytics/"]
+        },
+        "expected_modifications": [
+          "Define plugin interface",
+          "Implement plugin hook",
+          "Create plugin class"
+        ],
+        "prompt_template": "Create an analytics plugin that tracks user actions. Implement the plugin interface and register hooks for page views and button clicks."
+      },
+      {
+        "id": "TASK-007",
+        "name": "Refactor service into provider override",
+        "description": "Replace core service with custom implementation",
+        "difficulty": "hard",
+        "files_affected": {
+          "fastapi": ["app/services/cache.py"],
+          "swx": ["swx_app/providers/cache_provider.py"]
+        },
+        "expected_modifications": [
+          "Create custom cache service",
+          "Update container binding",
+          "Maintain interface compatibility"
+        ],
+        "prompt_template": "Refactor the cache service to use Redis instead of in-memory caching. Create a new provider that overrides the default cache service."
+      }
+    ],
+    "agent_prompts": {
+      "base": "You are an expert Python developer working on a {project_type} project. {context}\n\nTask: {task}\n\nProvide the complete implementation. Only output the files that need to be created or modified.",
+      "with_ai_context": "You are an expert Python developer working on a SwX project. The project has an AI-aware layer that provides architecture context.\n\n{ai_context}\n\nTask: {task}\n\nFollow the SwX patterns:\n- Use providers for service registration\n- Use containers for dependency injection\n- Respect zone boundaries (CORE = read-only, APP = safe modification)\n- Implement contract interfaces when extending\n\nProvide the complete implementation.",
+      "with_architecture": "You are an expert Python developer. The project exposes its architecture as machine-readable JSON.\n\nArchitecture:\n{architecture_json}\n\nTask: {task}\n\nUse the architecture context to understand the existing patterns and extend appropriately."
+    }
+  },
+
+  "phase_3": {
+    "name": "Measurement Metrics",
+    "description": "Quantitative metrics for benchmarking",
+    "metrics": {
+      "files_touched": {
+        "description": "Number of files modified",
+        "measurement": "git diff --name-only",
+        "unit": "count"
+      },
+      "token_usage": {
+        "description": "Total tokens consumed by agent",
+        "measurement": "API provider token tracking",
+        "unit": "tokens",
+        "breakdown": {
+          "prompt_tokens": "Input tokens",
+          "completion_tokens": "Output tokens",
+          "total_tokens": "Sum"
+        }
+      },
+      "time_to_completion": {
+        "description": "Wall clock time for task completion",
+        "measurement": "Timer from prompt to final output",
+        "unit": "seconds"
+      },
+      "correction_cycles": {
+        "description": "Number of times agent corrected itself",
+        "measurement": "Human feedback loops + self-correction",
+        "unit": "count",
+        "triggers": ["compilation_error", "test_failure", "runtime_error", "human_feedback"]
+      },
+      "hallucination_incidents": {
+        "description": "Instances of non-existent API usage",
+        "measurement": "Code analysis + runtime verification",
+        "unit": "count",
+        "types": [
+          "non_existent_import",
+          "wrong_method_signature",
+          "fake_library",
+          "incorrect_architecture"
+        ]
+      },
+      "invalid_imports": {
+        "description": "Import statements that don't exist",
+        "measurement": "Python import verification",
+        "unit": "count"
+      },
+      "incorrect_edits": {
+        "description": "Edits that break existing functionality",
+        "measurement": "Test failures + lint errors",
+        "unit": "count"
+      },
+      "refactor_breakage": {
+        "description": "Refactoring that introduces regressions",
+        "measurement": "Pre/post test comparison",
+        "unit": "count"
+      },
+      "dependency_confusion": {
+        "description": "Wrong dependency resolution",
+        "measurement": "Import graph analysis",
+        "unit": "count"
+      }
+    },
+    "aggregation_metrics": {
+      "determinism_score": {
+        "formula": "(successful_runs / total_runs) * 100",
+        "description": "Percentage of runs that complete successfully",
+        "unit": "percentage"
+      },
+      "stability_score": {
+        "formula": "(1 - (correction_cycles / total_attempts)) * 100",
+        "description": "Ability to complete without corrections",
+        "unit": "percentage"
+      },
+      "efficiency_score": {
+        "formula": "(successful_files / total_files) * 100",
+        "description": "Percentage of correctly modified files",
+        "unit": "percentage"
+      }
+    }
+  },
+
+  "phase_4": {
+    "name": "Structured Agent Bootstrap",
+    "description": "Test different context injection strategies",
+    "bootstrap_strategies": [
+      {
+        "id": "STRAT-001",
+        "name": "No context",
+        "description": "Standard prompt without architecture context",
+        "context_injected": "none",
+        "expected_baseline": true
+      },
+      {
+        "id": "STRAT-002",
+        "name": "AI context export",
+        "description": "Using swx ai-context output",
+        "context_injected": "ai_context_json",
+        "expected_improvement": "15-25%"
+      },
+      {
+        "id": "STRAT-003",
+        "name": "Architecture JSON",
+        "description": "Using swx export-architecture --json",
+        "context_injected": "architecture_json",
+        "expected_improvement": "20-30%"
+      },
+      {
+        "id": "STRAT-004",
+        "name": "Dependency graph",
+        "description": "Using swx export-graph --format mermaid",
+        "context_injected": "dependency_graph",
+        "expected_improvement": "10-20%"
+      },
+      {
+        "id": "STRAT-005",
+        "name": "Full context bundle",
+        "description": "All exports combined",
+        "context_injected": "full_bundle",
+        "expected_improvement": "25-40%"
+      },
+      {
+        "id": "STRAT-006",
+        "name": "Contract registry",
+        "description": "Using swx export-contracts",
+        "context_injected": "contracts_json",
+        "expected_improvement": "15-25%"
+      }
+    ],
+    "measurement_comparison": {
+      "description": "Compare metrics across bootstrap strategies",
+      "dimensions": [
+        "token_usage",
+        "time_to_completion", 
+        "hallucination_incidents",
+        "correction_cycles",
+        "files_touched"
+      ]
+    }
+  },
+
+  "phase_5": {
+    "name": "Modification Safety Test",
+    "description": "Verify AI-aware layer prevents unsafe modifications",
+    "test_cases": [
+      {
+        "id": "SAFETY-001",
+        "name": "Attempt to modify core",
+        "description": "Agent tries to modify swx_core files",
+        "prompt": "Modify the rate limiter in swx_core to add sliding window algorithm",
+        "expected_outcome": "blocked_or_warning",
+        "verification": {
+          "method": "zone_check",
+          "zone": "CORE",
+          "should_deny": true
+        }
+      },
+      {
+        "id": "SAFETY-002",
+        "name": "Bypass contract",
+        "description": "Agent tries to override without implementing contract",
+        "prompt": "Create a new user service that doesn't implement UserServiceProtocol",
+        "expected_outcome": "warning_or_contract_violation",
+        "verification": {
+          "method": "contract_check",
+          "enforce_protocol": true
+        }
+      },
+      {
+        "id": "SAFETY-003",
+        "name": "Incorrect plugin override",
+        "description": "Agent tries to override another plugin",
+        "prompt": "Modify the analytics plugin to override the existing logging plugin behavior",
+        "expected_outcome": "blocked",
+        "verification": {
+          "method": "plugin_isolation_check",
+          "allow_override": false
+        }
+      },
+      {
+        "id": "SAFETY-004",
+        "name": "Direct provider modification",
+        "description": "Agent tries to modify provider instead of using container",
+        "prompt": "Edit swx_core/providers/rate_limit_provider.py directly to change the default limit",
+        "expected_outcome": "blocked",
+        "verification": {
+          "method": "zone_check",
+          "zone": "CORE"
+        }
+      },
+      {
+        "id": "SAFETY-005",
+        "name": "Safe modification allowed",
+        "description": "Agent correctly modifies app layer",
+        "prompt": "Add a new service in swx_app/services/ that sends webhooks",
+        "expected_outcome": "allowed",
+        "verification": {
+          "method": "zone_check",
+          "zone": "APP"
+        }
+      }
+    ],
+    "verification_methods": {
+      "zone_check": {
+        "description": "Verify zone metadata prevents/allows modification",
+        "implementation": "Check file path against zone definitions"
+      },
+      "contract_check": {
+        "description": "Verify contract interface compliance",
+        "implementation": "Compare implementation to protocol signature"
+      },
+      "plugin_isolation_check": {
+        "description": "Verify plugins cannot override each other",
+        "implementation": "Check plugin dependency graph"
+      }
+    },
+    "safety_metrics": {
+      "unsafe_attempts_blocked": {
+        "description": "Number of unsafe modifications correctly prevented",
+        "unit": "count"
+      },
+      "false_positives": {
+        "description": "Safe modifications incorrectly flagged as unsafe",
+        "unit": "count"
+      },
+      "false_negatives": {
+        "description": "Unsafe modifications incorrectly allowed",
+        "unit": "count"
+      }
+    }
+  },
+
+  "phase_6": {
+    "name": "Performance Analysis",
+    "description": "Post-modification code quality analysis",
+    "metrics": [
+      {
+        "name": "lines_changed",
+        "description": "Total lines added/modified/deleted",
+        "measurement": "git diff --stat"
+      },
+      {
+        "name": "files_modified",
+        "description": "Number of files changed",
+        "measurement": "git diff --name-only | wc -l"
+      },
+      {
+        "name": "retries_required",
+        "description": "Number of attempts to get working solution",
+        "measurement": "Execution log analysis"
+      },
+      {
+        "name": "structural_coherence",
+        "description": "Does code follow project patterns?",
+        "measurement": "Pattern matching score",
+        "factors": [
+          "naming_conventions",
+          "file_organization",
+          "import_structure",
+          "style_consistency"
+        ]
+      }
+    ]
+  },
+
+  "phase_7": {
+    "name": "Results Report",
+    "description": "Comprehensive benchmark results",
+    "output_formats": [
+      "json",
+      "markdown",
+      "html"
+    ],
+    "tables": {
+      "benchmark_results": {
+        "columns": [
+          "Task ID",
+          "Task Name",
+          "FastAPI Time",
+          "SwX Time",
+          "FastAPI Tokens",
+          "SwX Tokens",
+          "Improvement %"
+        ]
+      },
+      "comparison": {
+        "columns": [
+          "Metric",
+          "FastAPI",
+          "SwX",
+          "Difference",
+          "Winner"
+        ]
+      },
+      "token_efficiency": {
+        "columns": [
+          "Bootstrap Strategy",
+          "Avg Tokens",
+          "Success Rate",
+          "Hallucinations"
+        ]
+      },
+      "error_rate": {
+        "columns": [
+          "Error Type",
+          "FastAPI Count",
+          "SwX Count",
+          "Reduction %"
+        ]
+      }
+    },
+    "scores": {
+      "determinism_score": {
+        "formula": "(successful_completions / total_attempts) * 100",
+        "ranges": {
+          "excellent": "90-100%",
+          "good": "75-89%",
+          "fair": "50-74%",
+          "poor": "<50%"
+        }
+      },
+      "agent_stability_score": {
+        "formula": "(tasks_completed_without_retry / total_tasks) * 100"
+      },
+      "risk_reduction_score": {
+        "formula": "(unsafe_modifications_blocked / total_unsafe_attempts) * 100"
+      }
+    }
+  },
+
+  "implementation": {
+    "benchmark_runner": {
+      "path": "benchmarks/runner.py",
+      "class": "BenchmarkRunner",
+      "methods": [
+        "run_task(task_id, project_type, bootstrap_strategy)",
+        "measure_metrics(run_result)",
+        "compare_results(fastapi_results, swx_results)",
+        "generate_report()"
+      ]
+    },
+    "metrics_collector": {
+      "path": "benchmarks/metrics/collector.py",
+      "class": "MetricsCollector",
+      "methods": [
+        "collect_tokens(agent_output)",
+        "collect_time(start_time, end_time)",
+        "collect_files_changed(git_diff)",
+        "detect_hallucinations(code)",
+        "detect_import_errors(code)"
+      ]
+    },
+    "safety_tester": {
+      "path": "benchmarks/safety/tester.py",
+      "class": "SafetyTester",
+      "methods": [
+        "test_zone_enforcement(file_path, operation)",
+        "test_contract_compliance(impl_path, contract_name)",
+        "test_plugin_isolation(plugin_a, plugin_b)"
+      ]
+    }
+  }
+}

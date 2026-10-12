@@ -30,6 +30,7 @@ from swx_core.contracts.events import (
 from swx_core.contracts.cache import CacheDriver
 from swx_core.contracts.rate_limit import RateLimiterInterface
 from swx_core.contracts.jobs import JobQueueInterface
+from swx_core.contracts.notification import NotificationProvider
 from swx_core.contracts.webhook import WebhookHandlerInterface
 
 __all__ = [
@@ -55,6 +56,8 @@ __all__ = [
     "RateLimiterInterface",
     # Jobs
     "JobQueueInterface",
+    # Notifications
+    "NotificationProvider",
     # Webhook
     "WebhookHandlerInterface",
 ]

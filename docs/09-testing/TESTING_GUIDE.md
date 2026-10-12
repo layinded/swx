@@ -1,7 +1,7 @@
 # Testing Guide
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.21.0  
+**Last Updated:** 2026-08-17
 
 ---
 
@@ -206,6 +206,123 @@ def test_login_endpoint(client, test_db):
     assert "access_token" in data
     assert data["token_type"] == "bearer"
 ```
+
+---
+
+## Test-Friendly Database Configuration
+
+### The Problem
+
+SWX Core's database engine was created at **module import time** with a fixed connection pool. This caused:
+
+1. Engine binds to the first event loop at import time
+2. pytest-asyncio creates new event loops per test → "Future attached to a different loop"
+3. No built-in support for a separate test database
+4. No `NullPool` option for test environments
+5. No transaction-rollback-per-test pattern support
+
+### The Solution: Lazy Engine + NullPool + Rollback Fixtures
+
+SWX Core v2.21.0 introduces three features that solve these problems:
+
+#### 1. Lazy Engine Initialization
+
+The engine is no longer created at import time. Instead, use `get_async_engine()`:
+
+```python
+from swx_core.database.db import get_async_engine, reset_engine
+
+# Engine is created on first access, not at import
+engine = get_async_engine()
+
+# Dispose and clear for test teardown
+await reset_engine()
+```
+
+The module-level `async_engine` and `engine` are now **lazy proxies** that delegate to the real engine on first access. All existing code (`from swx_core.database.db import async_engine`) continues to work unchanged.
+
+#### 2. Configurable Pool Class
+
+Set `DB_POOL_CLASS=NullPool` in your test environment to disable connection pooling:
+
+```bash
+# .env.test
+DB_POOL_CLASS=NullPool
+TESTING=true
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/myapp_test
+```
+
+With `NullPool`, each request gets a fresh connection — no event loop binding issues.
+
+#### 3. Transaction-Rollback-Per-Test Fixture
+
+SWX Core ships a pytest plugin with a `db_session` fixture that wraps each test in a transaction and rolls it back after:
+
+```python
+# conftest.py — register the fixtures
+pytest_plugins = ["swx_core.testing.fixtures"]
+```
+
+Then use `db_session` in your tests:
+
+```python
+@pytest.mark.asyncio
+async def test_create_user(db_session):
+    user = User(email="test@example.com", hashed_password="...")
+    db_session.add(user)
+    await db_session.flush()
+
+    result = await db_session.execute(select(User).where(User.email == "test@example.com"))
+    assert result.scalar_one_or_none() is not None
+    # Transaction is rolled back automatically — no data persists
+```
+
+#### 4. Engine Reset Between Test Sessions
+
+The `_reset_engine_fixture` (autouse, session-scoped) disposes engines after the test session ends, preventing "Future attached to a different loop" errors.
+
+#### 5. Environment-Based Test Configuration
+
+For the simplest setup, use environment variables:
+
+```python
+# conftest.py
+import pytest
+
+@pytest.fixture(autouse=True)
+def test_env(monkeypatch):
+    monkeypatch.setenv("TESTING", "true")
+    monkeypatch.setenv("DB_POOL_CLASS", "NullPool")
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/myapp_test")
+```
+
+Or in `.env.test`:
+
+```bash
+TESTING=true
+DB_POOL_CLASS=NullPool
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/myapp_test
+```
+
+### Settings Reference
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `TESTING` | `False` | Enable test mode (lazy engine init, TEST_DATABASE_URL) |
+| `TEST_DATABASE_URL` | `None` | Override DATABASE_URL when TESTING=true |
+| `DB_POOL_CLASS` | `"QueuePool"` | SQLAlchemy pool class (`NullPool` for tests) |
+
+### Public API
+
+| Symbol | Module | Purpose |
+|---|---|---|
+| `get_async_engine()` | `swx_core.database.db` | Lazy-init async engine |
+| `get_engine()` | `swx_core.database.db` | Lazy-init sync engine |
+| `reset_engine()` | `swx_core.database.db` | Dispose engines and clear cached refs |
+| `async_engine` | `swx_core.database.db` | Lazy proxy (backward-compatible) |
+| `engine` | `swx_core.database.db` | Lazy proxy (backward-compatible) |
+| `db_session` | `swx_core.testing.fixtures` | Rollback-per-test async fixture |
+| `_reset_engine_fixture` | `swx_core.testing.fixtures` | Session-scoped engine teardown |
 
 ---
 

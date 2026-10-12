@@ -46,7 +46,7 @@ class Permission(PermissionBase, table=True):
         id (uuid.UUID): Unique permission identifier.
     """
 
-    __tablename__ = "permission"
+    __tablename__ = "swx_permission"
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

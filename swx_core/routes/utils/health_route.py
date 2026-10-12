@@ -1,66 +1,68 @@
-"""
-Health Check Routes
--------------------
-This module defines health check endpoints for container orchestration and monitoring.
+from __future__ import annotations
 
-Features:
-- Provides health check endpoint for Docker/Kubernetes healthchecks
-- Database connectivity check
-- Application status check
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
-Routes:
-- `GET /utils/health-check`: Basic health check (for Docker healthchecks)
-- `GET /utils/health`: Detailed health check with database status
-"""
-
-from fastapi import APIRouter
-from sqlmodel import text
-from swx_core.database.db import SessionDep
-from swx_core.services.alert_engine import alert_engine
-from swx_core.services.channels.models import AlertSeverity, AlertSource
+from swx_core.utils.health import HealthChecker
 
 router = APIRouter(prefix="/utils")
 
 
+def _get_checker(request: Request) -> HealthChecker | None:
+    return getattr(request.app.state, "health_checker", None)
+
+
 @router.get("/health-check", tags=["Health"])
 async def health_check():
-    """
-    Basic health check endpoint for Docker/Kubernetes healthchecks.
-    
-    Returns:
-        dict: Simple status response
-    """
+    """Liveness probe — returns 200 if the process is alive."""
     return {"status": "healthy", "service": "swx-api"}
 
 
 @router.get("/health", tags=["Health"])
-async def health_detailed(session: SessionDep):
-    """
-    Detailed health check with database connectivity test.
-    
-    Args:
-        session: Database session dependency (AsyncSession)
-        
-    Returns:
-        dict: Detailed health status including database connectivity
-    """
-    db_status = "unknown"
-    try:
-        # Test database connectivity
-        await session.execute(text("SELECT 1"))
-        db_status = "connected"
-    except Exception as e:
-        db_status = "disconnected"
-        await alert_engine.emit(
-            severity=AlertSeverity.CRITICAL,
-            source=AlertSource.INFRA,
-            event_type="HEALTH_CHECK_DB_FAILURE",
-            message=f"Database is down! Health check failed: {e}",
-            metadata={"error": str(e)}
+async def health_detailed(request: Request):
+    """Detailed health check using HealthChecker for all registered services."""
+    checker = _get_checker(request)
+    if checker is None:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "message": "health_checker not initialized"},
         )
-    
-    return {
-        "status": "healthy" if db_status == "connected" else "degraded",
-        "service": "swx-api",
-        "database": db_status
-    }
+
+    result = await checker.check_all()
+    status_code = 503 if result.status == "unhealthy" else 200
+    return JSONResponse(status_code=status_code, content=result.model_dump())
+
+
+@router.get("/ready", tags=["Health"])
+async def readiness_check(request: Request):
+    """Readiness probe — 200 only when all *required* services are healthy.
+
+    Kubernetes uses this to decide whether to route traffic to this pod.
+    Returns 503 with details if any required service is unhealthy.
+    """
+    checker = _get_checker(request)
+    if checker is None:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "message": "health_checker not initialized"},
+        )
+
+    result = await checker.check_all()
+
+    required_unhealthy = [
+        name
+        for name in checker.required_services
+        if name in result.services and result.services[name].status == "unhealthy"
+    ]
+
+    if required_unhealthy:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "unhealthy_required": required_unhealthy,
+                "services": {k: v.model_dump() for k, v in result.services.items()},
+            },
+        )
+
+    return {"status": "ready", "service": "swx-api"}

@@ -421,10 +421,18 @@ await validate_unique(repository, field="email", value="test@example.com")
 
 ## Model Mixins
 
+> **⚠️ v2.23.4 Breaking Change:** Mixins no longer use `sa_column=Column(...)` directly.
+> This was causing `Column object already assigned to Table 'X'` errors when two
+> `table=True` models inherited the same mixin. Mixins now use pure `Field()` only.
+> For `server_default`, `onupdate`, `index=True`, and other SQLAlchemy Column kwargs,
+> use the exported factory functions (`make_id()`, `make_created_at()`, etc.) directly
+> in each model's class body.
+
 ### Available Mixins
 
 ```python
 from swx_core.utils.mixins import (
+    # Mixins (pure Field — safe for multi-table inheritance)
     TimestampMixin,     # created_at, updated_at
     SoftDeleteMixin,    # is_deleted, soft_delete(), restore()
     UUIDPrimaryKeyMixin, # id: UUID
@@ -435,73 +443,133 @@ from swx_core.utils.mixins import (
     SlugMixin,          # slug: str
     TitleMixin,         # title: str
     DescriptionMixin,   # description: str
-    MetadataMixin,      # metadata: dict
-    FullModelMixin,     # id, created_at, updated_at, is_deleted
+    MetadataMixin,      # metadata_: dict (mapped to "metadata" column)
+    FullModelMixin,     # id, created_at, updated_at, is_active
     AuditedModelMixin,  # Full model + audit fields
+    # Factory functions (fresh Column per call — use in model class bodies)
+    make_id, make_created_at, make_updated_at,
+    make_is_deleted, make_deleted_at,
+    make_created_by_id, make_updated_by_id,
+    make_is_active, make_slug, make_metadata,
 )
 ```
 
-### Usage
+### Simple Usage (Python-side defaults only)
+
+Mixins provide Python-side defaults via `Field()`. This is safe for multiple
+`table=True` models because each `Field()` call creates a new `FieldInfo`:
 
 ```python
 from sqlmodel import SQLModel, Field
-from swx_core.utils.mixins import TimestampMixin, SoftDeleteMixin, UUIDPrimaryKeyMixin
-from uuid import UUID
+from swx_core.utils.mixins import FullModelMixin
+import uuid
 
-# Basic model with timestamps
-class Product(UUIDPrimaryKeyMixin, TimestampMixin, SQLModel, table=True):
+# Both models inherit the same mixin — no Column-sharing errors
+class ProductA(FullModelMixin, SQLModel, table=True):
+    __tablename__ = "products_a"
+    name: str = Field(default='a')
+
+class ProductB(FullModelMixin, SQLModel, table=True):
+    __tablename__ = "products_b"
+    name: str = Field(default='b')
+```
+
+### Full Usage (with server_default, onupdate, index)
+
+For production models that need database-level defaults (`server_default`),
+auto-updating timestamps (`onupdate`), or indexed columns, override the
+mixin fields with factory functions in the model's own class body:
+
+```python
+from sqlmodel import SQLModel, Field
+from swx_core.utils.mixins import (
+    FullModelMixin,
+    make_id, make_created_at, make_updated_at, make_is_active,
+)
+from swx_core.utils.time import utc_now
+import uuid
+from datetime import datetime
+
+class Product(FullModelMixin, SQLModel, table=True):
     __tablename__ = "products"
-    
+
+    # Override mixin fields with full Column kwargs:
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_active: bool = Field(default=True, sa_column=make_is_active())
+
     name: str = Field(max_length=255)
     price: float = Field(gt=0)
+```
 
-# Model with soft delete
+Each `make_*()` call creates a **fresh** `Column` instance, so there's no
+sharing even when multiple models call the same factory.
+
+### Other Mixin Examples
+
+```python
+from swx_core.utils.mixins import (
+    UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin,
+    CreatedByMixin, ActiveMixin, SlugMixin, MetadataMixin,
+    make_id, make_created_at, make_updated_at,
+    make_is_deleted, make_deleted_at, make_created_by_id,
+    make_slug, make_metadata,
+)
+
+# Model with soft delete (server_default for is_deleted)
 class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, SQLModel, table=True):
     __tablename__ = "users"
-    
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, sa_column=make_id())
+    created_at: datetime = Field(default_factory=utc_now, sa_column=make_created_at())
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=make_updated_at())
+    is_deleted: bool = Field(default=False, sa_column=make_is_deleted())
+    deleted_at: datetime | None = Field(default=None, sa_column=make_deleted_at())
     email: str = Field(unique=True)
     name: str = Field(max_length=255)
 
-# Full model with all features
-class Article(FullModelMixin, SQLModel, table=True):
+# Model with slug (server_default not needed — just Field is fine)
+class Article(SlugMixin, TimestampMixin, SQLModel, table=True):
     __tablename__ = "articles"
-    
+    # If you need unique index on slug, override:
+    slug: str = Field(sa_column=make_slug())
     title: str = Field(max_length=255)
     content: str
-    author_id: UUID = Field(foreign_key="users.id")
 
-# Audited model (includes created_by, updated_by)
-class Order(AuditedModelMixin, SQLModel, table=True):
-    __tablename__ = "orders"
-    
-    total: float = Field(gt=0)
-    status: str = Field(default="pending")
+# Model with metadata JSON (server_default not needed)
+class Config(MetadataMixin, SQLModel, table=True):
+    __tablename__ = "configs"
+    # Note: attribute is metadata_ (not metadata) because
+    # metadata is reserved in SQLAlchemy
+    metadata_: dict | None = Field(default=None, sa_column=make_metadata())
+    key: str = Field(primary_key=True)
 ```
 
 ### Mixin Fields
 
 ```python
-# TimestampMixin adds:
-created_at: datetime = Field(default_factory=datetime.utcnow)
-updated_at: datetime = Field(default_factory=datetime.utcnow)
+# TimestampMixin adds (pure Field — no server_default):
+created_at: datetime = Field(default_factory=utc_now)
+updated_at: datetime = Field(default_factory=utc_now)
 
-# SoftDeleteMixin adds:
+# SoftDeleteMixin adds (pure Field — no server_default):
 is_deleted: bool = Field(default=False)
+deleted_at: datetime | None = Field(default=None)
 
-# UUIDPrimaryKeyMixin adds:
-id: UUID = Field(default_factory=uuid4, primary_key=True)
+# UUIDPrimaryKeyMixin adds (pure Field — no server_default):
+id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
 
-# CreatedByMixin adds:
-created_by_id: UUID | None = Field(default=None, foreign_key="users.id")
+# CreatedByMixin adds (pure Field — no index):
+created_by_id: uuid.UUID | None = Field(default=None)
 
-# UpdatedByMixin adds:
-updated_by_id: UUID | None = Field(default=None, foreign_key="users.id")
+# UpdatedByMixin adds (pure Field — no index):
+updated_by_id: uuid.UUID | None = Field(default=None)
 
-# ActiveMixin adds:
+# ActiveMixin adds (pure Field — no server_default, no index):
 is_active: bool = Field(default=True)
 
-# SlugMixin adds:
-slug: str = Field(max_length=255, unique=True)
+# SlugMixin adds (pure Field — no unique index):
+slug: str = Field(max_length=255)
 
 # TitleMixin adds:
 title: str = Field(max_length=255)
@@ -509,18 +577,30 @@ title: str = Field(max_length=255)
 # DescriptionMixin adds:
 description: str | None = Field(default=None)
 
-# MetadataMixin adds:
-metadata: dict = Field(default_factory=dict)
+# MetadataMixin adds (note: metadata_ attribute, "metadata" column):
+metadata_: dict | None = Field(default=None)
 
 # FullModelMixin includes:
 # - UUIDPrimaryKeyMixin
 # - TimestampMixin
-# - SoftDeleteMixin
+# - ActiveMixin
 
 # AuditedModelMixin includes:
 # - FullModelMixin
 # - CreatedByMixin
 # - UpdatedByMixin
+
+# Factory functions for server_default / onupdate / index:
+make_id()               # UUID PK with default
+make_created_at()        # server_default=func.now()
+make_updated_at()        # server_default=func.now(), onupdate=func.now()
+make_is_deleted()        # server_default="false", index=True
+make_deleted_at()        # nullable DateTime
+make_created_by_id()     # nullable UUID with index
+make_updated_by_id()     # nullable UUID with index
+make_is_active()         # server_default="true", index=True
+make_slug()              # String(255), unique, indexed
+make_metadata()          # JSON column named "metadata"
 ```
 
 ---
@@ -1129,4 +1209,89 @@ name = random_string(10)  # "aBcDeFgHiJ"
 
 ---
 
+## Currency Conversion (v2.22.4)
+
+**Module:** `swx_core/utils/currency.py`
+
+Single source of truth for converting between major currency units,
+provider minor units (kobo, cents), and nano (SwX wallet balance unit).
+
+### NANO_DIVISORS
+
+```python
+from swx_core.utils.currency import NANO_DIVISORS
+
+# 1 major unit = N nano
+NANO_DIVISORS = {
+    "NGN": 10_000_000,
+    "KES": 100,
+    "ZAR": 100,
+    "USD": 100,
+    "GHS": 100,
+}
+```
+
+### Functions
+
+```python
+from swx_core.utils.currency import (
+    major_to_nano,
+    nano_to_major,
+    kobo_to_nano,
+    provider_amount_to_nano,
+    major_to_provider_amount,
+)
+
+# Major → nano
+nano = major_to_nano(1000, "NGN")  # 10_000_000_000
+
+# Nano → major
+major = nano_to_major(10_000_000_000, "NGN")  # 1000.0
+
+# Paystack kobo → nano (1 kobo = 100,000 nano)
+nano = kobo_to_nano(100_000)  # 10_000_000_000
+
+# Provider-reported amount → nano (dispatches by provider + currency)
+nano = provider_amount_to_nano(100_000, "NGN", "paystack")  # kobo → nano
+nano = provider_amount_to_nano(1000, "NGN", "flutterwave")  # major → nano
+
+# Major → provider's expected unit (for payment initialization)
+kobo = major_to_provider_amount(1000, "NGN", "paystack")  # 100_000 (kobo)
+major = major_to_provider_amount(1000, "NGN", "flutterwave")  # 1000 (major)
+```
+
+---
+
+## Session Helpers (v2.22.4)
+
+**Module:** `swx_core/database/session_helpers.py`
+
+Provides `with_read_session()` — a short-lived `AsyncSession` context manager
+for the DB-read-then-HTTP pattern. Prevents connection pool exhaustion when
+controllers mix database reads with outbound HTTP calls.
+
+See [Session Management](./SESSION_MANAGEMENT.md) for full documentation.
+
+```python
+from swx_core.database.session_helpers import with_read_session
+
+async def my_controller(item_key, provider, email, callback_url):
+    async with with_read_session() as session:
+        item = await billing_service.get_item_by_key(session, item_key)
+        if item is None:
+            raise NotFoundError("Item", item_key)
+        item_amount = item.amount
+        item_currency = item.currency
+
+    # Session is now closed — safe to make the outbound HTTP call.
+    return await get_local_payment_provider(provider).initialize_payment(
+        item_amount, item_currency, email, reference, callback_url
+    )
+```
+
+---
+
 **Status:** Utilities documented and ready for use.
+
+**Version:** 2.22.4  
+**Last Updated:** 2026-08-22

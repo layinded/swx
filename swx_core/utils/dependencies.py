@@ -11,7 +11,6 @@ from functools import lru_cache
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from swx_core.container.container import get_container
 from swx_core.guards.base import AuthenticatedUser
 from swx_core.guards.jwt_guard import JWTGuard
 from swx_core.guards.api_key_guard import APIKeyGuard
@@ -20,8 +19,12 @@ from swx_core.utils.errors import UnauthorizedError, ForbiddenError
 
 T = TypeVar("T")
 
-# Security schemes
 security = HTTPBearer(auto_error=False)
+
+
+def _get_container():
+    from swx_core.container.container import get_container
+    return get_container()
 
 
 # =========================================================================
@@ -40,7 +43,7 @@ def inject(service_name: str) -> Any:
             return await user_service.list_users()
     """
     def dependency():
-        container = get_container()
+        container = _get_container()
         return container.make(service_name)
     
     return Depends(dependency)
@@ -59,7 +62,7 @@ def inject_service(service_class: Type[T]) -> Callable[[], T]:
     """
     @lru_cache
     def dependency():
-        container = get_container()
+        container = _get_container()
         # Try to resolve by class name first
         service_name = service_class.__name__
         if container.bound(service_name):
@@ -91,7 +94,7 @@ async def get_current_user_optional(
     if not credentials:
         return None
     
-    container = get_container()
+    container = _get_container()
     
     # Try JWT guard
     jwt_guard: JWTGuard = container.make("guard.jwt")
@@ -122,7 +125,7 @@ async def get_current_user(
     if not credentials:
         raise UnauthorizedError("Authentication required")
     
-    container = get_container()
+    container = _get_container()
     request = Request  # Will be injected by FastAPI
     
     # Try JWT guard

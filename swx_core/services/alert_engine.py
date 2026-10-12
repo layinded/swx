@@ -23,6 +23,7 @@ class AlertEngine:
             "email": EmailChannel(),
             "sms": SmsChannel()
         }
+        self._pending_tasks: set = set()
 
     async def emit(
         self,
@@ -59,7 +60,17 @@ class AlertEngine:
         # 3. Dispatch to channels asynchronously without blocking the caller
         # We use background tasks or fire-and-forget for this in production.
         # Since this is a service, we'll create a task for it.
-        asyncio.create_task(self._dispatch(alert, target_channels))
+        task = asyncio.create_task(self._dispatch(alert, target_channels))
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        task.add_done_callback(self._handle_task_error)
+
+    @staticmethod
+    def _handle_task_error(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        if task.exception():
+            logger.error(f"Alert dispatch failed: {task.exception()}")
 
     async def _dispatch(self, alert: Alert, target_channel_names: List[str]) -> None:
         """

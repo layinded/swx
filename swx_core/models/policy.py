@@ -11,10 +11,11 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from enum import Enum
-from sqlalchemy import Column
+from sqlalchemy import Column, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 
 class PolicyEffect(str, Enum):
@@ -55,7 +56,7 @@ class Policy(Base, table=True):
     Policies evaluate conditions on actor, action, resource, and context
     to determine if access should be ALLOW, DENY, or CONDITIONAL_ALLOW.
     """
-    __tablename__ = "policy"
+    __tablename__ = "swx_policy"  # pyright: ignore[reportAssignmentType]
     
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     policy_id: str = Field(unique=True, index=True)  # Human-readable ID (e.g., "team.update.owner")
@@ -84,8 +85,14 @@ class Policy(Base, table=True):
         sa_column=Column(JSONB, nullable=False)
     )
     
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+    )
 
 
 class PolicyDecision(str, Enum):

@@ -19,11 +19,13 @@ import json
 import shutil
 import subprocess
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 import click
+
+from swx_core.config.settings import settings
 
 # ===================== CONSTANTS =====================
 
@@ -132,7 +134,7 @@ def _get_default_env() -> str:
     secret_key = secrets.token_urlsafe(32)
     
     return f"""# SwX Framework Environment Configuration
-# Generated on {datetime.now().isoformat()}
+# Generated on {datetime.now(timezone.utc).isoformat()}
 
 # Application
 APP_NAME=SwX-API
@@ -181,16 +183,17 @@ def _setup_storage_directories():
 
 def _setup_plugin_manifest():
     """Create plugin manifest if it doesn't exist."""
-    manifest_dir = os.path.dirname(PLUGIN_MANIFEST_FILE)
+    manifest_path = _get_plugin_manifest_path()
+    manifest_dir = os.path.dirname(manifest_path)
     os.makedirs(manifest_dir, exist_ok=True)
     
-    if not os.path.exists(PLUGIN_MANIFEST_FILE):
+    if not os.path.exists(manifest_path):
         manifest = {
             "plugins": {},
             "enabled": [],
             "version": "1.0.0"
         }
-        with open(PLUGIN_MANIFEST_FILE, "w") as f:
+        with open(manifest_path, "w") as f:
             json.dump(manifest, f, indent=2)
         click.secho("✅ Plugin manifest created", fg="green")
 
@@ -204,14 +207,29 @@ def _setup_database():
         return
     
     try:
-        # Check if migrations directory exists
         if not os.path.exists("migrations"):
             click.secho("⚠️  No migrations directory found", fg="yellow")
             return
         
-        # Run migrations
+        if not os.path.exists("alembic.ini"):
+            click.secho("⚠️  No alembic.ini found. Run 'alembic init migrations' first.", fg="yellow")
+            return
+        
+        versions_dir = os.path.join("migrations", "versions")
+        has_migrations = False
+        if os.path.exists(versions_dir):
+            migration_files = [f for f in os.listdir(versions_dir) 
+                             if f.endswith(".py") and not f.startswith("_")]
+            has_migrations = len(migration_files) > 0
+        
+        if not has_migrations:
+            click.secho("📝 No migrations found.", fg="cyan")
+            click.secho("💡 For fresh projects: swx db revision \"initial\"", fg="cyan")
+            click.secho("💡 For existing projects: Use existing migrations or skip autogenerate", fg="cyan")
+            return
+        
         result = subprocess.run(
-            ["alembic", "upgrade", "head"],
+            ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, "upgrade", "head"],
             capture_output=True,
             text=True
         )
@@ -236,16 +254,16 @@ def _create_superuser():
     
     try:
         # Try to import and run the seed script
-        from swx_core.database.core import get_engine, AsyncSessionLocal
+        from swx_core.database.db import AsyncSessionLocal, async_engine
         from swx_core.models.user import User
-        from swx_core.security.hashing import Hasher
+        from swx_core.security.hashing import Hasher  # pyright: ignore[reportMissingImports]
         from sqlalchemy import text
         
         async def create_user():
             async with AsyncSessionLocal() as session:
                 # Check if user exists
                 result = await session.execute(
-                    text("SELECT id FROM users WHERE email = :email"),
+                    text("SELECT id FROM swx_users WHERE swx_users.email = :email"),
                     {"email": email}
                 )
                 if result.fetchone():
@@ -346,7 +364,7 @@ def down(message: str):
     
     maintenance_data = {
         "message": message,
-        "started_at": datetime.now().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
     }
     
     with open(MAINTENANCE_FILE, "w") as f:
@@ -354,7 +372,7 @@ def down(message: str):
     
     click.secho("⛔ Application is now in maintenance mode", fg="yellow", bold=True)
     click.secho(f"   Message: {message}", fg="white")
-    click.secho(f"   Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", fg="white")
+    click.secho(f"   Started: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}", fg="white")
     click.secho("\nUse 'swx up' to bring the application back online.", fg="cyan")
 
 
@@ -422,8 +440,8 @@ def _cache_routes():
         for route in app.routes:
             if hasattr(route, "methods") and hasattr(route, "path"):
                 route_info = {
-                    "path": route.path,
-                    "methods": list(route.methods) if route.methods else [],
+                    "path": route.path,  # type: ignore[union-attr]
+                    "methods": list(route.methods) if route.methods else [],  # type: ignore[union-attr]
                     "name": getattr(route, "name", None),
                 }
                 routes_data.append(route_info)
@@ -497,8 +515,8 @@ def route_list(as_json: bool, path: Optional[str], method: Optional[str]):
     routes = []
     for route in app.routes:
         if hasattr(route, "methods") and hasattr(route, "path"):
-            path_str = route.path
-            methods = list(route.methods) if route.methods else []
+            path_str = route.path  # type: ignore[union-attr]
+            methods = list(route.methods) if route.methods else []  # type: ignore[union-attr]
             name = getattr(route, "name", "")
             
             # Apply filters
@@ -691,11 +709,12 @@ def plugin_list():
     Example:
         swx plugin:list
     """
-    if not os.path.exists(PLUGIN_MANIFEST_FILE):
+    manifest_path = _get_plugin_manifest_path()
+    if not os.path.exists(manifest_path):
         click.secho("No plugin manifest found. Run 'swx setup' first.", fg="yellow")
         return
     
-    with open(PLUGIN_MANIFEST_FILE, "r") as f:
+    with open(manifest_path, "r") as f:
         manifest = json.load(f)
     
     plugins = manifest.get("plugins", {})
@@ -724,11 +743,12 @@ def plugin_enable(name: str):
     Example:
         swx plugin:enable my-plugin
     """
-    if not os.path.exists(PLUGIN_MANIFEST_FILE):
+    manifest_path = _get_plugin_manifest_path()
+    if not os.path.exists(manifest_path):
         click.secho("No plugin manifest found. Run 'swx setup' first.", fg="yellow")
         return
     
-    with open(PLUGIN_MANIFEST_FILE, "r") as f:
+    with open(manifest_path, "r") as f:
         manifest = json.load(f)
     
     plugins = manifest.get("plugins", {})
@@ -743,7 +763,8 @@ def plugin_enable(name: str):
     
     manifest["enabled"].append(name)
     
-    with open(PLUGIN_MANIFEST_FILE, "w") as f:
+    manifest_path = _get_plugin_manifest_path()
+    with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     
     click.secho(f"✅ Plugin '{name}' enabled", fg="green")
@@ -758,11 +779,12 @@ def plugin_disable(name: str):
     Example:
         swx plugin:disable my-plugin
     """
-    if not os.path.exists(PLUGIN_MANIFEST_FILE):
+    manifest_path = _get_plugin_manifest_path()
+    if not os.path.exists(manifest_path):
         click.secho("No plugin manifest found. Run 'swx setup' first.", fg="yellow")
         return
     
-    with open(PLUGIN_MANIFEST_FILE, "r") as f:
+    with open(manifest_path, "r") as f:
         manifest = json.load(f)
     
     if name not in manifest.get("enabled", []):
@@ -771,7 +793,7 @@ def plugin_disable(name: str):
     
     manifest["enabled"].remove(name)
     
-    with open(PLUGIN_MANIFEST_FILE, "w") as f:
+    with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     
     click.secho(f"✅ Plugin '{name}' disabled", fg="green")
@@ -847,22 +869,23 @@ def plugin_install(url: str, name: Optional[str]):
 
 def _update_plugin_manifest(name: str, url: str, version: str):
     """Update the plugin manifest."""
-    if not os.path.exists(PLUGIN_MANIFEST_FILE):
+    manifest_path = _get_plugin_manifest_path()
+    if not os.path.exists(manifest_path):
         _setup_plugin_manifest()
     
-    with open(PLUGIN_MANIFEST_FILE, "r") as f:
+    with open(manifest_path, "r") as f:
         manifest = json.load(f)
     
     manifest["plugins"][name] = {
         "url": url,
         "version": version,
-        "installed_at": datetime.now().isoformat(),
+        "installed_at": datetime.now(timezone.utc).isoformat(),
     }
     
     if name not in manifest["enabled"]:
         manifest["enabled"].append(name)
     
-    with open(PLUGIN_MANIFEST_FILE, "w") as f:
+    with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
 
 
@@ -948,7 +971,7 @@ def upgrade(version: Optional[str], no_migrate: bool, no_deps: bool):
         
         if shutil.which("alembic"):
             result = subprocess.run(
-                ["alembic", "upgrade", "head"],
+                ["alembic", "-c", settings.ALEMBIC_CONFIG_PATH, "upgrade", "head"],
                 capture_output=True,
                 text=True
             )
@@ -972,7 +995,6 @@ def upgrade(version: Optional[str], no_migrate: bool, no_deps: bool):
     click.secho("\n✨ Upgrade complete! Run 'swx optimize' to rebuild cache.", fg="green", bold=True)
 
 
-    cli_group.add_command(upgrade, "upgrade")
 def register_framework_commands(cli_group):
     """Register all framework commands with the CLI group."""
     cli_group.add_command(setup, "setup")

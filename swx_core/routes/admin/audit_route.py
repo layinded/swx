@@ -8,6 +8,7 @@ from typing import Any, Optional
 from uuid import UUID
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 
 from swx_core.database.db import SessionDep
 from swx_core.models.audit_log import AuditLogsPublic, AuditLogPublic
@@ -41,6 +42,43 @@ async def list_audit_logs(
     return await audit_log_controller.list_audit_logs_controller(
         session, skip, limit, actor_type, actor_id, action,
         resource_type, resource_id, outcome, start_date, end_date
+    )
+
+
+@router.get("/stats", response_model=dict)
+async def get_audit_stats(
+    session: SessionDep,
+    start_date: Optional[datetime] = Query(None, description="Start timestamp for stats (ISO format)"),
+    end_date: Optional[datetime] = Query(None, description="End timestamp for stats (ISO format)"),
+) -> Any:
+    """
+    Retrieve aggregated audit log statistics grouped by action and outcome. (Admin only)
+    """
+    return await audit_log_controller.get_audit_stats_controller(
+        session, start_date, end_date,
+    )
+
+
+@router.get("/export")
+async def export_audit_logs(
+    session: SessionDep,
+    start_date: Optional[datetime] = Query(None, description="Start timestamp (ISO format)"),
+    end_date: Optional[datetime] = Query(None, description="End timestamp (ISO format)"),
+    actor_type: Optional[str] = Query(None, description="Filter by actor type (system|admin|user)"),
+    action: Optional[str] = Query(None, description="Filter by action name"),
+    outcome: Optional[str] = Query(None, description="Filter by outcome (success|failure)"),
+) -> StreamingResponse:
+    """
+    Export matching audit logs as CSV. (Admin only)
+    """
+    csv_data = await audit_log_controller.export_audit_logs_controller(
+        session, start_date, end_date, actor_type, action, outcome,
+    )
+    filename = f"audit_logs_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        iter([csv_data]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 

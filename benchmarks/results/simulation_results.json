@@ -1,0 +1,151 @@
+{
+  "timestamp": "2026-03-08T20:17:16.026560",
+  "total_runs": 100,
+  "task_results": {
+    "TASK-001": {
+      "difficulty": "medium",
+      "fastapi": {
+        "success_rate": 77.0,
+        "avg_tokens": 5506.08,
+        "avg_hallucinations": 8.4,
+        "avg_corrections": 2.54
+      },
+      "swx": {
+        "success_rate": 92.0,
+        "avg_tokens": 2333.3375,
+        "avg_hallucinations": 1.64,
+        "avg_corrections": 0.46
+      }
+    },
+    "TASK-002": {
+      "difficulty": "easy",
+      "fastapi": {
+        "success_rate": 79.0,
+        "avg_tokens": 5670.12,
+        "avg_hallucinations": 4.84,
+        "avg_corrections": 2.6
+      },
+      "swx": {
+        "success_rate": 83.0,
+        "avg_tokens": 2277.119,
+        "avg_hallucinations": 0.7,
+        "avg_corrections": 0.55
+      }
+    },
+    "TASK-003": {
+      "difficulty": "medium",
+      "fastapi": {
+        "success_rate": 76.0,
+        "avg_tokens": 5596.11,
+        "avg_hallucinations": 8.6,
+        "avg_corrections": 2.5
+      },
+      "swx": {
+        "success_rate": 87.0,
+        "avg_tokens": 2381.405,
+        "avg_hallucinations": 1.89,
+        "avg_corrections": 0.49
+      }
+    },
+    "TASK-004": {
+      "difficulty": "hard",
+      "fastapi": {
+        "success_rate": 79.0,
+        "avg_tokens": 5467.48,
+        "avg_hallucinations": 13.22,
+        "avg_corrections": 2.63
+      },
+      "swx": {
+        "success_rate": 84.0,
+        "avg_tokens": 2277.6130000000003,
+        "avg_hallucinations": 3.09,
+        "avg_corrections": 0.51
+      }
+    },
+    "TASK-005": {
+      "difficulty": "easy",
+      "fastapi": {
+        "success_rate": 56.00000000000001,
+        "avg_tokens": 5573.31,
+        "avg_hallucinations": 4.89,
+        "avg_corrections": 2.51
+      },
+      "swx": {
+        "success_rate": 84.0,
+        "avg_tokens": 2319.7785,
+        "avg_hallucinations": 0.69,
+        "avg_corrections": 0.55
+      }
+    },
+    "TASK-006": {
+      "difficulty": "medium",
+      "fastapi": {
+        "success_rate": 76.0,
+        "avg_tokens": 5472.67,
+        "avg_hallucinations": 8.63,
+        "avg_corrections": 2.53
+      },
+      "swx": {
+        "success_rate": 81.0,
+        "avg_tokens": 2178.1955000000003,
+        "avg_hallucinations": 1.76,
+        "avg_corrections": 0.44
+      }
+    },
+    "TASK-007": {
+      "difficulty": "hard",
+      "fastapi": {
+        "success_rate": 74.0,
+        "avg_tokens": 5332.34,
+        "avg_hallucinations": 13.03,
+        "avg_corrections": 2.61
+      },
+      "swx": {
+        "success_rate": 79.0,
+        "avg_tokens": 2339.2264999999998,
+        "avg_hallucinations": 2.88,
+        "avg_corrections": 0.54
+      }
+    }
+  },
+  "strategy_comparison": {
+    "none": {
+      "success_rate": 74.28571428571429,
+      "avg_tokens": 3120.4440000000004,
+      "avg_hallucinations": 2.8
+    },
+    "ai_context": {
+      "success_rate": 77.71428571428571,
+      "avg_tokens": 2769.129142857143,
+      "avg_hallucinations": 2.5428571428571427
+    },
+    "architecture": {
+      "success_rate": 77.14285714285715,
+      "avg_tokens": 2640.96,
+      "avg_hallucinations": 2.4457142857142857
+    },
+    "full": {
+      "success_rate": 79.42857142857143,
+      "avg_tokens": 2254.3745714285715,
+      "avg_hallucinations": 1.7314285714285715
+    }
+  },
+  "summary": {
+    "determinism": {
+      "fastapi": 73.79591836734693,
+      "swx": 84.0204081632653,
+      "improvement": 13.855088495575233
+    },
+    "token_usage": {
+      "fastapi": 5520.497346938775,
+      "swx": 2265.1265,
+      "reduction": 58.96879651149444
+    },
+    "hallucinations": {
+      "fastapi": 8.81530612244898,
+      "swx": 1.8006122448979591,
+      "reduction": 79.57402477138558
+    },
+    "verdict": "PASS"
+  }
+}

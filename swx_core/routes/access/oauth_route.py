@@ -1,46 +1,204 @@
 """
 OAuth Authentication Routes
 ----------------------
-This module defines the API routes for OAuth-based authentication using Google and Facebook.
+OAuth 2.0 Authorization Code Flow with PKCE and Backend-for-Frontend (BFF) pattern.
 
-Features:
-- Retrieve OAuth login URLs.
-- Redirect users to OAuth providers (Google, Facebook).
-- Handle OAuth callbacks to authenticate users.
-- Fetch user details from third-party OAuth providers.
+Security Features:
+- PKCE (RFC 7636) for all OAuth flows - mandatory per RFC 9700
+- State parameter for CSRF protection
+- HTTP-only cookies for token storage (XSS resistant)
+- Redirect-based callback handling
 
-Methods:
-- `get_oauth_urls()`: Returns OAuth login URLs dynamically based on configuration.
-- `google_login()`: Redirects the user to Google OAuth authentication.
-- `google_auth_callback()`: Handles Google OAuth callback and authenticates the user.
-- `facebook_login()`: Redirects the user to Facebook OAuth authentication.
-- `facebook_auth_callback()`: Handles Facebook OAuth callback and authenticates the user.
-- `fetch_facebook_user_info()`: Retrieves user details from Facebook's Graph API.
+Flow:
+1. Frontend redirects to /oauth/{provider}
+2. Backend generates PKCE challenge, stores verifier in session
+3. User authenticates with OAuth provider
+4. Provider redirects to /oauth/{provider}/callback
+5. Backend exchanges code + PKCE verifier for tokens
+6. Backend sets HTTP-only cookies and redirects to frontend
 """
 
+import hashlib
+import base64
+import logging
 import secrets
 import httpx
+from functools import lru_cache
+from urllib.parse import urlparse
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, HTTPException, Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 
 from swx_core.config.settings import settings
 from swx_core.config.social_settings import social_settings
 from swx_core.controllers.auth_controller import login_social_user_controller
 from swx_core.database.db import SessionDep
-from swx_core.repositories.user_repository import (
-    get_user_by_email,
-    create_social_user,
-)
+from swx_core.repositories.user_repository import get_user_by_email
+from swx_core.core.hooks import registration_hooks
+from swx_core.services.auth_service import register_user_service
+from swx_core.models.user import UserCreate
 from swx_core.utils.language_helper import translate
+from swx_core.services.settings_helper import get_token_expiration
+from swx_core.core.oauth_providers import oauth_provider_settings
 
-# Initialize API router with a prefix for OAuth authentication
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/oauth")
-
-# Initialize OAuth client
 oauth = OAuth()
 
-# Register Google OAuth if enabled
+FRONTEND_CALLBACK_URL = f"{settings.FRONTEND_HOST}/auth/callback"
+
+
+def generate_pkce_verifier() -> str:
+    """Generate PKCE code verifier (43-128 chars, URL-safe)."""
+    return secrets.token_urlsafe(43)
+
+
+def generate_pkce_challenge(verifier: str) -> str:
+    """Generate PKCE code challenge using S256 method."""
+    sha256 = hashlib.sha256(verifier.encode()).digest()
+    return base64.urlsafe_b64encode(sha256).decode().rstrip('=')
+
+
+def resolve_redirect_uri(request: Request, allowed_uris: list[str], fallback_uri: str | None) -> str | None:
+    """Match request origin against allowed redirect URIs, falling back to the single configured URI."""
+    if not allowed_uris:
+        return fallback_uri
+
+    origin = request.headers.get("origin")
+    if not origin:
+        referer = request.headers.get("referer")
+        if referer:
+            parsed = urlparse(referer)
+            if parsed.scheme and parsed.netloc:
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+
+    if origin:
+        for uri in allowed_uris:
+            if uri.startswith(origin):
+                return uri
+
+    return fallback_uri
+
+
+def error_redirect(error: str) -> RedirectResponse:
+    """Create redirect response with error parameter."""
+    return RedirectResponse(url=f"{FRONTEND_CALLBACK_URL}?error={error}", status_code=302)
+
+
+async def set_auth_cookies(
+    response: RedirectResponse,
+    access_token: str,
+    refresh_token: str | None,
+    access_token_max_age: int,
+    refresh_token_max_age: int,
+) -> RedirectResponse:
+    """Set HTTP-only auth cookies on response."""
+    if not refresh_token:
+        return response
+
+    secure = settings.COOKIE_SECURE and settings.ENVIRONMENT != "local"
+    samesite = settings.COOKIE_SAMESITE
+    domain = settings.COOKIE_DOMAIN
+
+    response.set_cookie(
+        key=settings.COOKIE_ACCESS_TOKEN_NAME,
+        value=access_token,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        max_age=access_token_max_age,
+        path="/",
+        domain=domain,
+    )
+    response.set_cookie(
+        key=settings.COOKIE_REFRESH_TOKEN_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        max_age=refresh_token_max_age,
+        path="/api",
+        domain=domain,
+    )
+    return response
+
+
+async def validate_oauth_state(request: Request) -> str | None:
+    """Validate OAuth state parameter. Returns error message or None if valid."""
+    state = request.query_params.get("state")
+    stored_state = request.session.get("oauth_state")
+    if not stored_state or state != stored_state:
+        return "csrf_mismatch"
+    return None
+
+
+def store_pkce_session(request: Request) -> tuple[str, str, str]:
+    """Generate and store PKCE verifier in session. Returns (verifier, challenge, state)."""
+    code_verifier = generate_pkce_verifier()
+    code_challenge = generate_pkce_challenge(code_verifier)
+    state = secrets.token_urlsafe(16)
+
+    # Capture origin domain for redirect after OAuth
+    origin = request.query_params.get("origin") or request.headers.get("referer")
+    if origin:
+        parsed = urlparse(origin)
+        if parsed.scheme and parsed.netloc:
+            request.session["oauth_origin"] = f"{parsed.scheme}://{parsed.netloc}"
+
+    request.session["oauth_state"] = state
+    request.session["code_verifier"] = code_verifier
+
+    return code_verifier, code_challenge, state
+
+
+def clear_oauth_session(request: Request) -> None:
+    """Clear OAuth-related session data."""
+    request.session.pop("oauth_state", None)
+    request.session.pop("code_verifier", None)
+    request.session.pop("oauth_origin", None)
+
+
+async def complete_oauth_login(
+    session: SessionDep,
+    email: str,
+    provider: str,
+    is_new_user: bool,
+    request: Request,
+) -> RedirectResponse:
+    """Complete OAuth login by generating tokens and setting cookies."""
+    auth_token = await login_social_user_controller(
+        session,
+        email,
+        event_context={"provider": provider, "is_new_user": is_new_user}
+    )
+
+    access_expires = await get_token_expiration(session, "access")
+    refresh_expires = await get_token_expiration(session, "refresh")
+
+    # Use stored origin if valid, otherwise fall back to configured frontend host
+    stored_origin = request.session.get("oauth_origin")
+    if stored_origin:
+        parsed = urlparse(stored_origin)
+        if parsed.scheme and parsed.netloc:
+            origin = stored_origin
+        else:
+            origin = settings.FRONTEND_HOST
+    else:
+        origin = settings.FRONTEND_HOST
+
+    redirect_url = f"{origin}/auth/callback"
+
+    response = RedirectResponse(url=redirect_url, status_code=302)
+    return await set_auth_cookies(
+        response=response,
+        access_token=auth_token.access_token,
+        refresh_token=auth_token.refresh_token,
+        access_token_max_age=int(access_expires.total_seconds()),
+        refresh_token_max_age=int(refresh_expires.total_seconds()),
+    )
+
+
 if social_settings.ENABLE_GOOGLE_LOGIN:
     oauth.register(
         name="google",
@@ -50,7 +208,6 @@ if social_settings.ENABLE_GOOGLE_LOGIN:
         client_kwargs={"scope": "openid email profile"},
     )
 
-# Register Facebook OAuth if enabled
 if social_settings.ENABLE_FACEBOOK_LOGIN:
     oauth.register(
         name="facebook",
@@ -61,124 +218,147 @@ if social_settings.ENABLE_FACEBOOK_LOGIN:
         client_kwargs={"scope": "email,public_profile"},
     )
 
+for provider_name, config in oauth_provider_settings.get_provider_configs().items():
+    if provider_name not in oauth._clients:
+        oauth.register(
+            name=provider_name,
+            **config.to_oauth_config(),
+        )
+
+
+@lru_cache(maxsize=1)
+def _get_oauth_urls_cached() -> dict[str, str]:
+    """Build OAuth provider URLs (cached since config is static)."""
+    base_url = settings.BACKEND_HOST
+    urls = {}
+
+    if social_settings.ENABLE_SOCIAL_LOGIN:
+        if social_settings.ENABLE_GOOGLE_LOGIN:
+            urls["google"] = f"{base_url}/api/oauth/google"
+        if social_settings.ENABLE_FACEBOOK_LOGIN:
+            urls["facebook"] = f"{base_url}/api/oauth/facebook"
+
+    for provider_name in oauth_provider_settings.get_provider_configs():
+        urls[provider_name] = f"{base_url}/api/oauth/{provider_name}"
+
+    return urls
+
 
 @router.get("/urls")
 async def get_oauth_urls():
-    """
-    Retrieve dynamically generated OAuth login URLs based on enabled providers.
-
-    Returns:
-        JSONResponse: A dictionary containing OAuth login URLs for Google and Facebook.
-    """
-    base_url = settings.BACKEND_HOST
-    urls = {
-        "google": f"{base_url}/api/oauth/google"
-        if social_settings.ENABLE_SOCIAL_LOGIN and social_settings.ENABLE_GOOGLE_LOGIN
-        else None,
-        "facebook": f"{base_url}/api/oauth/facebook"
-        if social_settings.ENABLE_SOCIAL_LOGIN and social_settings.ENABLE_FACEBOOK_LOGIN
-        else None,
-    }
-    return JSONResponse(urls)
+    return JSONResponse(_get_oauth_urls_cached())
 
 
 @router.get("/google")
 async def google_login(request: Request):
-    """
-    Redirect the user to Google's OAuth authentication page.
-
-    Args:
-        request (Request): The HTTP request object.
-
-    Returns:
-        RedirectResponse: A redirect to Google's OAuth authentication page.
-    """
     try:
         if not social_settings.ENABLE_GOOGLE_LOGIN:
             raise HTTPException(status_code=400, detail=translate(request, "google_login_disabled"))
 
-        redirect_uri = social_settings.GOOGLE_REDIRECT_URI
+        redirect_uri = resolve_redirect_uri(
+            request, social_settings.GOOGLE_REDIRECT_URIS, social_settings.GOOGLE_REDIRECT_URI
+        )
         if not redirect_uri:
             raise HTTPException(status_code=500, detail=translate(request, "google_redirect_uri_not_configured"))
 
-        state = secrets.token_urlsafe(16)
-        request.session["oauth_state"] = state
-        return await oauth.google.authorize_redirect(request, redirect_uri, state=state)
+        code_verifier, code_challenge, state = store_pkce_session(request)
+
+        return await oauth.google.authorize_redirect(
+            request,
+            redirect_uri,
+            state=state,
+            code_challenge=code_challenge,
+            code_challenge_method="S256",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Failed to initiate Google login: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=translate(request, "failed_to_initiate_google_login", error=str(e)))
 
 
 @router.get("/google/callback")
 async def google_auth_callback(request: Request, session: SessionDep):
-    """
-    Handle Google's OAuth callback, authenticate the user, and return a JWT token.
-
-    Args:
-        request (Request): The HTTP request object.
-        session (SessionDep): The database session.
-
-    Returns:
-        Token: A JWT token if authentication is successful.
-    """
     try:
-        state = request.query_params.get("state")
-        stored_state = request.session.get("oauth_state")
-        if not stored_state or state != stored_state:
-            return JSONResponse({"error": translate(request, "csrf_warning_state_mismatch")}, status_code=400)
+        if error := await validate_oauth_state(request):
+            return error_redirect(error)
 
-        token = await oauth.google.authorize_access_token(request)
+        code_verifier = request.session.get("code_verifier")
+        token = await oauth.google.authorize_access_token(request, code_verifier=code_verifier)
         if not token:
-            return JSONResponse({"error": translate(request, "failed_to_fetch_google_token")}, status_code=400)
+            return error_redirect("token_fetch_failed")
 
         user_info = token.get("userinfo", {})
         email = user_info.get("email")
         if not email:
-            return JSONResponse({"error": translate(request, "google_account_missing_email")}, status_code=400)
+            return error_redirect("missing_email")
 
         existing_user = await get_user_by_email(session=session, email=email)
-        if not existing_user:
-            existing_user = await create_social_user(session, email, user_info, "google")
+        is_new_user = existing_user is None
+        if is_new_user:
+            # Extract provider ID from user info
+            provider_id = user_info.get("sub")  # Google uses "sub"
+            if not provider_id:
+                return error_redirect("missing_provider_id")
 
-        request.session.pop("oauth_state", None)
-        return await login_social_user_controller(session, existing_user.email)
+            # Create user with proper event emission
+            user_in = UserCreate(
+                email=email,
+                password=secrets.token_urlsafe(28),  # Random placeholder, unused for social auth
+                full_name=user_info.get("name"),
+            )
+
+            existing_user = await register_user_service(
+                session=session,
+                user_in=user_in,
+                request=request,
+                auth_provider="google",
+                provider_id=provider_id,
+                event_context={"social_provider": "google"},
+                pre_register_hook=registration_hooks.pre_register,
+                post_register_hook=registration_hooks.post_register,
+            )
+
+        response = await complete_oauth_login(session, existing_user.email, "google", is_new_user, request)
+        clear_oauth_session(request)
+        return response
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=translate(request, "google_auth_callback_failed", error=str(e)))
+        logger.error(f"Google auth callback failed: {e}", exc_info=True)
+        return error_redirect(str(e))
 
 
 @router.get("/facebook")
 async def facebook_login(request: Request):
-    """
-    Redirect the user to Facebook's OAuth authentication page.
-
-    Args:
-        request (Request): The HTTP request object.
-
-    Returns:
-        RedirectResponse: A redirect to Facebook's OAuth authentication page.
-    """
     try:
         if not social_settings.ENABLE_FACEBOOK_LOGIN:
             raise HTTPException(status_code=400, detail=translate(request, "facebook_login_disabled"))
 
-        redirect_uri = social_settings.FACEBOOK_REDIRECT_URI
+        redirect_uri = resolve_redirect_uri(
+            request, social_settings.FACEBOOK_REDIRECT_URIS, social_settings.FACEBOOK_REDIRECT_URI
+        )
         if not redirect_uri:
             raise HTTPException(status_code=500, detail=translate(request, "facebook_redirect_uri_not_configured"))
 
-        return await oauth.facebook.authorize_redirect(request, redirect_uri)
+        code_verifier, code_challenge, state = store_pkce_session(request)
+
+        return await oauth.facebook.authorize_redirect(
+            request,
+            redirect_uri,
+            state=state,
+            code_challenge=code_challenge,
+            code_challenge_method="S256",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Failed to initiate Facebook login: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=translate(request, "failed_to_initiate_facebook_login", error=str(e)))
 
 
 async def fetch_facebook_user_info(access_token: str):
-    """
-    Fetch user details from Facebook's Graph API using `httpx`.
-
-    Args:
-        access_token (str): The Facebook OAuth access token.
-
-    Returns:
-        dict: A dictionary containing user information.
-    """
     user_info_url = "https://graph.facebook.com/me?fields=id,name,email"
     headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -201,36 +381,162 @@ async def fetch_facebook_user_info(access_token: str):
 
 @router.get("/facebook/callback")
 async def facebook_auth_callback(request: Request, session: SessionDep):
-    """
-    Handle Facebook's OAuth callback, authenticate the user, and return a JWT token.
-
-    Args:
-        request (Request): The HTTP request object.
-        session (SessionDep): The database session.
-
-    Returns:
-        Token: A JWT token if authentication is successful.
-    """
     try:
-        state = request.query_params.get("state")
-        code = request.query_params.get("code")
-        if not state or not code:
-            raise HTTPException(status_code=400, detail=translate(request, "invalid_oauth_response"))
+        if error := await validate_oauth_state(request):
+            return error_redirect(error)
 
-        token = await oauth.facebook.authorize_access_token(request)
+        code_verifier = request.session.get("code_verifier")
+        token = await oauth.facebook.authorize_access_token(request, code_verifier=code_verifier)
         if not token:
-            raise HTTPException(status_code=400, detail=translate(request, "failed_to_retrieve_facebook_token"))
+            return error_redirect("token_fetch_failed")
 
         access_token = token.get("access_token")
         user_info = await fetch_facebook_user_info(access_token)
         email = user_info.get("email")
         if not email:
-            raise HTTPException(status_code=400, detail=translate(request, "facebook_account_missing_email"))
+            return error_redirect("missing_email")
 
         existing_user = await get_user_by_email(session=session, email=email)
-        if not existing_user:
-            existing_user = await create_social_user(session, email, user_info, "facebook")
+        is_new_user = existing_user is None
+        if is_new_user:
+            # Extract provider ID from user info
+            provider_id = user_info.get("id")  # Facebook uses "id"
+            if not provider_id:
+                return error_redirect("missing_provider_id")
 
-        return await login_social_user_controller(session, existing_user.email)
+            # Create user with proper event emission
+            user_in = UserCreate(
+                email=email,
+                password=secrets.token_urlsafe(28),  # Random placeholder, unused for social auth
+                full_name=user_info.get("name"),
+            )
+
+            existing_user = await register_user_service(
+                session=session,
+                user_in=user_in,
+                request=request,
+                auth_provider="facebook",
+                provider_id=provider_id,
+                event_context={"social_provider": "facebook"},
+                pre_register_hook=registration_hooks.pre_register,
+                post_register_hook=registration_hooks.post_register,
+            )
+
+        response = await complete_oauth_login(session, existing_user.email, "facebook", is_new_user, request)
+        clear_oauth_session(request)
+        return response
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=translate(request, "facebook_auth_callback_failed", error=str(e)))
+        logger.error(f"Facebook auth callback failed: {e}", exc_info=True)
+        return error_redirect(str(e))
+
+
+@router.get("/{provider}")
+async def provider_login(request: Request, provider: str):
+    try:
+        configs = oauth_provider_settings.get_provider_configs()
+
+        if provider not in configs:
+            raise HTTPException(status_code=400, detail=translate(request, f"{provider}_login_disabled"))
+
+        config = configs[provider]
+        redirect_uri = resolve_redirect_uri(request, config.redirect_uris, config.redirect_uri)
+
+        if not redirect_uri:
+            raise HTTPException(
+                status_code=500,
+                detail=translate(request, f"{provider}_redirect_uri_not_configured"),
+            )
+
+        code_verifier, code_challenge, state = store_pkce_session(request)
+
+        client = getattr(oauth, provider)
+        return await client.authorize_redirect(
+            request,
+            redirect_uri,
+            state=state,
+            code_challenge=code_challenge,
+            code_challenge_method="S256",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to initiate {provider} login: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to initiate {provider} login: {str(e)}")
+
+
+@router.get("/{provider}/callback")
+async def provider_auth_callback(request: Request, session: SessionDep, provider: str):
+    try:
+        configs = oauth_provider_settings.get_provider_configs()
+
+        if provider not in configs:
+            raise HTTPException(status_code=400, detail=translate(request, f"{provider}_not_configured"))
+
+        if error := await validate_oauth_state(request):
+            return error_redirect(error)
+
+        code_verifier = request.session.get("code_verifier")
+        client = getattr(oauth, provider)
+        token = await client.authorize_access_token(request, code_verifier=code_verifier)
+
+        if not token:
+            return error_redirect("token_fetch_failed")
+
+        config = configs[provider]
+        user_info_url = config.user_info_url
+
+        if not user_info_url:
+            user_info = token.get("userinfo", {})
+        else:
+            access_token = token.get("access_token")
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.get(user_info_url, headers={"Authorization": f"Bearer {access_token}"})
+                response.raise_for_status()
+                user_info = response.json()
+
+        email = user_info.get("email")
+        if not email:
+            return error_redirect("missing_email")
+
+        existing_user = await get_user_by_email(session=session, email=email)
+        is_new_user = existing_user is None
+        if is_new_user:
+            # Extract provider ID from user info (provider-specific field)
+            provider_id = (
+                user_info.get("sub") or  # Google, OpenID
+                user_info.get("id") or    # Facebook, GitHub
+                user_info.get("user_id")  # Custom providers
+            )
+            if not provider_id:
+                return error_redirect("missing_provider_id")
+
+            # Create user with proper event emission
+            user_in = UserCreate(
+                email=email,
+                password=secrets.token_urlsafe(28),  # Random placeholder, unused for social auth
+                full_name=user_info.get("name"),
+            )
+
+            existing_user = await register_user_service(
+                session=session,
+                user_in=user_in,
+                request=request,
+                auth_provider=provider,
+                provider_id=provider_id,
+                event_context={"social_provider": provider},
+                pre_register_hook=registration_hooks.pre_register,
+                post_register_hook=registration_hooks.post_register,
+            )
+
+        response = await complete_oauth_login(session, existing_user.email, provider, is_new_user, request)
+        clear_oauth_session(request)
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"{provider} auth callback failed: {e}", exc_info=True)
+        return error_redirect(str(e))

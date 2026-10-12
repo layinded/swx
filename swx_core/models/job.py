@@ -7,13 +7,14 @@ Jobs are idempotent, retryable, and auditable.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, Any, Dict
 from enum import Enum
-from sqlalchemy import Column, DateTime, text, Index
+from sqlalchemy import Column, DateTime, Index, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 class JobStatus(str, Enum):
     """Job execution status - lowercase members to match PostgreSQL enum."""
@@ -42,6 +43,12 @@ class JobType(str, Enum):
     audit_aggregate = "audit.aggregate"
     audit_cleanup = "audit.cleanup"
     
+    # Compliance jobs
+    compliance_data_subject_delete = "compliance.data_subject.delete"
+    compliance_retention_apply = "compliance.retention.apply"
+    compliance_api_key_expired_cleanup = "compliance.api_key.expired_cleanup"
+    compliance_session_idle_cleanup = "compliance.session.idle_cleanup"
+
     # System jobs
     cache_refresh = "system.cache.refresh"
     data_export = "system.data.export"
@@ -61,11 +68,23 @@ class JobBase(Base):
     status: JobStatus = Field(default=JobStatus.pending, index=True)
     attempts: int = Field(default=0)
     max_attempts: int = Field(default=3)
-    scheduled_at: Optional[datetime] = Field(default=None, index=True)
-    locked_at: Optional[datetime] = Field(default=None)
-    locked_by: Optional[str] = Field(default=None, max_length=255)  # Worker identifier
-    started_at: Optional[datetime] = Field(default=None)
-    completed_at: Optional[datetime] = Field(default=None)
+    scheduled_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True, index=True),
+    )
+    locked_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    locked_by: Optional[str] = Field(default=None, max_length=255)
+    started_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    completed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     last_error: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))
     result: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -85,7 +104,7 @@ class Job(JobBase, table=True):
     Jobs are idempotent and retryable. They track execution state,
     attempts, and errors for observability.
     """
-    __tablename__ = "job"
+    __tablename__ = "swx_job"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (
         Index("idx_job_status_scheduled", "status", "scheduled_at"),
         Index("idx_job_type_status", "job_type", "status"),
@@ -94,19 +113,19 @@ class Job(JobBase, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=utc_now,
         sa_column=Column(
             DateTime(timezone=True),
-            server_default=text("CURRENT_TIMESTAMP"),
+            server_default=func.now(),
             nullable=False
         )
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=utc_now,
         sa_column=Column(
             DateTime(timezone=True),
-            server_default=text("CURRENT_TIMESTAMP"),
-            onupdate=text("CURRENT_TIMESTAMP"),
+            server_default=func.now(),
+            onupdate=func.now(),
             nullable=False
         )
     )

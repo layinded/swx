@@ -60,9 +60,9 @@ def check_foreign_keys() -> None:
             # Check user_role
             result = conn.execute(
                 text("""
-                    SELECT COUNT(*) FROM user_role ur
-                    LEFT JOIN users u ON ur.user_id = u.id
-                    LEFT JOIN role r ON ur.role_id = r.id
+                    SELECT COUNT(*) FROM swx_user_role ur
+                    LEFT JOIN swx_users u ON ur.user_id = u.id
+                    LEFT JOIN swx_role r ON ur.role_id = r.id
                     WHERE u.id IS NULL OR r.id IS NULL
                 """)
             )
@@ -73,10 +73,10 @@ def check_foreign_keys() -> None:
             # Check team_member
             result = conn.execute(
                 text("""
-                    SELECT COUNT(*) FROM team_member tm
-                    LEFT JOIN team t ON tm.team_id = t.id
-                    LEFT JOIN users u ON tm.user_id = u.id
-                    LEFT JOIN role r ON tm.role_id = r.id
+                    SELECT COUNT(*) FROM swx_team_member tm
+                    LEFT JOIN swx_team t ON tm.team_id = t.id
+                    LEFT JOIN swx_users u ON tm.user_id = u.id
+                    LEFT JOIN swx_role r ON tm.role_id = r.id
                     WHERE t.id IS NULL OR u.id IS NULL OR r.id IS NULL
                 """)
             )
@@ -87,9 +87,9 @@ def check_foreign_keys() -> None:
             # Check role_permission
             result = conn.execute(
                 text("""
-                    SELECT COUNT(*) FROM role_permission rp
-                    LEFT JOIN role r ON rp.role_id = r.id
-                    LEFT JOIN permission p ON rp.permission_id = p.id
+                    SELECT COUNT(*) FROM swx_role_permission rp
+                    LEFT JOIN swx_role r ON rp.role_id = r.id
+                    LEFT JOIN swx_permission p ON rp.permission_id = p.id
                     WHERE r.id IS NULL OR p.id IS NULL
                 """)
             )
@@ -100,9 +100,9 @@ def check_foreign_keys() -> None:
             # Check plan_entitlement
             result = conn.execute(
                 text("""
-                    SELECT COUNT(*) FROM billing_plan_entitlement pe
-                    LEFT JOIN billing_plan p ON pe.plan_id = p.id
-                    LEFT JOIN billing_feature f ON pe.feature_id = f.id
+                    SELECT COUNT(*) FROM swx_billing_plan_entitlement pe
+                    LEFT JOIN swx_billing_plan p ON pe.plan_id = p.id
+                    LEFT JOIN swx_billing_feature f ON pe.feature_id = f.id
                     WHERE p.id IS NULL OR f.id IS NULL
                 """)
             )

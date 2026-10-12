@@ -5,8 +5,9 @@ Service layer for system settings CRUD operations with validation and audit.
 """
 
 import json
-from datetime import datetime
-from typing import List, Optional
+from swx_core.utils.time import utc_now
+
+from typing import Any, List, Optional, cast
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -17,14 +18,13 @@ from swx_core.models.system_config import (
     SystemConfigUpdate,
     SystemConfigHistory,
     SettingValueType,
-    SettingCategory,
 )
 from swx_core.middleware.logging_middleware import logger
+from swx_core.config.settings import settings as env_settings
 from swx_core.services.settings_service import SettingsService
 from swx_core.services.audit_logger import get_audit_logger, ActorType, AuditOutcome
 from swx_core.services.alert_engine import alert_engine
 from swx_core.services.channels.models import AlertSeverity, AlertSource, AlertActorType
-
 
 # Settings that should trigger alerts when changed
 HIGH_RISK_SETTINGS = {
@@ -34,23 +34,47 @@ HIGH_RISK_SETTINGS = {
     "rate_limit.free.write.burst",
 }
 
-
-def validate_setting_value(value: str, value_type: SettingValueType) -> bool:
+def validate_setting_value(value: Any, value_type: SettingValueType) -> bool:
     """Validate setting value matches its type."""
     try:
-        if value_type == SettingValueType.INT:
-            int(value)
-        elif value_type == SettingValueType.BOOL:
-            str(value).lower() in ("true", "false", "1", "0", "yes", "no", "on", "off")
+        if value_type in (SettingValueType.INT, SettingValueType.INTEGER):
+            if isinstance(value, int) and not isinstance(value, bool):
+                pass
+            else:
+                int(value)
+        elif value_type in (SettingValueType.BOOL, SettingValueType.BOOLEAN):
+            if isinstance(value, bool):
+                pass
+            else:
+                return str(value).lower() in ("true", "false", "1", "0", "yes", "no", "on", "off")
+        elif value_type == SettingValueType.FLOAT:
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                pass
+            else:
+                float(value)
         elif value_type == SettingValueType.JSON:
-            json.loads(value)
-        # STRING always valid
+            if isinstance(value, (dict, list)):
+                pass
+            else:
+                json.loads(value)
         return True
-    except (ValueError, json.JSONDecodeError):
+    except (ValueError, TypeError, json.JSONDecodeError):
         return False
 
+async def _invalidate_runtime_setting_caches(key: str) -> None:
+    # Invalidate L1/L2 runtime caches if enabled
+    if env_settings.FEATURE_FLAG_CACHE_ENABLED and key.startswith("feature."):
+        from swx_core.utils.runtime_cache import invalidate_feature_flag
 
-def validate_security_guards(key: str, value: str, value_type: SettingValueType) -> tuple[bool, Optional[str]]:
+        flag_key = key.removeprefix("feature.")
+        await invalidate_feature_flag(flag_key)
+
+    if env_settings.SETTINGS_CACHE_ENABLED:
+        from swx_core.utils.runtime_cache import invalidate_cached_setting
+
+        await invalidate_cached_setting(key)
+
+def validate_security_guards(key: str, value: Any, value_type: SettingValueType) -> tuple[bool, Optional[str]]:
     """
     Validate security guards for setting updates.
     
@@ -65,7 +89,7 @@ def validate_security_guards(key: str, value: str, value_type: SettingValueType)
     # Prevent invalid token expiration
     if "token_expire" in key.lower() or "expire_minutes" in key.lower():
         try:
-            expire_value = int(value)
+            expire_value = value if isinstance(value, int) else int(value)
             if expire_value <= 0:
                 return False, f"Token expiration must be positive, got {expire_value}"
             if expire_value > 60 * 24 * 365:  # 1 year max
@@ -76,14 +100,13 @@ def validate_security_guards(key: str, value: str, value_type: SettingValueType)
     # Prevent invalid rate limits
     if "rate_limit" in key.lower():
         try:
-            limit_value = int(value)
+            limit_value = value if isinstance(value, int) else int(value)
             if limit_value < 0:
                 return False, f"Rate limit must be non-negative, got {limit_value}"
         except (ValueError, TypeError):
             return False, f"Invalid rate limit value: {value}"
     
     return True, None
-
 
 async def list_settings_service(
     session: AsyncSession,
@@ -98,7 +121,6 @@ async def list_settings_service(
     stmt = stmt.offset(skip).limit(limit).order_by(SystemConfig.key)
     result = await session.execute(stmt)
     return list(result.scalars().all())
-
 
 async def get_setting_service(
     session: AsyncSession,
@@ -119,7 +141,6 @@ async def get_setting_service(
         return None
     return config
 
-
 async def get_setting_by_id_service(
     session: AsyncSession,
     setting_id: UUID,
@@ -130,7 +151,6 @@ async def get_setting_by_id_service(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Setting not found")
     return config
-
 
 async def create_setting_service(
     session: AsyncSession,
@@ -159,26 +179,24 @@ async def create_setting_service(
         raise HTTPException(status_code=400, detail=error_msg)
     
     # Create setting
-    config = SystemConfig(
-        key=setting_in.key,
-        value=setting_in.value,
-        value_type=setting_in.value_type,
-        category=setting_in.category,
-        description=setting_in.description,
-        is_sensitive=False,  # Always False - validation enforces
-        updated_by=updated_by,
-        metadata_=setting_in.metadata or {},
+    config = SystemConfig.model_validate(
+        {
+            **setting_in.model_dump(exclude={"metadata"}),
+            "is_sensitive": False,
+            "updated_by": updated_by,
+            "metadata_": setting_in.metadata or {},
+        }
     )
     session.add(config)
     await session.commit()
     await session.refresh(config)
     
-    # Invalidate cache
     SettingsService.invalidate_cache(setting_in.key)
+
+    await _invalidate_runtime_setting_caches(setting_in.key)
     
     logger.info(f"Created setting: {setting_in.key} = {setting_in.value}")
     return config
-
 
 async def update_setting_service(
     session: AsyncSession,
@@ -189,6 +207,7 @@ async def update_setting_service(
     """Update a setting with validation and audit."""
     # Get existing
     config = await get_setting_service(session, key)
+    assert config is not None
     old_value = config.value
     
     # Update fields
@@ -214,10 +233,10 @@ async def update_setting_service(
     if setting_in.is_active is not None:
         config.is_active = setting_in.is_active
     if setting_in.metadata is not None:
-        config.metadata_ = setting_in.metadata
+        setattr(config, "metadata_", setting_in.metadata)
     
     config.updated_by = updated_by
-    config.updated_at = datetime.utcnow()
+    config.updated_at = utc_now()
     
     # Create history record
     history = SystemConfigHistory(
@@ -227,15 +246,15 @@ async def update_setting_service(
         new_value=config.value,
         updated_by=updated_by,
     )
+    session.add(config)
     session.add(history)
     
     await session.commit()
     await session.refresh(config)
     
-    # Invalidate cache
     SettingsService.invalidate_cache(key)
-    
-    # Audit log
+
+    await _invalidate_runtime_setting_caches(key)
     audit = get_audit_logger(session)
     await audit.log_event(
         action="system_config.update",
@@ -270,7 +289,6 @@ async def update_setting_service(
     logger.info(f"Updated setting: {key} = {old_value} -> {config.value} (by {updated_by})")
     return config
 
-
 async def get_setting_history_service(
     session: AsyncSession,
     key: str,
@@ -279,10 +297,11 @@ async def get_setting_history_service(
     """Get change history for a setting."""
     # First get the config to find its ID
     config = await get_setting_service(session, key)
+    assert config is not None
     
     stmt = select(SystemConfigHistory).where(
         SystemConfigHistory.config_id == config.id
-    ).order_by(SystemConfigHistory.updated_at.desc()).limit(limit)
+    ).order_by(cast(Any, SystemConfigHistory.updated_at).desc()).limit(limit)
     
     result = await session.execute(stmt)
     return list(result.scalars().all())

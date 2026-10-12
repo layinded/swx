@@ -291,13 +291,15 @@ await usage_service.record_usage(
 
 **Get Current Usage:**
 ```python
+from swx_core.utils.time import utc_now
+
 # Get current usage
 usage = await usage_service.get_usage(
     owner_id=user.id,
     account_type=BillingAccountType.USER,
     feature_key="api_requests",
-    period_start=datetime.utcnow().replace(day=1),  # Start of month
-    period_end=datetime.utcnow()  # Now
+    period_start=utc_now().replace(day=1),  # Start of month
+    period_end=utc_now()  # Now
 )
 
 print(f"Used: {usage}, Remaining: {remaining}")

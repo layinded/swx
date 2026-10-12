@@ -46,7 +46,7 @@ class Language(LanguageBase, table=True):
         id (uuid.UUID): Unique identifier for each translation entry.
     """
 
-    __tablename__ = "language"
+    __tablename__ = "swx_language"
     __table_args__ = {"extend_existing": True}
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

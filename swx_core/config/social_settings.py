@@ -30,12 +30,16 @@ class SocialLoginSettings(BaseSettings):
         GOOGLE_CLIENT_ID (Optional[str]): Google OAuth client ID.
         GOOGLE_CLIENT_SECRET (Optional[str]): Google OAuth client secret.
         GOOGLE_REDIRECT_URI (Optional[str]): Redirect URI for Google authentication.
+        GOOGLE_REDIRECT_URIS (list[str]): List of allowed redirect URIs for Google OAuth.
+            Comma-separated in env. Takes precedence over GOOGLE_REDIRECT_URI.
         GOOGLE_SCOPE (Optional[str]): Google OAuth scope.
 
         FACEBOOK_AUTH_URL (Optional[str]): Facebook OAuth authorization URL.
         FACEBOOK_CLIENT_ID (Optional[str]): Facebook OAuth client ID.
         FACEBOOK_CLIENT_SECRET (Optional[str]): Facebook OAuth client secret.
         FACEBOOK_REDIRECT_URI (Optional[str]): Redirect URI for Facebook authentication.
+        FACEBOOK_REDIRECT_URIS (list[str]): List of allowed redirect URIs for Facebook OAuth.
+            Comma-separated in env. Takes precedence over FACEBOOK_REDIRECT_URI.
         FACEBOOK_SCOPE (Optional[str]): Facebook OAuth scope.
     """
 
@@ -59,6 +63,9 @@ class SocialLoginSettings(BaseSettings):
                                              description="Google OAuth client secret.")
     GOOGLE_REDIRECT_URI: str | None = Field(default=None, env="GOOGLE_REDIRECT_URI",
                                             description="Redirect URI for Google authentication.")
+    GOOGLE_REDIRECT_URIS: list[str] = Field(default=[], env="GOOGLE_REDIRECT_URIS",
+                                             description="List of allowed redirect URIs for Google OAuth. "
+                                                         "Comma-separated in env. If set, takes precedence over GOOGLE_REDIRECT_URI.")
     GOOGLE_SCOPE: str | None = Field(default=None, env="GOOGLE_SCOPE", description="Google OAuth scope.")
 
     # Facebook OAuth Settings
@@ -69,7 +76,10 @@ class SocialLoginSettings(BaseSettings):
     FACEBOOK_CLIENT_SECRET: str | None = Field(default=None, env="FACEBOOK_CLIENT_SECRET",
                                                description="Facebook OAuth client secret.")
     FACEBOOK_REDIRECT_URI: str | None = Field(default=None, env="FACEBOOK_REDIRECT_URI",
-                                              description="Redirect URI for Facebook authentication.")
+                                               description="Redirect URI for Facebook authentication.")
+    FACEBOOK_REDIRECT_URIS: list[str] = Field(default=[], env="FACEBOOK_REDIRECT_URIS",
+                                               description="List of allowed redirect URIs for Facebook OAuth. "
+                                                           "Comma-separated in env. If set, takes precedence over FACEBOOK_REDIRECT_URI.")
     FACEBOOK_SCOPE: str | None = Field(default=None, env="FACEBOOK_SCOPE", description="Facebook OAuth scope.")
 
 

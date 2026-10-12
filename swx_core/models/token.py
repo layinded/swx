@@ -44,6 +44,22 @@ class Token(TokenBase):
     token_type: str = "bearer"
 
 
+class LoginResponse(SQLModel):
+    """
+    Unified login response that handles both normal login and MFA-pending states.
+
+    When mfa_required is False, access_token and refresh_token contain valid tokens.
+    When mfa_required is True, mfa_token contains a short-lived challenge token
+    and access_token/refresh_token are None.
+    """
+
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    mfa_required: bool = False
+    mfa_token: str | None = None
+
+
 class TokenPayload(SQLModel):
     """
     Schema for parsing authentication tokens.

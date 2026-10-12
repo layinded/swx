@@ -11,11 +11,14 @@ This enforces clear separation between admin and user domains.
 
 import uuid
 from datetime import datetime
-from typing import Optional
-from pydantic import EmailStr
-from sqlmodel import Field, SQLModel
-from swx_core.models.base import Base
+from typing import Any, Optional, cast
 
+from pydantic import EmailStr
+from sqlalchemy import Column, DateTime, func
+from sqlmodel import Field, SQLModel
+
+from swx_core.models.base import Base
+from swx_core.utils.time import utc_now
 
 class AdminUserBase(Base):
     """
@@ -30,7 +33,6 @@ class AdminUserBase(Base):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     is_active: bool = True
     full_name: Optional[str] = Field(default=None, max_length=255)
-
 
 class AdminUser(AdminUserBase, table=True):
     """
@@ -47,15 +49,17 @@ class AdminUser(AdminUserBase, table=True):
         createdAt (datetime): Timestamp when the admin user was created.
     """
 
-    __tablename__ = "admin_user"
-    __table_args__ = {"extend_existing": True}
+    __tablename__ = cast(Any, "swx_admin_user")
+    __table_args__ = cast(Any, {"extend_existing": True})
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: Optional[str] = Field(default=None, max_length=255)
     auth_provider: str = Field(default="local", max_length=50)
     provider_id: Optional[str] = Field(default=None, unique=True, max_length=255)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
+    )
 
 class AdminUserCreate(SQLModel):
     """
@@ -72,7 +76,6 @@ class AdminUserCreate(SQLModel):
     full_name: Optional[str] = Field(default=None, max_length=255)
     # NOTE: Admin users are created by existing admins or system, not via registration
 
-
 class AdminUserUpdate(SQLModel):
     """
     Schema for updating an existing admin user.
@@ -86,7 +89,6 @@ class AdminUserUpdate(SQLModel):
     email: Optional[EmailStr] = Field(default=None, max_length=255)
     password: Optional[str] = Field(default=None, min_length=8, max_length=40)
     full_name: Optional[str] = Field(default=None, max_length=255)
-
 
 class AdminUserPublic(AdminUserBase):
     """

@@ -1,7 +1,7 @@
 # Authentication
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26
+**Version:** 2.17.0
+**Last Updated:** 2026-07-30
 
 ---
 
@@ -12,8 +12,9 @@
 3. [Token Types](#token-types)
 4. [Authentication Flows](#authentication-flows)
 5. [Token Security](#token-security)
-6. [OAuth Integration](#oauth-integration)
-7. [Usage Examples](#usage-examples)
+6. [Auth Caching](#auth-caching)
+7. [OAuth Integration](#oauth-integration)
+8. [Usage Examples](#usage-examples)
 
 ---
 
@@ -46,15 +47,27 @@ Domain separation prevents **privilege escalation** and **cross-domain access**:
 ### Admin Domain
 
 **Model:** `AdminUser`  
-**Endpoint:** `/api/admin/auth/`  
+**Endpoints:** `/api/admin/auth/`  
 **Token Audience:** `"admin"`  
 **Routes:** `/api/admin/*`
+
+**Available Endpoints:**
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/admin/auth/` | POST | Login (returns access + refresh tokens) |
+| `/api/admin/auth/refresh` | POST | Refresh access token |
+| `/api/admin/auth/revoke` | POST | Revoke refresh token (logout) |
+| `/api/admin/auth/cookie/login` | POST | Login with httpOnly cookies (BFF pattern) |
+| `/api/admin/auth/cookie/refresh` | POST | Refresh tokens via httpOnly cookies |
+| `/api/admin/auth/cookie/logout` | POST | Clear httpOnly auth cookies |
 
 **Characteristics:**
 - Separate database table (`admin_user`)
 - Separate authentication flow
 - Admin-only access
 - Cannot access user domain
+- Supports both token and cookie-based authentication
 
 **Example:**
 ```python
@@ -172,47 +185,132 @@ POST /api/auth/refresh
    - Verifies password hash
    - Validates user is active
 
-3. Server generates access token
-   - Audience: "admin"
-   - Subject: admin email
-   - Expiration: 7 days (configurable)
+3. Server generates tokens
+   - Access token (audience: "admin")
+   - Refresh token (stored in DB)
 
-4. Server returns token
+4. Server returns tokens
    {
      "access_token": "eyJ...",
+     "refresh_token": "eyJ...",
      "token_type": "bearer"
    }
 
-5. Client stores token
-   - Use in Authorization header
-   - Authorization: Bearer eyJ...
+5. Client stores tokens
+   - Access token: Memory/localStorage
+   - Refresh token: Secure storage
 ```
 
 **Code Example:**
 ```python
-from fastapi import APIRouter, Depends
-from fastapi.security import OAuth2PasswordRequestForm
+from swx_core.controllers.admin_auth_controller import login_admin_controller
 from swx_core.models.token import Token
-from swx_core.auth.admin.dependencies import get_current_admin_user
 
-router = APIRouter(prefix="/admin/auth")
-
-@router.post("/", response_model=Token)
+@router.post("/admin/auth/", response_model=Token)
 async def login_admin(
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: SessionDep,
+    request: Request,
 ):
-    # Validate credentials
-    admin = await authenticate_admin(session, form_data.username, form_data.password)
-    
-    # Generate token
-    access_token = create_token(
-        subject=admin.email,
-        audience=TokenAudience.ADMIN,
-        expires_delta=timedelta(days=7),
-    )
-    
-    return Token(access_token=access_token, token_type="bearer")
+    return await login_admin_controller(session, form_data, request)
+```
+
+### Admin Token Refresh Flow
+
+```
+1. Client → POST /api/admin/auth/refresh
+   {
+     "refresh_token": "eyJ..."
+   }
+
+2. Server validates refresh token
+   - Checks signature and expiration
+   - Verifies token exists in database
+   - Confirms admin user is active
+
+3. Server returns new tokens
+   {
+     "access_token": "eyJ...",
+     "refresh_token": "eyJ...",
+     "token_type": "bearer"
+   }
+```
+
+### Admin Cookie-Based Authentication
+
+Admin auth also supports HTTP-only cookies for browser-based admin panels (BFF pattern):
+
+#### Login with Cookies
+
+```http
+POST /api/admin/auth/cookie/login
+Content-Type: application/x-www-form-urlencoded
+
+username=admin@example.com&password=securepassword
+```
+
+**Response:**
+```json
+{
+  "email": "admin@example.com",
+  "message": "Admin authentication successful"
+}
+```
+
+**Cookies Set:**
+- `swx_access_token` - HTTP-only, secure, path `/`
+- `swx_refresh_token` - HTTP-only, secure, path `/api`
+
+#### Refresh Tokens via Cookies
+
+```http
+POST /api/admin/auth/cookie/refresh
+```
+
+**Cookies Updated:**
+- New `swx_access_token` cookie
+- New `swx_refresh_token` cookie
+
+#### Logout via Cookies
+
+```http
+POST /api/admin/auth/cookie/logout
+```
+
+**Cookies Cleared:**
+- `swx_access_token` cookie deleted
+- `swx_refresh_token` cookie deleted
+
+**Frontend Example (Next.js Admin Panel):**
+```javascript
+async function adminLogin(email, password) {
+  const response = await fetch('/api/admin/auth/cookie/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
+    credentials: 'include'
+  })
+
+  if (response.ok) {
+    window.location.href = '/admin/dashboard'
+  }
+}
+
+async function adminRefresh() {
+  const response = await fetch('/api/admin/auth/cookie/refresh', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  return response.ok
+}
+
+async function adminLogout() {
+  await fetch('/api/admin/auth/cookie/logout', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  window.location.href = '/admin/login'
+}
 ```
 
 ### User Login Flow
@@ -387,63 +485,449 @@ await revoke_all_tokens(session, user_email)
 
 ---
 
+## Cookie-Based Authentication
+
+SwX-API supports **HTTP-only cookie authentication** for browser-based applications following the **Backend-for-Frontend (BFF) pattern**.
+
+### Why Cookie-Based Auth?
+
+| Method | XSS Resistant | CSRF Resistant | Auto-Attach | Token Management |
+|--------|---------------|----------------|-------------|------------------|
+| Authorization Header | ❌ No* | ✅ Yes | ❌ Manual | ❌ Client-side |
+| HTTP-only Cookie | ✅ Yes | ✅ With SameSite | ✅ Automatic | ✅ Server-side |
+
+*Authorization header is secure if stored correctly, but vulnerable if stored in localStorage.
+
+**Benefits:**
+- **XSS Protection**: JavaScript cannot access HTTP-only cookies
+- **Automatic Token Handling**: Browser automatically includes cookies with requests
+- **CSRF Protection**: SameSite attribute prevents cross-origin attacks
+- **Simpler Frontend**: No token storage or management code needed
+
+### Cookie Configuration
+
+```bash
+# .env
+COOKIE_ACCESS_TOKEN_NAME=swx_access_token
+COOKIE_REFRESH_TOKEN_NAME=swx_refresh_token
+COOKIE_SECURE=true                 # False for local dev (http://)
+COOKIE_SAMESITE=lax                # 'strict' or 'lax'
+COOKIE_DOMAIN=                     # Optional, for subdomain sharing
+```
+
+**Cookie Security Settings:**
+- `httponly=True` - Prevents JavaScript access (XSS protection)
+- `secure=True` - Only sent over HTTPS (production only)
+- `samesite=lax` - CSRF protection while allowing top-level navigations
+
+### Cookie-Based Endpoints
+
+#### 1. Login with Cookies
+
+```http
+POST /api/auth/cookie/login
+Content-Type: application/x-www-form-urlencoded
+
+username=user@example.com&password=securepassword
+```
+
+**Response:**
+```json
+{
+  "email": "user@example.com",
+  "access_token": "eyJ...",
+  "token_type": "bearer"
+}
+```
+
+**Cookies Set:**
+- `swx_access_token` - HTTP-only, secure, path `/`
+- `swx_refresh_token` - HTTP-only, secure, path `/api`
+
+**Frontend Example:**
+```javascript
+async function login(email, password) {
+  const response = await fetch('/api/auth/cookie/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
+    credentials: 'include'  // Required for cookies
+  })
+  
+  if (response.ok) {
+    // Cookies automatically set by browser
+    window.location.href = '/dashboard'
+  }
+}
+```
+
+#### 2. Get Current User
+
+```http
+GET /api/auth/me
+```
+
+**Response:**
+```json
+{
+  "id": "uuid-string",
+  "email": "user@example.com",
+  "full_name": "John Doe",
+  "is_active": true,
+  "team_id": "uuid-string"
+}
+```
+
+**Frontend Example:**
+```javascript
+async function getCurrentUser() {
+  const response = await fetch('/api/auth/me', {
+    credentials: 'include'  // Required for cookies
+  })
+  
+  if (response.ok) {
+    return await response.json()
+  }
+  
+  return null  // Not authenticated
+}
+
+// Check auth state on app boot
+const user = await getCurrentUser()
+if (user) {
+  showDashboard()
+} else {
+  showLogin()
+}
+```
+
+#### 3. Refresh Tokens
+
+```http
+POST /api/auth/cookie/refresh
+```
+
+**Response:**
+```json
+{
+  "status": "ok"
+}
+```
+
+**Cookies Updated:**
+- New `swx_access_token` cookie
+- New `swx_refresh_token` cookie
+
+**Frontend Example:**
+```javascript
+let refreshPromise = null
+
+async function refreshAccessToken() {
+  // Prevent concurrent refresh requests
+  if (refreshPromise) {
+    return refreshPromise
+  }
+  
+  refreshPromise = fetch('/api/auth/cookie/refresh', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  
+  try {
+    await refreshPromise
+  } finally {
+    refreshPromise = null
+  }
+}
+
+// Auto-refresh on 401
+fetch('/api/user/profile', { credentials: 'include' })
+  .then(response => {
+    if (response.status === 401) {
+      return refreshAccessToken().then(() => fetch('/api/user/profile'))
+    }
+    return response
+  })
+```
+
+#### 4. Logout
+
+```http
+POST /api/auth/cookie/logout
+```
+
+**Response:**
+```json
+{
+  "message": "Logged out successfully"
+}
+```
+
+**Cookies Cleared:**
+- `swx_access_token` cookie deleted
+- `swx_refresh_token` cookie deleted
+
+**Frontend Example:**
+```javascript
+async function logout() {
+  await fetch('/api/auth/cookie/logout', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  
+  // Cookies cleared by backend
+  window.location.href = '/login'
+}
+```
+
+### Dual Authentication Support
+
+SwX-API supports **both** Authorization header and cookie-based authentication simultaneously:
+
+```python
+from swx_core.auth.user.dependencies import UserDep
+
+@router.get("/user/profile")
+async def get_profile(user: UserDep):
+    # Works with both:
+    # 1. Authorization: Bearer <token>
+    # 2. Cookie: swx_access_token=<token>
+    return user
+```
+
+**Priority Order:**
+1. Authorization header (if present)
+2. Cookie (if header not present)
+
+**Implementation:**
+```python
+from swx_core.auth.core.bearer_or_cookie import BearerOrCookieAuth
+
+# Automatically checks both sources
+user_auth = BearerOrCookieAuth()
+
+async def get_current_user(
+    session: SessionDep,
+    token: HTTPAuthorizationCredentials | None = Depends(user_auth),
+    request: Request
+) -> User:
+    # Token extracted from:
+    # 1. Authorization header
+    # 2. HTTP-only cookie
+    
+    if not token:
+        raise HTTPException(401, "Authentication required")
+    
+    # Validate token...
+```
+
+### Migration from Header to Cookie
+
+**Before (Authorization Header):**
+```javascript
+// Store token in localStorage (XSS vulnerable)
+localStorage.setItem('token', response.access_token)
+
+// Manually attach to every request
+fetch('/api/user/profile', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+})
+```
+
+**After (HTTP-only Cookie):**
+```javascript
+// No token storage needed - browser handles it
+fetch('/api/auth/cookie/login', {
+  method: 'POST',
+  body: form,
+  credentials: 'include'  // Cookies automatically included
+})
+
+// All subsequent requests include cookies automatically
+fetch('/api/user/profile', {
+  credentials: 'include'
+})
+```
+
+### Security Considerations
+
+**Cookie Security:**
+- ✅ HTTP-only prevents JavaScript access (XSS protection)
+- ✅ Secure flag ensures HTTPS-only transmission
+- ✅ SameSite=Lax prevents CSRF attacks
+- ✅ Path restrictions limit cookie scope
+
+**Best Practices:**
+1. Use `credentials: 'include'` in all fetch requests
+2. Configure CORS to allow credentials: `allow_credentials=True`
+3. Set `COOKIE_SECURE=true` in production (false for local dev)
+4. Use `SameSite=Lax` for OAuth flows, `SameSite=Strict` for pure cookie auth
+
+---
+
 ## OAuth Integration
 
 ### Social Login Support
 
-SwX-API supports OAuth providers:
+SwX-API supports OAuth providers with **PKCE** and **Backend-for-Frontend (BFF) pattern**:
 - Google
 - Facebook
-- GitHub (configurable)
+- GitHub, LinkedIn, Apple, etc. (configurable)
 
-### OAuth Flow
+### OAuth 2.0 Security
+
+SwX-API implements **OAuth 2.0 Authorization Code Flow with PKCE** following RFC 9700 best practices:
+
+| Feature | Implementation |
+|---------|----------------|
+| **PKCE** | Mandatory for all providers (S256 method) |
+| **CSRF Protection** | State parameter validation |
+| **Token Storage** | HTTP-only cookies (XSS resistant) |
+| **Token Delivery** | Server-side, never exposed to client |
+
+### OAuth Flow (BFF Pattern)
 
 ```
-1. Client → GET /api/oauth/{provider}/authorize
+1. Frontend → GET /api/oauth/{provider}
+   - Backend generates PKCE challenge
+   - Stores verifier in session
+   - Captures origin domain (from ?origin param, Origin header, or Referer)
+   - Stores origin in session as oauth_origin
+   - Matches origin against *_REDIRECT_URIS for redirect URI selection
    - Redirects to OAuth provider
 
 2. User authenticates with provider
-   - Provider redirects back with code
+   - Provider redirects back with code + state
 
-3. Server exchanges code for token
-   - Validates code
+3. Backend → GET /api/oauth/{provider}/callback?code=...&state=...
+   - Validates state (CSRF protection)
+   - Exchanges code + PKCE verifier for tokens
    - Gets user info from provider
+   - Creates/updates user
 
-4. Server creates/updates user
-   - Creates user if new
-   - Updates auth_provider field
+4. Backend sets HTTP-only cookies and redirects
+   - Sets: swx_access_token (httpOnly, secure)
+   - Sets: swx_refresh_token (httpOnly, secure)
+   - Redirects to: {oauth_origin}/auth/callback (preserves subdomain)
+   - Falls back to: {FRONTEND_HOST}/auth/callback (if no origin stored)
 
-5. Server generates tokens
-   - Access token
-   - Refresh token
-
-6. Server returns tokens
-   {
-     "access_token": "eyJ...",
-     "refresh_token": "eyJ...",
-     "token_type": "bearer"
-   }
+5. Frontend receives redirect
+   - Cookies already set (no token handling needed)
+   - Redirect to dashboard
 ```
 
-**Code Example:**
-```python
-from swx_core.services.auth_service import login_social_user_service
+### Multi-Domain Redirect URIs
 
-@router.get("/oauth/{provider}/callback")
-async def oauth_callback(
-    provider: str,
-    code: str,
-    session: SessionDep,
-):
-    # Exchange code for user info
-    user_info = await exchange_oauth_code(provider, code)
+When serving multiple domains or subdomains, configure `*_REDIRECT_URIS` to ensure users return to their origin domain after OAuth:
+
+```bash
+# .env
+GOOGLE_REDIRECT_URI=https://fastpii.com/api/oauth/google/callback
+GOOGLE_REDIRECT_URIS=https://fastpii.com/api/oauth/google/callback,https://chat.fastpii.com/api/oauth/google/callback,https://app.fastpii.com/api/oauth/google/callback
+```
+
+See [OAuth Providers](OAUTH_PROVIDERS.md) for full configuration details.
+
+### HTTP-Only Cookie Authentication
+
+**Why cookies over localStorage?**
+
+| Storage | XSS Resistant | CSRF Resistant | Auto-Attach |
+|---------|---------------|----------------|-------------|
+| localStorage | ❌ No | ✅ Yes | ❌ Manual |
+| HTTP-only Cookie | ✅ Yes | ✅ With SameSite | ✅ Automatic |
+
+**Cookie Configuration:**
+
+```bash
+# .env
+COOKIE_ACCESS_TOKEN_NAME=swx_access_token
+COOKIE_REFRESH_TOKEN_NAME=swx_refresh_token
+COOKIE_SECURE=true                 # False for local dev
+COOKIE_SAMESITE=lax                # 'strict' or 'lax'
+COOKIE_DOMAIN=                     # Optional, for subdomain sharing
+```
+
+### Frontend Integration
+
+#### API Requests with Cookies
+
+```javascript
+// All API requests automatically include cookies
+fetch('/api/user/profile', {
+  credentials: 'include'  // Required for cookies
+})
+
+// Or with axios
+axios.get('/api/user/profile', {
+  withCredentials: true
+})
+```
+
+#### OAuth Callback Page
+
+```javascript
+// /auth/callback page - no token parsing needed!
+async function handleOAuthCallback() {
+  // Cookies already set by backend
+  // Just redirect to dashboard
+  window.location.href = '/dashboard'
+}
+
+// Handle errors
+const urlParams = new URLSearchParams(window.location.search)
+const error = urlParams.get('error')
+if (error) {
+  // Show error: csrf_mismatch, token_fetch_failed, missing_email
+  showError(error)
+}
+```
+
+#### Logout with Cookies
+
+```javascript
+async function logout() {
+  await fetch('/api/auth/cookie/logout', {
+    method: 'POST',
+    credentials: 'include'
+  })
+  // Cookies cleared by backend
+  window.location.href = '/login'
+}
+```
+
+### Events
+
+OAuth logins emit `user.login.social` event:
+
+```python
+from swx_core.events import event_bus, Event
+
+@event_bus.on("user.login.social")
+async def on_social_login(event: Event):
+    email = event.payload["email"]
+    provider = event.payload["provider"]  # google, facebook, etc.
+    is_new_user = event.payload["is_new_user"]
     
-    # Create/update user
-    user = await get_or_create_social_user(session, user_info)
-    
-    # Generate tokens
-    token = await login_social_user_service(session, user.email)
-    return token
+    # Send welcome email for new users
+    if is_new_user:
+        await send_welcome_email(email, provider)
+```
+
+**Event Payload:**
+```json
+{
+  "email": "user@example.com",
+  "user_id": "uuid-string",
+  "provider": "google",
+  "is_new_user": false,
+  "context": {
+    "provider": "google",
+    "is_new_user": false
+  }
+}
 ```
 
 ---
@@ -510,12 +994,14 @@ except InvalidTokenError:
 ### ✅ DO
 
 - Use HTTPS in production
-- Store tokens securely (httpOnly cookies, secure storage)
+- Store tokens in HTTP-only cookies (XSS resistant)
+- Use `credentials: 'include'` for cookie-based auth
 - Validate token audience
 - Check token expiration
 - Revoke tokens on password change
 - Use separate secrets for each token type
 - Rotate secrets periodically
+- Configure `COOKIE_SAMESITE=lax` or `strict`
 
 ### ❌ DON'T
 
@@ -525,6 +1011,123 @@ except InvalidTokenError:
 - Ignore token expiration
 - Skip audience validation
 - Log tokens in plain text
+- Disable PKCE for OAuth flows
+
+---
+
+## Auth Caching
+
+SwX-API v2.8.0 introduces **L1/L2 auth caching** to reduce database queries on every authenticated request.
+
+### Architecture
+
+```
+Request → L1 Cache (process-local) → L2 Cache (Redis) → Database
+                ↓ hit                  ↓ hit                ↓ miss
+             return user          return user          query + populate L1+L2
+```
+
+- **L1 cache**: In-process Python dict with timestamp-based TTL. Zero network round-trip.
+- **L2 cache**: Redis with structured key naming. Shared across processes.
+- **Graceful degradation**: If Redis is unavailable, falls back to L1-only, then database.
+
+### Key Naming
+
+Cache keys follow the pattern: `{env}:{app}:{scope}:{resource}:{identifier}:{version}`
+
+Examples:
+- `prod:nh:user:profile:user@example.com:v1` — cached user profile
+- `prod:nh:user:profile:550e8400:v1` — cached user profile by ID
+- `prod:nh:user:permissions:550e8400:v1` — cached user permissions
+- `prod:nh:admin:profile:admin@example.com:v1` — cached admin profile
+
+### Cached Fields
+
+**User profile** (excludes `hashed_password`):
+`id`, `email`, `full_name`, `is_active`, `is_superuser`, `auth_provider`, `provider_id`, `avatar_url`, `preferred_language`, `tenant_id`, `created_at`, `updated_at`
+
+**Admin profile** (excludes `hashed_password`):
+`id`, `email`, `full_name`, `is_active`, `auth_provider`, `provider_id`, `created_at`
+
+**User permissions**:
+`id`, `name`, `description`, `resource_type`, `action`
+
+### Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `USER_CACHE_ENABLED` | `False` | Enable L1/L2 cache for user auth lookups |
+| `USER_CACHE_TTL` | `300` | TTL in seconds for cached user profiles (5 min) |
+| `USER_PERMISSIONS_CACHE_TTL` | `120` | TTL in seconds for cached user permissions (2 min) |
+| `USER_CACHE_L1_MAX_ENTRIES` | `1000` | Maximum entries in process-local L1 cache |
+| `ADMIN_CACHE_ENABLED` | `False` | Enable L1/L2 cache for admin auth lookups |
+| `ADMIN_CACHE_TTL` | `300` | TTL in seconds for cached admin profiles (5 min) |
+
+**Enable caching in `.env`:**
+
+```env
+USER_CACHE_ENABLED=true
+ADMIN_CACHE_ENABLED=true
+USER_CACHE_TTL=300
+USER_PERMISSIONS_CACHE_TTL=120
+```
+
+### Invalidation Hooks
+
+Cache invalidation is automatic on data mutations:
+
+| Event | Invalidation |
+|---|---|
+| User profile update | Profile cache (by id + email) |
+| Password change | Profile cache (by id + email) |
+| User deletion | Profile cache (by id + email) |
+| Role assigned to user | Role cache (by user_id) + Permissions cache (by user_id) |
+| Role removed from user | Role cache (by user_id) + Permissions cache (by user_id) |
+| Role updated | ALL role caches |
+| Role deleted | ALL role caches |
+| Permission assigned to role | ALL permission caches |
+| Permission removed from role | ALL permission caches |
+
+> **Full caching documentation:** See [CACHING.md](./CACHING.md) for feature flag, role, and settings caching.
+
+### Manual Invalidation
+
+For programmatic cache control:
+
+```python
+from swx_core.auth.auth_cache import (
+    invalidate_user_cache,
+    invalidate_user_permissions,
+    invalidate_admin_cache,
+    invalidate_all_permissions,
+    invalidate_user_roles,
+    invalidate_all_roles,
+)
+
+# Invalidate all cached data for a user
+await invalidate_user_cache(user_id="550e8400...", email="user@example.com")
+
+# Invalidate only permissions for a user
+await invalidate_user_permissions(user_id="550e8400...")
+
+# Invalidate roles for a user
+await invalidate_user_roles(user_id="550e8400...")
+
+# Invalidate all cached data for an admin
+await invalidate_admin_cache(admin_id="...", email="admin@example.com")
+
+# Invalidate ALL cached permissions (bulk invalidation)
+await invalidate_all_permissions()
+
+# Invalidate ALL cached roles (bulk invalidation)
+await invalidate_all_roles()
+```
+
+### Backward Compatibility
+
+- **Default is OFF**: `USER_CACHE_ENABLED=False` and `ADMIN_CACHE_ENABLED=False` means no caching. All requests hit the database as before.
+- **No migration required**: No database schema changes. Simply enable the settings to activate caching.
+- **Redis optional**: If Redis is unavailable, L1 cache still works (per-process only).
 
 ---
 
@@ -554,6 +1157,7 @@ except InvalidTokenError:
 
 ## Next Steps
 
+- Read [Caching](./CACHING.md) for full caching documentation (feature flags, roles, settings)
 - Read [RBAC Documentation](./RBAC.md) for authorization
 - Read [Security Model](../05-security/SECURITY_MODEL.md) for security details
 - Read [API Usage Guide](../06-api-usage/API_USAGE.md) for API examples

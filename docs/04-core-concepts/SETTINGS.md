@@ -1,8 +1,8 @@
 # Runtime Settings System
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-26  
-**Updated:** Policy context integration documented
+**Version:** 2.7.23  
+**Last Updated:** 2026-06-29  
+**Updated:** v2.7.23 - Added registration defaults settings
 
 ---
 
@@ -60,15 +60,18 @@ SwX-API includes a **runtime settings system** that allows configuration changes
 class SystemConfig(SQLModel, table=True):
     id: UUID
     key: str  # "auth.access_token_expire_minutes"
-    value: str  # "10080" (stored as string)
-    value_type: SettingValueType  # INT, BOOL, STRING, JSON
+    value: Any  # Stored as JSONB — native Python type (int, bool, str, dict)
+    value_type: SettingValueType  # INT, BOOL, STRING, JSON (for env fallback + validation)
     category: SettingCategory  # SECURITY, RATE_LIMIT, etc.
     description: str
     is_sensitive: bool  # Always False (secrets never in DB)
     is_active: bool
     updated_by: str  # Admin email or "system"
     updated_at: datetime
-    metadata: Dict[str, Any]
+    metadata: Dict[str, Any]  # JSONB column
+```
+
+> **v2.15.2:** `value` and `metadata` columns changed from VARCHAR/JSON to PostgreSQL `JSONB`. Values are stored as native JSON types (strings, ints, bools, objects) and returned as native Python types — no `json.loads()` needed on DB reads. `value_type` is still used for env var fallback (where values are always strings) and validation.
 ```
 
 **SystemConfigHistory:**
@@ -96,6 +99,18 @@ class SystemConfigHistory(SQLModel, table=True):
 from swx_core.services.settings_service import get_settings_service
 
 service = get_settings_service(session)
+```
+
+**Custom Config Table (v2.15.3+):**
+
+`SettingsService` accepts an optional `model` parameter for projects with their own config table. The model must have `key` (str, unique), `value` (JSONB), `value_type` (SettingValueType), and `is_active` (bool) fields:
+
+```python
+from swx_core.services.settings_service import SettingsService
+from my_app.models import MyConfig  # custom config table
+
+service = SettingsService(session, model=MyConfig)
+minutes = await service.get_int("my.setting.key", default=60)
 ```
 
 **Type-Safe Getters:**
@@ -225,6 +240,28 @@ await settings_crud_service.update_setting_service(
 - `auth.access_token_expire_minutes` - Access token expiration
 - `auth.refresh_token_expire_days` - Refresh token expiration
 - `auth.email_reset_token_expire_hours` - Password reset expiration
+
+### Registration Defaults
+
+**Category:** `REGISTRATION`
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `AUTO_ASSIGN_DEFAULT_ROLE` | `bool` | `True` | Automatically assign `DEFAULT_USER_ROLE` to newly registered users |
+| `DEFAULT_USER_ROLE` | `str` | `"user"` | Role name to assign on registration (requires `AUTO_ASSIGN_DEFAULT_ROLE=True`) |
+| `AUTO_CREATE_BILLING_ACCOUNT` | `bool` | `True` | Automatically create a billing account for newly registered users |
+| `DEFAULT_PLAN_KEY` | `str` | `"free"` | Plan key for new user subscriptions (requires `BILLING_ENABLED=True` and `AUTO_CREATE_BILLING_ACCOUNT=True`) |
+
+**Example `.env` configuration:**
+```bash
+# Registration defaults
+AUTO_ASSIGN_DEFAULT_ROLE=true
+DEFAULT_USER_ROLE=user
+AUTO_CREATE_BILLING_ACCOUNT=true
+DEFAULT_PLAN_KEY=free
+```
+
+> **Note:** The role specified in `DEFAULT_USER_ROLE` must exist in the `swx_role` table. Run `python scripts/seed_system.py` to create the default roles (`admin`, `team_owner`, `team_member`).
 
 ### Rate Limit Settings
 
