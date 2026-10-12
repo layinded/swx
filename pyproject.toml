@@ -52,7 +52,7 @@ extended = [
     "httpx>=0.25.0",
 ]
 billing = [
-    "stripe>=7.0.0,<12.0.0",
+    "stripe>=7.0.0,<17.0.0",
 ]
 monitoring = [
     "sentry-sdk>=1.45.0",
